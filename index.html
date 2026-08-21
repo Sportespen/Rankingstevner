@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rankingstevner – prototype v0.1</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">R</div>
+      <div>
+        <h1>Rankingstevner</h1>
+        <p>Finn stevnet som faktisk kan forbedre rankingen din</p>
+      </div>
+    </div>
+    <span class="badge">Prototype v0.1</span>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <span class="eyebrow">FOR AKTIVE FRIIDRETTSUTØVERE</span>
+        <h2>Hvor bør du konkurrere for å forbedre rankingscoren?</h2>
+        <p class="lead">
+          Sammenlign stevnekategori, plassering og prestasjon – og se om et nytt resultat
+          faktisk går inn blant rankingresultatene dine.
+        </p>
+      </div>
+      <div class="hero-stat">
+        <span>World Athletics-logikk</span>
+        <strong>Result Score + Placing Score</strong>
+        <small>= Performance Score</small>
+      </div>
+    </section>
+
+    <section class="panel calculator">
+      <div class="section-head">
+        <div>
+          <span class="eyebrow">RANKINGKALKULATOR</span>
+          <h3>Beregn forbedringen</h3>
+        </div>
+        <span class="status-dot">2026-regler</span>
+      </div>
+
+      <div class="grid">
+        <label>
+          Øvelsesgruppe
+          <select id="eventGroup">
+            <option value="standard">Vanlige bane-/tekniske øvelser</option>
+            <option value="distance">5000 m / 3000 m hinder</option>
+            <option value="tenk">10 000 m</option>
+            <option value="combined">Mangekamp</option>
+          </select>
+        </label>
+
+        <label>
+          Stevnekategori
+          <select id="category">
+            <option>OW</option><option>DF</option><option>GW</option><option>GL</option>
+            <option selected>A</option><option>B</option><option>C</option>
+            <option>D</option><option>E</option><option>F</option>
+          </select>
+        </label>
+
+        <label>
+          Plassering
+          <select id="placing"></select>
+        </label>
+
+        <label>
+          Result Score
+          <input id="resultScore" type="number" min="0" step="1" value="1120" />
+          <small>Foreløpig legges Result Score inn direkte.</small>
+        </label>
+      </div>
+
+      <div class="existing">
+        <div class="section-head compact">
+          <div>
+            <h4>Dine nåværende Performance Scores</h4>
+            <p id="requiredText"></p>
+          </div>
+          <button id="fillDemo" class="secondary">Fyll eksempel</button>
+        </div>
+        <div id="scoreInputs" class="score-inputs"></div>
+      </div>
+
+      <button id="calculate" class="primary">Beregn rankingeffekt</button>
+
+      <div id="resultBox" class="result-box hidden">
+        <div class="result-grid">
+          <div><span>Placing Score</span><strong id="placingScoreOut">–</strong></div>
+          <div><span>Ny Performance Score</span><strong id="performanceScoreOut">–</strong></div>
+          <div><span>Nåværende Ranking Score</span><strong id="currentRankingOut">–</strong></div>
+          <div><span>Ny Ranking Score</span><strong id="newRankingOut">–</strong></div>
+        </div>
+        <div id="improvement" class="improvement"></div>
+        <p id="replaceInfo" class="muted"></p>
+      </div>
+
+      <div class="notice">
+        <strong>v0.1-forenkling:</strong> Kalkulatoren regner korrekt på Performance Score,
+        kategoripoeng og utskifting av svakeste tellende resultat. Krav til Main Event/Similar Event,
+        vindjusteringer og automatisk konvertering fra faktisk tid/lengde/høyde til Result Score
+        kobles inn i neste trinn.
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <div>
+          <span class="eyebrow">STEVNEFINNER</span>
+          <h3>Aktuelle stevner i Europa</h3>
+        </div>
+        <span class="muted">Demodata i v0.1</span>
+      </div>
+
+      <div class="filters">
+        <select id="meetCategoryFilter">
+          <option value="all">Alle kategorier</option>
+          <option value="GL">GL</option><option value="A">A</option><option value="B">B</option>
+          <option value="C">C</option><option value="D">D</option><option value="E">E</option>
+        </select>
+        <select id="countryFilter">
+          <option value="all">Alle land</option>
+          <option value="AUT">Østerrike</option>
+          <option value="FRA">Frankrike</option>
+          <option value="NOR">Norge</option>
+          <option value="FIN">Finland</option>
+        </select>
+      </div>
+
+      <div id="meetList" class="meet-list"></div>
+    </section>
+
+    <section class="roadmap">
+      <div><strong>Neste:</strong> faktisk resultat → Result Score</div>
+      <div><strong>Deretter:</strong> levende stevnedatabase + kart</div>
+      <div><strong>Så:</strong> Road to-mesterskap + personlig anbefaling</div>
+    </section>
+  </main>
+
+  <footer>
+    Prototype – beregningsregler basert på World Athletics World Ranking Rules 2026.
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
