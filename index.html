@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rankingstevner – prototype v0.2</title>
+  <title>Rankingstevner – prototype v0.3</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -15,7 +15,7 @@
         <p>Finn stevnet som faktisk kan forbedre rankingen din</p>
       </div>
     </div>
-    <span class="badge">Prototype v0.2</span>
+    <span class="badge">Prototype v0.3</span>
   </header>
 
   <main>
@@ -24,13 +24,13 @@
         <span class="eyebrow">FOR AKTIVE FRIIDRETTSUTØVERE</span>
         <h2>Hvor bør du konkurrere for å forbedre rankingscoren?</h2>
         <p class="lead">
-          Skriv inn faktisk prestasjon, stevnekategori og plassering – og se om resultatet
+          Skriv inn faktisk prestasjon, stevnekategori, plassering og vind – og se om resultatet
           forbedrer World Athletics-rankingen din.
         </p>
       </div>
       <div class="hero-stat">
         <span>World Athletics-logikk</span>
-        <strong>Result Score + Placing Score</strong>
+        <strong>Justert Result Score + Placing Score</strong>
         <small>= Performance Score</small>
       </div>
     </section>
@@ -45,57 +45,62 @@
       </div>
 
       <div class="grid">
-        <label>
-          Kjønn
-          <select id="sex">
-            <option value="M">Menn</option>
-            <option value="W">Kvinner</option>
-          </select>
+        <label>Kjønn
+          <select id="sex"><option value="M">Menn</option><option value="W">Kvinner</option></select>
         </label>
-
-        <label>
-          Øvelse
-          <select id="event"></select>
-        </label>
-
-        <label>
-          Resultat
+        <label>Øvelse<select id="event"></select></label>
+        <label>Resultat
           <input id="mark" type="text" inputmode="decimal" placeholder="f.eks. 10,32" />
-          <small id="markHint">Skriv tid i sekunder.</small>
+          <small id="markHint">Skriv inn resultatet.</small>
         </label>
-
-        <label>
-          Result Score
-          <input id="resultScore" type="number" min="0" step="1" readonly />
-          <small>Beregnes automatisk fra WA-tabellen.</small>
+        <label>Result Score
+          <input id="resultScore" type="text" readonly />
+          <small id="scoreHint">Beregnes automatisk og vindjusteres.</small>
         </label>
       </div>
 
       <div class="grid" style="margin-top:14px">
-        <label>
-          Stevnekategori
-          <select id="category">
-            <option>OW</option><option>DF</option><option>GW</option><option>GL</option>
-            <option selected>A</option><option>B</option><option>C</option>
-            <option>D</option><option>E</option><option>F</option>
-          </select>
+        <label>Stevnekategori
+          <select id="category"><option>OW</option><option>DF</option><option>GW</option><option>GL</option><option selected>A</option><option>B</option><option>C</option><option>D</option><option>E</option><option>F</option></select>
         </label>
-
-        <label>
-          Plassering
-          <select id="placing"></select>
-        </label>
-
-        <label>
-          Øvelsesgruppe
+        <label>Plassering<select id="placing"></select></label>
+        <label>Øvelsesgruppe
           <input id="eventGroupLabel" type="text" readonly />
-          <small>Brukes for antall tellende rankingresultater.</small>
+          <small id="mainRequirement"></small>
         </label>
+        <label>Ny prestasjon
+          <input id="newEventType" type="text" value="Main Event" readonly />
+          <small>Alle øvelsene som kan velges her er Main Events.</small>
+        </label>
+      </div>
 
-        <label>
-          Datagrunnlag
-          <input type="text" value="WA Scoring Tables 2025" readonly />
-          <small>2026-rankingreglene bruker siste WA-scoringtabell.</small>
+      <div id="windSection" class="grid" style="margin-top:14px; display:none">
+        <label>Vind (m/s)
+          <input id="wind" type="text" inputmode="decimal" placeholder="f.eks. +2,4 eller -1,2" />
+          <small>Skriv NWI hvis vind mangler.</small>
+        </label>
+        <label id="bljMarkLabel" style="display:none">Best Legal Jump
+          <input id="bljMark" type="text" inputmode="decimal" placeholder="f.eks. 7,71" />
+          <small>Brukes bare dersom sluttresultatet er vindassistert.</small>
+        </label>
+        <label id="bljWindLabel" style="display:none">Vind på BLJ
+          <input id="bljWind" type="text" inputmode="decimal" placeholder="maks +2,0" />
+          <small>Må være ≤ +2,0 m/s.</small>
+        </label>
+        <label>Vindjustering
+          <input id="windAdjustment" type="text" readonly value="0" />
+          <small>Headwind gir tillegg, sterk medvind gir trekk.</small>
+        </label>
+      </div>
+
+      <div id="combinedWindSection" class="grid" style="margin-top:14px; display:none">
+        <label>Vindstatus mangekamp
+          <select id="combinedWindStatus">
+            <option value="normal">Innenfor grensene</option>
+            <option value="excess">Minst én > +4,0 og snitt > +2,0</option>
+            <option value="nwi">Vindinfo mangler (NWI)</option>
+          </select>
+          <small>WA trekker 24 poeng ved de to siste tilfellene.</small>
         </label>
       </div>
 
@@ -114,7 +119,7 @@
 
       <div id="resultBox" class="result-box hidden">
         <div class="result-grid">
-          <div><span>Result Score</span><strong id="resultScoreOut">–</strong></div>
+          <div><span>Justert Result Score</span><strong id="resultScoreOut">–</strong></div>
           <div><span>Placing Score</span><strong id="placingScoreOut">–</strong></div>
           <div><span>Ny Performance Score</span><strong id="performanceScoreOut">–</strong></div>
           <div><span>Ny Ranking Score</span><strong id="newRankingOut">–</strong></div>
@@ -122,53 +127,36 @@
         <div id="improvement" class="improvement"></div>
         <p id="currentRankingLine" class="muted"></p>
         <p id="replaceInfo" class="muted"></p>
+        <p id="ruleInfo" class="muted"></p>
       </div>
 
       <div class="notice">
-        <strong>v0.2:</strong> Faktisk prestasjon konverteres nå automatisk til Result Score fra
-        World Athletics Scoring Tables 2025. Vindjustering, Best Legal Jump og Main Event/Similar Event-kontroll
-        kommer i neste trinn. Hvis scoringdata ikke kan lastes fra nettet, kan kalkulatoren ikke beregne Result Score.
+        <strong>v0.3:</strong> Vindmodifikasjon er aktiv for 100 m, 200 m, 100/110 m hekk, lengde og tresteg.
+        NWI gir -30 poeng. Best Legal Jump kan overstyre et vindassistert sluttresultat dersom det gir bedre justert Result Score.
+        Mangekamp har WA-kontroll for -24 poeng ved for sterk samlet vind eller manglende vindinfo. Kalkulatoren kontrollerer også minimum antall Main Event-resultater.
       </div>
     </section>
 
     <section class="panel">
       <div class="section-head">
-        <div>
-          <span class="eyebrow">STEVNEFINNER</span>
-          <h3>Aktuelle stevner i Europa</h3>
-        </div>
-        <span class="muted">Demodata i v0.2</span>
+        <div><span class="eyebrow">STEVNEFINNER</span><h3>Aktuelle stevner i Europa</h3></div>
+        <span class="muted">Demodata i v0.3</span>
       </div>
-
       <div class="filters">
-        <select id="meetCategoryFilter">
-          <option value="all">Alle kategorier</option>
-          <option value="GW">GW</option><option value="GL">GL</option><option value="A">A</option><option value="B">B</option>
-          <option value="C">C</option><option value="D">D</option><option value="E">E</option>
-        </select>
-        <select id="countryFilter">
-          <option value="all">Alle land</option>
-          <option value="AUT">Østerrike</option>
-          <option value="FRA">Frankrike</option>
-          <option value="NOR">Norge</option>
-          <option value="FIN">Finland</option>
-        </select>
+        <select id="meetCategoryFilter"><option value="all">Alle kategorier</option><option value="GW">GW</option><option value="GL">GL</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option></select>
+        <select id="countryFilter"><option value="all">Alle land</option><option value="AUT">Østerrike</option><option value="FRA">Frankrike</option><option value="NOR">Norge</option><option value="FIN">Finland</option></select>
       </div>
-
       <div id="meetList" class="meet-list"></div>
     </section>
 
     <section class="roadmap">
-      <div><strong>Neste:</strong> vind + Best Legal Jump</div>
+      <div><strong>Neste:</strong> flere Similar Events + automatisk utøverprofil</div>
       <div><strong>Deretter:</strong> levende stevnedatabase + kart</div>
       <div><strong>Så:</strong> Road to-mesterskap + personlig anbefaling</div>
     </section>
   </main>
 
-  <footer>
-    Prototype – World Athletics World Ranking Rules 2026. Result Score-data: World Athletics Scoring Tables 2025.
-  </footer>
-
+  <footer>Prototype – World Athletics World Ranking Rules 2026. Result Score-data: World Athletics Scoring Tables 2025.</footer>
   <script src="app.js"></script>
 </body>
 </html>
