@@ -1,18 +1,8 @@
-// Rankingstevner v0.3.1 – tydelig kontroll av Best Legal Jump
+// Rankingstevner v0.3.2 – tydelig kontroll av Best Legal Jump
 (function () {
   const calculateBtn = document.getElementById("calculate");
-  const ruleInfo = document.getElementById("ruleInfo");
-  if (!calculateBtn || !ruleInfo) return;
-
-  const panel = document.createElement("div");
-  panel.id = "bljComparison";
-  panel.style.marginTop = "16px";
-  panel.style.padding = "16px";
-  panel.style.border = "1px solid #cfe2dc";
-  panel.style.borderRadius = "12px";
-  panel.style.background = "#fff";
-  panel.style.display = "none";
-  ruleInfo.insertAdjacentElement("afterend", panel);
+  const panel = document.getElementById("bljComparison");
+  if (!calculateBtn || !panel) return;
 
   function f(v) {
     if (v == null || !Number.isFinite(v)) return "–";
@@ -23,6 +13,7 @@
     const code = document.getElementById("event")?.value;
     if (code !== "LJ" && code !== "TJ") {
       panel.style.display = "none";
+      panel.innerHTML = "";
       return;
     }
 
@@ -50,20 +41,22 @@
 
     panel.style.display = "block";
     panel.innerHTML = `
-      <strong style="display:block;font-size:17px;margin-bottom:10px">Best Legal Jump – kontroll</strong>
-      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">
-        <div style="padding:12px;border:1px solid #e1e7eb;border-radius:10px">
+      <strong style="display:block;font-size:18px;margin-bottom:12px">Sammenligning av hopp</strong>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+        <div style="padding:14px;border:1px solid #e1e7eb;border-radius:10px">
           <span class="muted">Sluttresultat</span><br>
-          <strong>${mark || "–"} m (${wind || "–"} m/s)</strong><br>
+          <strong style="font-size:18px">${mark || "–"} m (${wind || "–"} m/s)</strong><br>
           <span class="muted">Grunnscore ${f(finalBase)} · vindjustering ${f(finalMod)} · justert ${f(finalAdjusted)}</span>
         </div>
-        <div style="padding:12px;border:1px solid #e1e7eb;border-radius:10px">
+        <div style="padding:14px;border:1px solid #e1e7eb;border-radius:10px">
           <span class="muted">Best Legal Jump</span><br>
-          <strong>${blj || "–"} m (${bljWind || "–"} m/s)</strong><br>
+          <strong style="font-size:18px">${blj || "–"} m (${bljWind || "–"} m/s)</strong><br>
           <span class="muted">${blj.trim() ? (bljLegal ? `Grunnscore ${f(bljBase)} · vindjustering ${f(bljMod)} · justert ${f(bljAdjusted)}` : "BLJ-vinden er ikke lovlig (må være ≤ +2,0 m/s).") : "Ikke oppgitt."}</span>
         </div>
       </div>
-      <div style="margin-top:12px;font-weight:800;color:#087f5b">Valgt resultat: ${chosen} – ${f(chosenScore)} Result Score</div>
+      <div style="margin-top:14px;padding:12px;border-radius:10px;background:#eef9f5;font-weight:900;color:#087f5b">
+        Valgt resultat: ${chosen} – ${f(chosenScore)} Result Score
+      </div>
     `;
   }
 
