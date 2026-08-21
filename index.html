@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rankingstevner – prototype v0.3</title>
+  <title>Rankingstevner – prototype v0.3.1</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -15,7 +15,7 @@
         <p>Finn stevnet som faktisk kan forbedre rankingen din</p>
       </div>
     </div>
-    <span class="badge">Prototype v0.3</span>
+    <span class="badge">Prototype v0.3.1</span>
   </header>
 
   <main>
@@ -131,16 +131,14 @@
       </div>
 
       <div class="notice">
-        <strong>v0.3:</strong> Vindmodifikasjon er aktiv for 100 m, 200 m, 100/110 m hekk, lengde og tresteg.
-        NWI gir -30 poeng. Best Legal Jump kan overstyre et vindassistert sluttresultat dersom det gir bedre justert Result Score.
-        Mangekamp har WA-kontroll for -24 poeng ved for sterk samlet vind eller manglende vindinfo. Kalkulatoren kontrollerer også minimum antall Main Event-resultater.
+        <strong>v0.3.1:</strong> Best Legal Jump vises nå som en egen kontroll etter beregningen. Kalkulatoren viser både sluttresultat og BLJ med grunnscore, vindjustering og justert Result Score, og markerer tydelig hvilket resultat som faktisk ble valgt.
       </div>
     </section>
 
     <section class="panel">
       <div class="section-head">
         <div><span class="eyebrow">STEVNEFINNER</span><h3>Aktuelle stevner i Europa</h3></div>
-        <span class="muted">Demodata i v0.3</span>
+        <span class="muted">Demodata i v0.3.1</span>
       </div>
       <div class="filters">
         <select id="meetCategoryFilter"><option value="all">Alle kategorier</option><option value="GW">GW</option><option value="GL">GL</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option></select>
@@ -158,5 +156,6 @@
 
   <footer>Prototype – World Athletics World Ranking Rules 2026. Result Score-data: World Athletics Scoring Tables 2025.</footer>
   <script src="app.js"></script>
+  <script src="blj-debug.js"></script>
 </body>
 </html>
