@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rankingstevner – prototype v0.8.3</title>
-  <link rel="stylesheet" href="style.css?v=083" />
+  <title>Rankingstevner – prototype v0.8.6</title>
+  <link rel="stylesheet" href="style.css?v=086" />
 </head>
 <body>
   <header class="topbar">
@@ -12,7 +12,7 @@
       <div class="logo">R</div>
       <div><h1>Rankingstevner</h1><p>Finn stevnet som faktisk kan forbedre rankingen din</p></div>
     </div>
-    <span class="badge">Prototype v0.8.3</span>
+    <span class="badge">Prototype v0.8.6</span>
   </header>
 
   <main>
@@ -100,19 +100,72 @@
       <div class="existing"><div class="section-head compact"><div><h4>Dine nåværende Performance Scores</h4><p id="requiredText"></p></div><button id="fillDemo" class="secondary">Fyll eksempel</button></div><div id="scoreInputs" class="score-inputs"></div></div>
       <button id="calculate" class="primary">Beregn rankingeffekt</button>
       <div id="resultBox" class="result-box hidden"><div class="result-grid"><div><span>Justert Result Score</span><strong id="resultScoreOut">–</strong></div><div><span>Placing Score</span><strong id="placingScoreOut">–</strong></div><div><span>Ny Performance Score</span><strong id="performanceScoreOut">–</strong></div><div><span>Ny Ranking Score</span><strong id="newRankingOut">–</strong></div></div><div id="bljComparison" style="display:none;margin-top:16px;padding:16px;border:1px solid #cfe2dc;border-radius:12px;background:#fff"></div><div id="improvement" class="improvement"></div><p id="currentRankingLine" class="muted"></p><p id="replaceInfo" class="muted"></p><p id="ruleInfo" class="muted"></p></div>
-      <div class="notice"><strong>v0.8.3:</strong> Finn utøver først, deretter velg øvelse. Utøvernavnet vises bare én gang.</div>
+      <div class="notice"><strong>v0.8.6:</strong> Finn utøver først. Navnesøket bruker lokal utøverindeks foran World Athletics-søket.</div>
     </section>
 
-    <section class="panel"><div class="section-head"><div><span class="eyebrow">STEVNEFINNER</span><h3>Aktuelle stevner i Europa</h3></div><span class="muted">Demodata i v0.8.3</span></div><div class="filters"><select id="meetCategoryFilter"><option value="all">Alle kategorier</option><option value="GW">GW</option><option value="GL">GL</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option></select><select id="countryFilter"><option value="all">Alle land</option><option value="AUT">Østerrike</option><option value="FRA">Frankrike</option><option value="NOR">Norge</option><option value="FIN">Finland</option></select></div><div id="meetList" class="meet-list"></div></section>
+    <section class="panel"><div class="section-head"><div><span class="eyebrow">STEVNEFINNER</span><h3>Aktuelle stevner i Europa</h3></div><span class="muted">Demodata i v0.8.6</span></div><div class="filters"><select id="meetCategoryFilter"><option value="all">Alle kategorier</option><option value="GW">GW</option><option value="GL">GL</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option></select><select id="countryFilter"><option value="all">Alle land</option><option value="AUT">Østerrike</option><option value="FRA">Frankrike</option><option value="NOR">Norge</option><option value="FIN">Finland</option></select></div><div id="meetList" class="meet-list"></div></section>
 
     <section class="roadmap"><div><strong>Neste:</strong> automatisk rankinggrunnlag for flere øvelser</div><div><strong>Deretter:</strong> levende stevnedatabase + kart</div><div><strong>Så:</strong> Road to-mesterskap + personlig anbefaling</div></section>
   </main>
   <footer>Prototype – World Athletics World Ranking Rules 2026. Result Score-data: World Athletics Scoring Tables 2025.</footer>
-  <script src="app.js?v=083"></script>
-  <script src="blj-debug.js?v=083"></script>
-  <script src="wind-validation.js?v=083"></script>
-  <script src="athlete-profile.js?v=083"></script>
-  <script src="target-score.js?v=083"></script>
-  <script>document.querySelector('.badge').textContent='Prototype v0.8.3';document.title='Rankingstevner – prototype v0.8.3';</script>
+  <script src="app.js?v=086"></script>
+  <script src="blj-debug.js?v=086"></script>
+  <script src="wind-validation.js?v=086"></script>
+  <script src="athlete-profile.js?v=086"></script>
+  <script src="target-score.js?v=086"></script>
+  <script>
+  (function(){
+    const input=document.getElementById('athleteNameSearch');
+    const box=document.getElementById('athleteSearchResults');
+    const waId=document.getElementById('waProfileId');
+    const load=document.getElementById('loadWaProfile');
+    if(!input||!box||!waId||!load) return;
+
+    const INDEX_KEY='rankingstevner.athleteIndex.v1';
+    const seed=[{id:14989292,name:'Jonathan HERTWIG-ØDEGAARD',country:'NOR'}];
+
+    function norm(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ø/g,'o').replace(/æ/g,'ae').replace(/å/g,'a').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ')}
+    function readIndex(){
+      let list=[];
+      try{list=JSON.parse(localStorage.getItem(INDEX_KEY)||'[]')||[]}catch(_){list=[]}
+      try{
+        const p=JSON.parse(localStorage.getItem('rankingstevner.profile.v1')||'{}')||{};
+        if(p.waId&&(p.waName||p.name)) list.unshift({id:Number(p.waId),name:p.waName||p.name,country:p.waData?.country||''});
+      }catch(_){}
+      for(const a of seed) list.push(a);
+      const map=new Map(); for(const a of list){if(a?.id&&a?.name) map.set(String(a.id),a)}
+      return [...map.values()].slice(0,50);
+    }
+    function saveAthlete(a){
+      const list=readIndex().filter(x=>String(x.id)!==String(a.id)); list.unshift(a);
+      localStorage.setItem(INDEX_KEY,JSON.stringify(list.slice(0,50)));
+    }
+    function localMatches(q){
+      const nq=norm(q); if(nq.length<2)return[];
+      const tokens=nq.split(' ');
+      return readIndex().map(a=>({a,n:norm(a.name)})).filter(x=>tokens.every(t=>x.n.includes(t)||x.n.split(' ').some(p=>p.startsWith(t)))).sort((x,y)=>{const xs=x.n.startsWith(nq)?1:0,ys=y.n.startsWith(nq)?1:0;return ys-xs||x.n.localeCompare(y.n)}).map(x=>x.a).slice(0,5);
+    }
+    function makeButton(a){
+      const b=document.createElement('button'); b.type='button'; b.dataset.localAthlete='1';
+      b.style.cssText='display:block;width:100%;padding:11px 12px;text-align:left;border:0;border-bottom:1px solid #edf2f0;background:#f6fbf9;cursor:pointer';
+      b.innerHTML='<strong>'+a.name+'</strong><br><span class="muted">'+(a.country?a.country+' · ':'')+'WA-ID '+a.id+'</span>';
+      b.addEventListener('click',()=>{input.value=a.name;waId.value=String(a.id);box.style.display='none';saveAthlete(a);load.click()});
+      return b;
+    }
+    function inject(){
+      const matches=localMatches(input.value); if(!matches.length)return;
+      box.querySelectorAll('[data-local-athlete]').forEach(el=>el.remove());
+      const frag=document.createDocumentFragment(); for(const a of matches) frag.appendChild(makeButton(a));
+      box.prepend(frag); box.style.display='block';
+    }
+    input.addEventListener('input',()=>setTimeout(inject,20));
+    const obs=new MutationObserver(()=>{if(box.dataset.injecting)return;box.dataset.injecting='1';inject();delete box.dataset.injecting});
+    obs.observe(box,{childList:true});
+
+    const status=document.getElementById('waProfileStatus');
+    if(status){new MutationObserver(()=>{try{const p=JSON.parse(localStorage.getItem('rankingstevner.profile.v1')||'{}')||{};if(p.waId&&(p.waName||p.name))saveAthlete({id:Number(p.waId),name:p.waName||p.name,country:p.waData?.country||''})}catch(_){}}).observe(status,{childList:true,subtree:true})}
+  })();
+  document.querySelector('.badge').textContent='Prototype v0.8.6';document.title='Rankingstevner – prototype v0.8.6';
+  </script>
 </body>
 </html>
