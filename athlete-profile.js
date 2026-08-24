@@ -1,6 +1,6 @@
-// Rankingstevner v0.6 – lokal utøverprofil + World Athletics-profiloppslag
+// Rankingstevner v0.7.1 – én utøverprofil + konservativ WA-visning
 (function () {
-  const VERSION = 'v0.6';
+  const VERSION = 'v0.7.1';
   const STORAGE_KEY = "rankingstevner.profile.v1";
   const profileName = document.getElementById("profileName");
   const profileStatus = document.getElementById("profileStatus");
@@ -8,36 +8,16 @@
   const clearProfileBtn = document.getElementById("clearProfile");
   const sex = document.getElementById("sex");
   const eventSelect = document.getElementById("event");
+  const waInput = document.getElementById('waProfileId');
+  const waBtn = document.getElementById('loadWaProfile');
+  const waStatus = document.getElementById('waProfileStatus');
+  const waDetails = document.getElementById('waProfileDetails');
 
-  // Synlig versjon styres også fra JS, slik at den ikke kan henge igjen på en gammel HTML-etikett.
   const badge = document.querySelector('.badge');
   if (badge) badge.textContent = `Prototype ${VERSION}`;
   document.title = `Rankingstevner – prototype ${VERSION}`;
 
   if (!profileName || !profileStatus || !saveProfileBtn || !clearProfileBtn || !sex || !eventSelect) return;
-
-  const profileBox = profileName.closest('div')?.parentElement || profileName.parentElement;
-  if (profileBox && !document.getElementById('waProfileId')) {
-    const wa = document.createElement('div');
-    wa.style.marginTop = '14px';
-    wa.innerHTML = `
-      <div style="font-weight:800;margin-bottom:6px">World Athletics-profil</div>
-      <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end">
-        <label style="margin:0">WA-ID eller profil-lenke
-          <input id="waProfileId" type="text" placeholder="f.eks. 14989292 eller lim inn WA-lenke" />
-        </label>
-        <button id="loadWaProfile" class="secondary" type="button">Hent fra WA</button>
-      </div>
-      <div id="waProfileStatus" class="muted" style="margin-top:7px">Henter navn, kjønn, gjeldende rangeringer og profilresultater fra World Athletics.</div>
-      <div id="waProfileDetails" style="display:none;margin-top:10px;padding:12px;border:1px solid #d9e5e1;border-radius:10px;background:#fff"></div>
-    `;
-    profileBox.appendChild(wa);
-  }
-
-  const waInput = document.getElementById('waProfileId');
-  const waBtn = document.getElementById('loadWaProfile');
-  const waStatus = document.getElementById('waProfileStatus');
-  const waDetails = document.getElementById('waProfileDetails');
 
   function readStore() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}; }
@@ -87,11 +67,11 @@
     if (!waDetails) return;
     const rankingHtml = data.rankings?.length
       ? `<div><strong>Gjeldende WA-ranking:</strong> ${data.rankings.map(r=>`#${r.rank} ${r.event}`).join(' · ')}</div>`
-      : '<div><strong>Gjeldende WA-ranking:</strong> ingen ranking funnet på profilsiden.</div>';
+      : '<div><strong>Gjeldende WA-ranking:</strong> ikke funnet sikkert på profilsiden.</div>';
     const pbHtml = data.personalBests?.length
-      ? `<div style="margin-top:8px"><strong>Profilresultater:</strong><br>${data.personalBests.slice(0,5).map(p=>`${p.event}: ${p.result} · score ${p.score}`).join('<br>')}</div>`
-      : '';
-    waDetails.innerHTML = rankingHtml + pbHtml + '<div class="muted" style="margin-top:8px">Merk: profilresultatene er ikke de fem tellende Performance Scores. Automatisk henting av selve rankinggrunnlaget bygges i neste datasteg.</div>';
+      ? `<div style="margin-top:8px"><strong>Sikre profilresultater:</strong><br>${data.personalBests.slice(0,8).map(p=>`${p.event}: ${p.result} · score ${p.score}`).join('<br>')}</div>`
+      : '<div style="margin-top:8px"><strong>Profilresultater:</strong> ingen sikre resultatrader funnet.</div>';
+    waDetails.innerHTML = rankingHtml + pbHtml + '<div class="muted" style="margin-top:8px">Disse resultatene brukes ikke automatisk som de tellende Performance Scores. Rankinggrunnlaget hentes først når vi har en sikker datakilde for de tellende resultatene.</div>';
     waDetails.style.display = 'block';
   }
   function restoreProfile() {
@@ -170,6 +150,7 @@
       showStatus(`Koblet til World Athletics: ${data.name || data.id}`);
     } catch (e) {
       waStatus.textContent = `Kunne ikke hente WA-profil: ${e.message}`;
+      if (waDetails) { waDetails.innerHTML=''; waDetails.style.display='none'; }
     } finally { waBtn.disabled = false; }
   });
 
