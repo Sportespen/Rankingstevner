@@ -1,4 +1,4 @@
-// Rankingstevner Trinn 3 v0.12.1 – scorevisning og plassering. Resultatfeltet eies av result-field.js
+// Rankingstevner Trinn 3 v0.12.2 – scorevisning og plassering. Resultatfeltet eies av result-field.js eller HTML-fallback.
 (() => {
   'use strict';
 
@@ -18,9 +18,9 @@
   }
 
   function init(){
-    const event=$('event'), category=$('category'), placing=$('placing'), resultScore=$('resultScore');
+    const event=$('event'), category=$('category'), placing=$('placing'), resultScore=$('resultScore'), mark=$('mark');
     const resultOut=$('resultScoreMirror'), placingOut=$('placingScorePreview'), performanceOut=$('performanceScorePreview');
-    if(![event,category,placing,resultScore,resultOut,placingOut,performanceOut].every(Boolean)){
+    if(![event,category,placing,resultScore,mark,resultOut,placingOut,performanceOut].every(Boolean)){
       setTimeout(init,100); return;
     }
 
@@ -44,12 +44,15 @@
       placingOut.textContent=ps==null ? '–' : String(ps);
       performanceOut.textContent=valid && ps!=null ? String(Math.round(rs+ps)) : '–';
     }
+    function updateAfterMark(){ setTimeout(update,0); setTimeout(update,80); }
 
     event.addEventListener('change',rebuildPlacing);
     category.addEventListener('change',rebuildPlacing);
     placing.addEventListener('change',update);
     resultScore.addEventListener('input',update);
     resultScore.addEventListener('change',update);
+    mark.addEventListener('input',updateAfterMark);
+    mark.addEventListener('change',updateAfterMark);
     new MutationObserver(()=>{ if(event.options.length) rebuildPlacing(); }).observe(event,{childList:true});
 
     rebuildPlacing();
