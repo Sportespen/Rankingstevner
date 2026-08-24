@@ -1,0 +1,1 @@
+Force Cloudflare Pages deployment for Rankingstevner v0.10.0. 2026-08-25.
