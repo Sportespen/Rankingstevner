@@ -1,4 +1,4 @@
-// Rankingstevner v0.9.6 – øvelsestilpasset resultatregistrering uten komma
+// Rankingstevner v0.9.7 – øvelsestilpasset resultatregistrering + tre scorebokser
 (function(){
   const mark=document.getElementById('mark');
   const resultScore=document.getElementById('resultScore');
@@ -28,23 +28,27 @@
   wrap.id='trinn3Compact';
   wrap.style.cssText='display:grid;gap:16px;margin-top:8px';
   wrap.innerHTML=`
-    <div style="display:grid;grid-template-columns:minmax(0,.9fr) minmax(150px,.35fr);gap:14px;align-items:end;max-width:820px">
-      <div>
-        <label style="display:block;font-weight:700;margin-bottom:6px">Resultat</label>
-        <div id="safeResultEditor" style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"></div>
-        <small id="safeResultHint" class="muted" style="display:block;margin-top:6px"></small>
-      </div>
-      <label style="margin:0">Result Score
-        <input id="resultScoreMirror" type="text" readonly style="font-size:1.05rem;font-weight:800;background:#f7fbfa" />
-        <small>Beregnes automatisk.</small>
-      </label>
+    <div>
+      <label style="display:block;font-weight:700;margin-bottom:6px">Resultat</label>
+      <div id="safeResultEditor" style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"></div>
+      <small id="safeResultHint" class="muted" style="display:block;margin-top:6px"></small>
     </div>
-    <div style="display:grid;grid-template-columns:minmax(180px,.7fr) minmax(180px,.7fr) minmax(170px,.55fr);gap:14px;align-items:end">
+    <div style="display:grid;grid-template-columns:minmax(180px,.7fr) minmax(180px,.7fr);gap:14px;align-items:end">
       <div id="categorySlot"></div>
       <div id="placingSlot"></div>
-      <div style="border:1px solid #cfe2dc;border-radius:12px;background:#f7fbfa;padding:12px 14px">
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(170px,1fr));gap:14px;max-width:900px">
+      <div style="border:1px solid #cfe2dc;border-radius:12px;background:#f7fbfa;padding:14px 16px">
+        <span class="muted" style="font-size:12px">Result Score</span>
+        <strong id="resultScoreMirror" style="display:block;font-size:1.8rem;line-height:1.1;margin-top:4px">–</strong>
+      </div>
+      <div style="border:1px solid #cfe2dc;border-radius:12px;background:#f7fbfa;padding:14px 16px">
         <span class="muted" style="font-size:12px">Placing Score</span>
         <strong id="placingScorePreview" style="display:block;font-size:1.8rem;line-height:1.1;margin-top:4px">–</strong>
+      </div>
+      <div style="border:1px solid #b8d9d1;border-radius:12px;background:#eef8f5;padding:14px 16px">
+        <span style="font-size:12px;font-weight:800;color:#087f5b">Performance Score</span>
+        <strong id="performanceScorePreview" style="display:block;font-size:1.8rem;line-height:1.1;margin-top:4px;color:#0b4f4a">–</strong>
       </div>
     </div>
     <div id="windCompact" style="display:none;grid-template-columns:minmax(180px,.7fr) minmax(170px,.55fr);gap:14px;align-items:end"></div>
@@ -63,14 +67,32 @@
 
   const mirror=wrap.querySelector('#resultScoreMirror');
   const scorePreview=wrap.querySelector('#placingScorePreview');
+  const performancePreview=wrap.querySelector('#performanceScorePreview');
   const editor=wrap.querySelector('#safeResultEditor');
   const hint=wrap.querySelector('#safeResultHint');
   const windCompact=wrap.querySelector('#windCompact');
 
+  function currentPlacingScore(){
+    const arr=placingTables[group(eventSelect.value)]?.[category.value]||[];
+    const p=Math.max(1,Number(placing.value)||1);
+    const ps=arr[p-1];
+    return ps==null?null:Number(ps);
+  }
+
+  function refreshScores(){
+    const ps=currentPlacingScore();
+    const raw=String(resultScore.value||'').trim();
+    const rs=Number(raw.replace(',','.'));
+    mirror.textContent=Number.isFinite(rs)&&raw!==''?String(Math.round(rs)):'–';
+    scorePreview.textContent=ps==null?'–':String(ps);
+    performancePreview.textContent=(Number.isFinite(rs)&&raw!==''&&ps!=null)?String(Math.round(rs+ps)):'–';
+  }
+
   function syncMark(value){
     mark.value=value;
     mark.dispatchEvent(new Event('input',{bubbles:true}));
-    setTimeout(()=>mirror.value=resultScore.value,0);
+    setTimeout(refreshScores,0);
+    setTimeout(refreshScores,50);
   }
 
   function digitField({placeholder,maxLength=2,max=null,width=92}){
@@ -139,12 +161,6 @@
     syncMark('');
   }
 
-  function refreshPlacing(){
-    const arr=placingTables[group(eventSelect.value)]?.[category.value]||[];
-    const p=Math.max(1,Number(placing.value)||1);
-    scorePreview.textContent=arr[p-1]??'–';
-  }
-
   function refreshWind(){
     const visible=windSection&&getComputedStyle(windSection).display!=='none';
     windCompact.style.display=visible?'grid':'none';
@@ -155,16 +171,17 @@
     windSection.style.display='none';
   }
 
-  const rsObserver=new MutationObserver(()=>mirror.value=resultScore.value);
+  const rsObserver=new MutationObserver(refreshScores);
   rsObserver.observe(resultScore,{attributes:true,attributeFilter:['value']});
-  resultScore.addEventListener('input',()=>mirror.value=resultScore.value);
-  document.addEventListener('input',e=>{if(e.target===mark)setTimeout(()=>mirror.value=resultScore.value,0);});
+  resultScore.addEventListener('input',refreshScores);
+  resultScore.addEventListener('change',refreshScores);
+  document.addEventListener('input',e=>{if(e.target===mark)setTimeout(refreshScores,0);});
 
-  eventSelect.addEventListener('change',()=>setTimeout(()=>{rebuildResultEditor();refreshPlacing();refreshWind();},80));
-  category.addEventListener('change',()=>setTimeout(refreshPlacing,0));
-  placing.addEventListener('change',()=>setTimeout(refreshPlacing,0));
+  eventSelect.addEventListener('change',()=>setTimeout(()=>{rebuildResultEditor();refreshScores();refreshWind();},80));
+  category.addEventListener('change',()=>setTimeout(refreshScores,0));
+  placing.addEventListener('change',()=>setTimeout(refreshScores,0));
   const windObserver=new MutationObserver(()=>setTimeout(refreshWind,0));
   if(windSection)windObserver.observe(windSection,{attributes:true,attributeFilter:['style']});
 
-  rebuildResultEditor();refreshPlacing();setTimeout(refreshWind,120);
+  rebuildResultEditor();refreshScores();setTimeout(refreshWind,120);
 })();
