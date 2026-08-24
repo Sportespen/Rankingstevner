@@ -60,3 +60,13 @@
   observer.observe(scoreInputs,{childList:true,subtree:true});
   setTimeout(refresh,300);
 })();
+
+// Last den nye søkemotoren etter at den gamle profillogikken er registrert.
+// Søkemotoren bruker capture-event og overstyrer derfor den gamle trege input-handleren.
+(function(){
+  if (document.querySelector('script[data-ranking-search-v087]')) return;
+  const s=document.createElement('script');
+  s.src='athlete-search-ui.js?v=087';
+  s.dataset.rankingSearchV087='1';
+  document.head.appendChild(s);
+})();
