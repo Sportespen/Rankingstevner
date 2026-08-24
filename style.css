@@ -62,6 +62,8 @@ select,input {
 .primary { background:var(--accent); color:white; font-size:15px; }
 .primary:hover { background:var(--accent2); }
 .secondary { background:#edf1f4; color:#33414d; }
+/* Profilen lagres automatisk. Behold elementet skjult for bakoverkompatibilitet med eksisterende JS. */
+#saveProfile { display:none !important; }
 .result-box { margin-top:22px; border:1px solid #cfe2dc; background:#f4fbf8; border-radius:16px; padding:20px; }
 .hidden { display:none; }
 .result-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
