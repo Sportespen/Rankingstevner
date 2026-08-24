@@ -8,13 +8,20 @@ export async function onRequestGet(context) {
     const queries = [q];
 
     // WA-søket kan vekte fornavn for hardt. Ved flere navnedeler søker vi
-    // derfor også separat på siste navnedel og rangerer alle treff lokalt.
+    // flere varianter samtidig, slik at et påbegynt etternavn blir viktig
+    // allerede etter 2–3 bokstaver.
     if (parts.length > 1) {
+      const first = parts[0];
       const last = parts[parts.length - 1];
-      if (last.length >= 2 && normalize(last) !== normalize(q)) queries.push(last);
+      if (last.length >= 2) {
+        queries.push(last);
+        queries.push(`${last} ${first}`);
+        queries.push(`${first} ${last}`);
+      }
     }
 
-    const responses = await Promise.all(queries.map(searchWa));
+    const uniqueQueries = [...new Set(queries.map(s=>s.trim()).filter(Boolean))];
+    const responses = await Promise.all(uniqueQueries.map(searchWa));
     const merged = new Map();
     for (const list of responses) {
       for (const a of list) {
@@ -42,7 +49,7 @@ export async function onRequestGet(context) {
 async function searchWa(name) {
   const endpoint = `https://worldathletics.nimarion.de/athletes/search?name=${encodeURIComponent(name)}`;
   const res = await fetch(endpoint, {
-    headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.8.3','Accept':'application/json'}
+    headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.8.4','Accept':'application/json'}
   });
   const text = await res.text();
   let data = null;
@@ -90,23 +97,24 @@ function matchScore(a,qNorm,qTokens) {
 
   let score = 0;
   if (full === qNorm) score += 10000;
-  if (full.startsWith(qNorm)) score += 7000;
+  if (full.startsWith(qNorm)) score += 9000;
   else if (full.includes(qNorm)) score += 5000;
 
   let allTokens = true;
   for (const token of qTokens) {
     if (!token) continue;
-    if (first.startsWith(token) || last.startsWith(token)) score += 900;
+    if (first.startsWith(token) || last.startsWith(token)) score += 1000;
     else if (full.includes(token)) score += 500;
     else allTokens = false;
   }
-  if (allTokens && qTokens.length > 1) score += 3000;
+  if (allTokens && qTokens.length > 1) score += 4500;
 
-  // Etternavnet skal veie tungt når brukeren har begynt å skrive det.
+  // Påbegynt etternavn skal dominere rangeringen så snart brukeren har
+  // skrevet minst to tegn etter mellomrommet.
   const lastQuery = qTokens[qTokens.length - 1];
   if (qTokens.length > 1 && lastQuery) {
-    if (last.startsWith(lastQuery)) score += 2500;
-    else if (last.includes(lastQuery)) score += 1200;
+    if (last.startsWith(lastQuery)) score += 5000 + Math.min(lastQuery.length, 8) * 250;
+    else if (last.includes(lastQuery)) score += 1500;
   }
 
   return score;
