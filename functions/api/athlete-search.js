@@ -7,12 +7,12 @@ export async function onRequestGet(context) {
     const parts = q.split(/\s+/).filter(Boolean);
     const queries = [q];
 
-    // WA-søket kan vekte fornavn for hardt. Ved flere navnedeler søker vi
-    // flere varianter samtidig, slik at et påbegynt etternavn blir viktig
-    // allerede etter 2–3 bokstaver.
+    // WA-søket gir ofte ikke etternavnstreff før flere bokstaver er skrevet.
+    // Derfor henter vi også et bredere fornavnssøk og filtrerer/rangerer lokalt.
     if (parts.length > 1) {
       const first = parts[0];
       const last = parts[parts.length - 1];
+      queries.push(first);
       if (last.length >= 2) {
         queries.push(last);
         queries.push(`${last} ${first}`);
@@ -49,7 +49,7 @@ export async function onRequestGet(context) {
 async function searchWa(name) {
   const endpoint = `https://worldathletics.nimarion.de/athletes/search?name=${encodeURIComponent(name)}`;
   const res = await fetch(endpoint, {
-    headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.8.4','Accept':'application/json'}
+    headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.8.5','Accept':'application/json'}
   });
   const text = await res.text();
   let data = null;
@@ -109,12 +109,11 @@ function matchScore(a,qNorm,qTokens) {
   }
   if (allTokens && qTokens.length > 1) score += 4500;
 
-  // Påbegynt etternavn skal dominere rangeringen så snart brukeren har
-  // skrevet minst to tegn etter mellomrommet.
   const lastQuery = qTokens[qTokens.length - 1];
   if (qTokens.length > 1 && lastQuery) {
-    if (last.startsWith(lastQuery)) score += 5000 + Math.min(lastQuery.length, 8) * 250;
+    if (last.startsWith(lastQuery)) score += 7000 + Math.min(lastQuery.length, 8) * 300;
     else if (last.includes(lastQuery)) score += 1500;
+    else return 0;
   }
 
   return score;
