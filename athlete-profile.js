@@ -1,4 +1,4 @@
-// Rankingstevner v0.7.6 – én utøverprofil + WA Ranking Score
+// Rankingstevner v0.7.7 – stabil WA-profil + verifisert rankingplassering
 (function () {
   const STORAGE_KEY = "rankingstevner.profile.v1";
   const profileName = document.getElementById("profileName");
@@ -38,6 +38,13 @@
   function normalizeEvent(s) {
     return String(s || '').toLowerCase().replace(/metres?|meters?/g,'m').replace(/women'?s|woman'?s|men'?s/g,'').replace(/[^a-z0-9]+/g,'');
   }
+  function normalizeProxyEventGroup(s) {
+    return String(s || '')
+      .replace(/^Men'?s\s+/i,'')
+      .replace(/^Women'?s\s+/i,'')
+      .replace(/^Woman'?s\s+/i,'')
+      .trim();
+  }
   function selectBestMatchingEvent(items) {
     if (!Array.isArray(items) || !items.length) return;
     const options = [...eventSelect.options];
@@ -65,7 +72,7 @@
     } else if (scores.length) {
       rankingHtml = `<div><strong>Gjeldende WA-ranking:</strong><br>${scores.map(r=>`${r.rank ? `#${r.rank} ` : ''}${r.event} · <strong>${r.score} Ranking Score</strong>`).join('<br>')}</div>`;
     } else {
-      rankingHtml = '<div><strong>Gjeldende WA-ranking:</strong> ikke funnet sikkert på profilsiden.</div>';
+      rankingHtml = '<div><strong>Gjeldende WA-ranking:</strong> ikke funnet sikkert.</div>';
     }
 
     const pbHtml = data.personalBests?.length
@@ -73,8 +80,8 @@
       : '<div style="margin-top:8px"><strong>Profilresultater:</strong> ingen sikre resultatrader funnet.</div>';
 
     const basisHtml = scores.length
-      ? `<div style="margin-top:10px;padding:10px;border-radius:8px;background:#eef8f5"><strong>Rankinggrunnlag – trinn 1:</strong> gjeldende Ranking Score er hentet fra World Athletics. Neste trinn er de individuelle tellende Performance Scores.</div>`
-      : '<div class="muted" style="margin-top:8px">Gjeldende Ranking Score kunne ikke leses sikkert fra rankinglisten denne gangen.</div>';
+      ? `<div style="margin-top:10px;padding:10px;border-radius:8px;background:#eef8f5"><strong>Rankinggrunnlag – trinn 1:</strong> gjeldende Ranking Score er hentet. Neste trinn er de individuelle tellende Performance Scores.</div>`
+      : `<div class="muted" style="margin-top:8px">Rankingplasseringen er hentet fra strukturert WA-data. Ranking Score kobles inn som neste separate datasteg.</div>`;
 
     waDetails.innerHTML = rankingHtml + pbHtml + basisHtml;
     waDetails.style.display = 'block';
@@ -127,11 +134,25 @@
     const id = raw.match(/(\d{7,9})/)?.[1];
     if (!id) { waStatus.textContent = 'Skriv inn en gyldig WA-ID eller profil-lenke.'; return; }
     waBtn.disabled = true;
-    waStatus.textContent = 'Henter World Athletics-profil og Ranking Score…';
+    waStatus.textContent = 'Henter World Athletics-profil og ranking…';
     try {
-      const res = await fetch(`/api/athlete?id=${encodeURIComponent(id)}&v=076`, {cache:'no-store'});
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Oppslag feilet');
+      const [profileRes, rankRes] = await Promise.all([
+        fetch(`/api/athlete?id=${encodeURIComponent(id)}&v=077`, {cache:'no-store'}),
+        fetch(`/api/wa-rank?id=${encodeURIComponent(id)}&v=077`, {cache:'no-store'})
+      ]);
+      const data = await profileRes.json();
+      const rankData = await rankRes.json();
+      if (!data.ok) throw new Error(data.error || 'Profiloppslag feilet');
+
+      if (rankData?.ok && Array.isArray(rankData.currentWorldRankings)) {
+        data.rankings = rankData.currentWorldRankings.map(r => ({
+          rank: Number(r.place),
+          event: normalizeProxyEventGroup(r.eventGroup)
+        })).filter(r => Number.isFinite(r.rank) && r.event);
+        if (!data.sex && rankData.sex) data.sex = rankData.sex;
+        data.rankingSource = rankData.source;
+      }
+
       const store = readStore();
       store.waId = data.id;
       store.waName = data.name || store.name || '';
