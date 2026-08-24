@@ -8,99 +8,26 @@
   };
   const reqCount = {standard:5,distance:3,tenk:2,combined:2};
   function groupForEvent(code){if(code==='5000m'||code==='3000mSC')return'distance';if(code==='10000m')return'tenk';if(code==='Decathlon'||code==='Heptathlon')return'combined';return'standard';}
-
-  const scoreInputs = document.getElementById('scoreInputs');
-  const eventSelect = document.getElementById('event');
-  const category = document.getElementById('category');
-  const placing = document.getElementById('placing');
-  if (!scoreInputs || !eventSelect || !category || !placing) return;
-
-  const wrap = document.createElement('div');
-  wrap.id = 'targetScorePanel';
-  wrap.style.cssText = 'margin:18px 0;padding:16px;border:1px solid #cfe2dc;border-radius:12px;background:#f7fbfa';
-  wrap.innerHTML = `
-    <div style="font-weight:800;font-size:1.05rem;margin-bottom:10px">Hva må du prestere for at resultatet skal telle?</div>
-    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
-      <div style="background:#fff;border:1px solid #d9e5e1;border-radius:10px;padding:12px"><span class="muted">Svakeste tellende score</span><strong id="weakestTargetScore" style="display:block;font-size:1.5rem;margin-top:4px">–</strong></div>
-      <div style="background:#fff;border:1px solid #d9e5e1;border-radius:10px;padding:12px"><span class="muted">Placing Score</span><strong id="targetPlacingScore" style="display:block;font-size:1.5rem;margin-top:4px">–</strong></div>
-      <div style="background:#fff;border:1px solid #d9e5e1;border-radius:10px;padding:12px"><span class="muted">Min. Result Score</span><strong id="minimumResultScore" style="display:block;font-size:1.5rem;margin-top:4px">–</strong></div>
-    </div>
-    <p id="targetScoreText" class="muted" style="margin:10px 0 0">Fyll inn nåværende Performance Scores først.</p>
-  `;
-  scoreInputs.closest('.existing')?.insertAdjacentElement('afterend', wrap);
-
-  const weakestOut = document.getElementById('weakestTargetScore');
-  const placingOut = document.getElementById('targetPlacingScore');
-  const resultOut = document.getElementById('minimumResultScore');
-  const textOut = document.getElementById('targetScoreText');
-
-  function refresh(){
-    const group = groupForEvent(eventSelect.value);
-    const needed = reqCount[group];
-    const scores = [...document.querySelectorAll('.existingScore')].map(el=>Number(el.value)).filter(v=>Number.isFinite(v)&&v>0);
-    const pos = Number(placing.value || 1);
-    const ps = (placingTables[group]?.[category.value] || [])[pos-1] || 0;
-    placingOut.textContent = ps;
-    if(scores.length < needed){
-      weakestOut.textContent = '–'; resultOut.textContent = '–';
-      textOut.textContent = `Fyll inn ${needed} nåværende Performance Scores for å beregne terskelen.`;
-      return;
-    }
-    const weakest = Math.min(...scores);
-    const targetPerformance = weakest + 1;
-    const minimumResult = Math.max(0, targetPerformance - ps);
-    weakestOut.textContent = weakest.toFixed(1).replace('.0','').replace('.',',');
-    resultOut.textContent = minimumResult.toFixed(1).replace('.0','').replace('.',',');
-    textOut.innerHTML = `Med <strong>${pos}. plass</strong> i kategori <strong>${category.value}</strong> må ny Performance Score være minst <strong>${targetPerformance.toFixed(1).replace('.0','').replace('.',',')}</strong> for å slå den svakeste tellende scoren. Det tilsvarer minst <strong>${minimumResult.toFixed(1).replace('.0','').replace('.',',')}</strong> i justert Result Score. Faktisk forbedring av Ranking Score avhenger av hele gjennomsnittet og avrunding.`;
-  }
-
-  document.addEventListener('input', e=>{if(e.target.matches('.existingScore')) refresh();});
-  document.addEventListener('change', e=>{if(e.target===eventSelect||e.target===category||e.target===placing||e.target.matches('.existingType')) setTimeout(refresh,0);});
-  const observer = new MutationObserver(()=>setTimeout(refresh,0));
-  observer.observe(scoreInputs,{childList:true,subtree:true});
-  setTimeout(refresh,300);
+  const scoreInputs = document.getElementById('scoreInputs'); const eventSelect = document.getElementById('event'); const category = document.getElementById('category'); const placing = document.getElementById('placing'); if (!scoreInputs || !eventSelect || !category || !placing) return;
+  const wrap = document.createElement('div'); wrap.id = 'targetScorePanel'; wrap.style.cssText = 'margin:18px 0;padding:16px;border:1px solid #cfe2dc;border-radius:12px;background:#f7fbfa'; wrap.innerHTML = `<div style="font-weight:800;font-size:1.05rem;margin-bottom:10px">Hva må du prestere for at resultatet skal telle?</div><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px"><div style="background:#fff;border:1px solid #d9e5e1;border-radius:10px;padding:12px"><span class="muted">Svakeste tellende score</span><strong id="weakestTargetScore" style="display:block;font-size:1.5rem;margin-top:4px">–</strong></div><div style="background:#fff;border:1px solid #d9e5e1;border-radius:10px;padding:12px"><span class="muted">Placing Score</span><strong id="targetPlacingScore" style="display:block;font-size:1.5rem;margin-top:4px">–</strong></div><div style="background:#fff;border:1px solid #d9e5e1;border-radius:10px;padding:12px"><span class="muted">Min. Result Score</span><strong id="minimumResultScore" style="display:block;font-size:1.5rem;margin-top:4px">–</strong></div></div><p id="targetScoreText" class="muted" style="margin:10px 0 0">Fyll inn nåværende Performance Scores først.</p>`; scoreInputs.closest('.existing')?.insertAdjacentElement('afterend', wrap);
+  const weakestOut=document.getElementById('weakestTargetScore'),placingOut=document.getElementById('targetPlacingScore'),resultOut=document.getElementById('minimumResultScore'),textOut=document.getElementById('targetScoreText');
+  function refresh(){const group=groupForEvent(eventSelect.value),needed=reqCount[group],scores=[...document.querySelectorAll('.existingScore')].map(el=>Number(el.value)).filter(v=>Number.isFinite(v)&&v>0),pos=Number(placing.value||1),ps=(placingTables[group]?.[category.value]||[])[pos-1]||0;placingOut.textContent=ps;if(scores.length<needed){weakestOut.textContent='–';resultOut.textContent='–';textOut.textContent=`Fyll inn ${needed} nåværende Performance Scores for å beregne terskelen.`;return;}const weakest=Math.min(...scores),targetPerformance=weakest+1,minimumResult=Math.max(0,targetPerformance-ps);weakestOut.textContent=weakest.toFixed(1).replace('.0','').replace('.',',');resultOut.textContent=minimumResult.toFixed(1).replace('.0','').replace('.',',');textOut.innerHTML=`Med <strong>${pos}. plass</strong> i kategori <strong>${category.value}</strong> må ny Performance Score være minst <strong>${targetPerformance.toFixed(1).replace('.0','').replace('.',',')}</strong> for å slå den svakeste tellende scoren. Det tilsvarer minst <strong>${minimumResult.toFixed(1).replace('.0','').replace('.',',')}</strong> i justert Result Score. Faktisk forbedring av Ranking Score avhenger av hele gjennomsnittet og avrunding.`;}
+  document.addEventListener('input',e=>{if(e.target.matches('.existingScore'))refresh();});document.addEventListener('change',e=>{if(e.target===eventSelect||e.target===category||e.target===placing||e.target.matches('.existingType'))setTimeout(refresh,0);});const observer=new MutationObserver(()=>setTimeout(refresh,0));observer.observe(scoreInputs,{childList:true,subtree:true});setTimeout(refresh,300);
 })();
+(function(){function loadSearch(){if(document.querySelector('script[data-ranking-search-v090]'))return;const s=document.createElement('script');s.src='athlete-search-ui.js?v=090';s.dataset.rankingSearchV090='1';document.head.appendChild(s);}if(document.readyState==='complete')setTimeout(loadSearch,0);else window.addEventListener('load',()=>setTimeout(loadSearch,0),{once:true});})();
+(function(){function loadBasis(){if(document.querySelector('script[data-ranking-basis-v092]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=092';s.dataset.rankingBasisV092='1';document.head.appendChild(s);}if(document.readyState==='complete')setTimeout(loadBasis,0);else window.addEventListener('load',()=>setTimeout(loadBasis,0),{once:true});})();
+(function(){const eventSelect=document.getElementById('event'),sex=document.getElementById('sex');if(!eventSelect||!sex)return;function ensureCombinedEvent(){const code=sex.value==='W'?'Heptathlon':'Decathlon',label=sex.value==='W'?'Sjukamp':'Tikamp',other=sex.value==='W'?'Decathlon':'Heptathlon',oldOther=eventSelect.querySelector(`option[value="${other}"]`);if(oldOther)oldOther.remove();if(!eventSelect.querySelector(`option[value="${code}"]`)){const opt=document.createElement('option');opt.value=code;opt.textContent=label;eventSelect.appendChild(opt);}}setTimeout(ensureCombinedEvent,700);sex.addEventListener('change',()=>setTimeout(ensureCombinedEvent,80));})();
 
+// Fjern den gamle dupliserte "Tellende Performance Scores"-boksen. Rankinggrunnlaget
+// vises allerede i hovedfeltet, med egen stor Ranking Score-boks til høyre.
 (function(){
-  function loadSearch(){
-    if (document.querySelector('script[data-ranking-search-v090]')) return;
-    const s=document.createElement('script');
-    s.src='athlete-search-ui.js?v=090';
-    s.dataset.rankingSearchV090='1';
-    document.head.appendChild(s);
+  function removeDuplicateCombinedBox(){
+    document.querySelectorAll('#waProfileDetails div').forEach(el=>{
+      const strong=el.querySelector(':scope > strong');
+      if(strong && strong.textContent.trim().startsWith('Tellende Performance Scores:')) el.remove();
+    });
   }
-  if(document.readyState==='complete') setTimeout(loadSearch,0);
-  else window.addEventListener('load',()=>setTimeout(loadSearch,0),{once:true});
-})();
-
-(function(){
-  function loadBasis(){
-    if(document.querySelector('script[data-ranking-basis-v092]'))return;
-    const s=document.createElement('script');
-    s.src='ranking-basis.js?v=092';
-    s.dataset.rankingBasisV092='1';
-    document.head.appendChild(s);
-  }
-  if(document.readyState==='complete')setTimeout(loadBasis,0);
-  else window.addEventListener('load',()=>setTimeout(loadBasis,0),{once:true});
-})();
-
-// Sørg for at senior mangekamp alltid finnes i øvelsesutvalget, også når den eksterne
-// scoringtabellen ikke eksponerer mangekamp som egen disiplin.
-(function(){
-  const eventSelect=document.getElementById('event');
-  const sex=document.getElementById('sex');
-  if(!eventSelect||!sex)return;
-  function ensureCombinedEvent(){
-    const code=sex.value==='W'?'Heptathlon':'Decathlon';
-    const label=sex.value==='W'?'Sjukamp':'Tikamp';
-    const other=sex.value==='W'?'Decathlon':'Heptathlon';
-    const oldOther=eventSelect.querySelector(`option[value="${other}"]`);
-    if(oldOther)oldOther.remove();
-    if(!eventSelect.querySelector(`option[value="${code}"]`)){
-      const opt=document.createElement('option');opt.value=code;opt.textContent=label;eventSelect.appendChild(opt);
-    }
-  }
-  setTimeout(ensureCombinedEvent,700);
-  sex.addEventListener('change',()=>setTimeout(ensureCombinedEvent,80));
+  const details=document.getElementById('waProfileDetails');
+  if(details){new MutationObserver(removeDuplicateCombinedBox).observe(details,{childList:true,subtree:true});}
+  setTimeout(removeDuplicateCombinedBox,200);
 })();
