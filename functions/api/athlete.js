@@ -9,7 +9,7 @@ export async function onRequestGet(context) {
 
   try {
     const res = await fetch(profileUrl, {
-      headers: {'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.6','Accept':'text/html,application/xhtml+xml'}
+      headers: {'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.7','Accept':'text/html,application/xhtml+xml'}
     });
     if (!res.ok) return json({ok:false,error:`World Athletics svarte ${res.status}`},502);
 
@@ -21,7 +21,8 @@ export async function onRequestGet(context) {
 
     const rankings = parseRankings(text);
     const personalBests = parsePersonalBests(text);
-    const sex = inferSex(text, rankings);
+    const sexInfo = inferSex(text, rankings, personalBests);
+    const sex = sexInfo.sex;
     const codeMatch = text.match(/code\s+(\d{7,9})/i);
     const rankingScores = await fetchRankingScores(name, sex, rankings, personalBests);
 
@@ -33,18 +34,33 @@ export async function onRequestGet(context) {
       sex,
       rankings:rankings.map(({rank,event})=>({rank,event})),
       rankingScores,
-      personalBests
+      personalBests,
+      diagnostics:{
+        sexReason:sexInfo.reason,
+        rankingEvents:[...new Set([
+          ...(rankings || []).map(r=>r.event),
+          ...(personalBests || []).map(p=>p.event)
+        ])]
+      }
     });
   } catch (e) {
     return json({ok:false,error:'Kunne ikke hente World Athletics-profilen'},502);
   }
 }
 
-function inferSex(text, rankings){
+function inferSex(text, rankings, personalBests){
   const src = rankings[0]?.label || text.match(/\b(Men(?:'|’)s|Woman(?:'|’)s|Women(?:'|’)s)\b/i)?.[1] || '';
-  if (/^Men/i.test(src)) return 'M';
-  if (/^(Woman|Women)/i.test(src)) return 'W';
-  return null;
+  if (/^Men/i.test(src)) return {sex:'M',reason:'profile/ranking label'};
+  if (/^(Woman|Women)/i.test(src)) return {sex:'W',reason:'profile/ranking label'};
+
+  const events = new Set((personalBests || []).map(p=>p.event));
+  if (events.has('Decathlon') || events.has('Heptathlon Short Track')) {
+    return {sex:'M',reason:'combined-event profile results'};
+  }
+  if (events.has('Heptathlon') || events.has('Pentathlon Short Track')) {
+    return {sex:'W',reason:'combined-event profile results'};
+  }
+  return {sex:null,reason:'not safely inferred'};
 }
 
 async function fetchRankingScores(name, sex, rankings, personalBests){
@@ -81,9 +97,9 @@ async function fetchRankingScores(name, sex, rankings, personalBests){
     for(const sexPath of sexPaths){
       for(const page of pages){
         const rankingUrl=`https://worldathletics.org/world-rankings/${slug}/${sexPath}?page=${page}`;
-        const text = await fetchRankingText(rankingUrl, name);
-        if(!text) continue;
-        found = findRankingRow(text, name, event, knownRank);
+        const rankingText = await fetchRankingText(rankingUrl, name);
+        if(!rankingText) continue;
+        found = findRankingRow(rankingText, name, event, knownRank);
         if(found){
           found.url = rankingUrl;
           break;
@@ -99,7 +115,7 @@ async function fetchRankingScores(name, sex, rankings, personalBests){
 
 async function fetchRankingText(rankingUrl, name){
   try{
-    const direct=await fetch(rankingUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.6','Accept':'text/html,application/xhtml+xml'}});
+    const direct=await fetch(rankingUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.7','Accept':'text/html,application/xhtml+xml'}});
     if(direct.ok){
       const directText=htmlToText(await direct.text());
       if(normalizeName(directText).includes(normalizeName(name))) return directText;
@@ -107,8 +123,9 @@ async function fetchRankingText(rankingUrl, name){
   }catch(_){ }
 
   try{
-    const readerUrl=`https://r.jina.ai/https://worldathletics.org${new URL(rankingUrl).pathname}${new URL(rankingUrl).search}`;
-    const reader=await fetch(readerUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.6','Accept':'text/plain'}});
+    const u = new URL(rankingUrl);
+    const readerUrl=`https://r.jina.ai/https://worldathletics.org${u.pathname}${u.search}`;
+    const reader=await fetch(readerUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.7','Accept':'text/plain'}});
     if(reader.ok) return decode(await reader.text());
   }catch(_){ }
 
@@ -130,12 +147,13 @@ function findRankingRow(text, name, event, knownRank){
   }
 
   const raw=String(text);
-  const nameTokens=normalizeName(name).split(' ').filter(Boolean);
-  const last=nameTokens[nameTokens.length-1] || '';
-  const rawNorm=normalizeName(raw);
-  const idx=last ? rawNorm.indexOf(last) : -1;
+  const normalized=normalizeName(raw);
+  const idx=normalized.indexOf(wanted);
   if(idx>=0){
-    const window=raw.slice(Math.max(0,idx-220),idx+700);
+    const tokens=normalizeName(name).split(' ').filter(Boolean);
+    const last=tokens[tokens.length-1] || '';
+    const anchor=last ? normalized.indexOf(last) : idx;
+    const window=raw.slice(Math.max(0,anchor-260),anchor+760);
     const nums=[...window.matchAll(/\b(9\d{2}|1[0-5]\d{2})\b/g)].map(m=>Number(m[1]));
     const score=nums.find(v=>v>=900&&v<=1600);
     if(score) return {event,rank:Number.isFinite(knownRank)?knownRank:null,score};
@@ -164,7 +182,7 @@ function parseRankings(text){
 function parsePersonalBests(text){
   const section=(text.split(/Personal bests/i)[1] || '').split(/Season(?:'|’)s bests/i)[0] || '';
   if(!section) return [];
-  const eventNames=['Decathlon','Heptathlon','Heptathlon Short Track','100 Metres','200 Metres','400 Metres','800 Metres','1500 Metres','5000 Metres','10000 Metres','60 Metres','60 Metres Hurdles','110 Metres Hurdles','100 Metres Hurdles','400 Metres Hurdles','3000 Metres Steeplechase','High Jump','Pole Vault','Long Jump','Triple Jump','Shot Put','Discus Throw','Hammer Throw','Javelin Throw'];
+  const eventNames=['Decathlon','Heptathlon','Heptathlon Short Track','Pentathlon Short Track','100 Metres','200 Metres','400 Metres','800 Metres','1500 Metres','5000 Metres','10000 Metres','60 Metres','60 Metres Hurdles','110 Metres Hurdles','100 Metres Hurdles','400 Metres Hurdles','3000 Metres Steeplechase','High Jump','Pole Vault','Long Jump','Triple Jump','Shot Put','Discus Throw','Hammer Throw','Javelin Throw'];
   const found=[];
   for(const event of eventNames){
     const esc=event.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
