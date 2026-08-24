@@ -1,4 +1,4 @@
-// Rankingstevner v0.9.3 – målscore + mangekamp i øvelsesutvalget
+// Rankingstevner v0.9.4 – målscore + mangekamp + ny Trinn 3-layout
 (function () {
   const placingTables = {
     standard:{OW:[260,230,210,190,175,160,150,140,91,84,77,70,66,63,60,57],DF:[170,150,130,120,110,100,95,90,63,56,49,42],GW:[140,120,110,100,90,80,75,70,49,42,35,32],GL:[120,105,95,85,75,70,65,60,42,35,31,28],A:[100,84,77,70,63,56,49,42,35,31,27,24],B:[70,56,49,42,38,34,30,27,24,21,18,15],C:[42,35,31,28,25,22,19,16,14,12,10,8],D:[28,24,21,18,15,13,12,11],E:[18,15,13,11,9,7],F:[11,7,4]},
@@ -30,4 +30,16 @@
   const details=document.getElementById('waProfileDetails');
   if(details){new MutationObserver(removeDuplicateCombinedBox).observe(details,{childList:true,subtree:true});}
   setTimeout(removeDuplicateCombinedBox,200);
+})();
+
+(function(){
+  function loadTrinn3(){
+    if(document.querySelector('script[data-trinn3-v094]'))return;
+    const s=document.createElement('script');
+    s.src='trinn3-ui.js?v=094';
+    s.dataset.trinn3V094='1';
+    document.head.appendChild(s);
+  }
+  if(document.readyState==='complete')setTimeout(loadTrinn3,0);
+  else window.addEventListener('load',()=>setTimeout(loadTrinn3,0),{once:true});
 })();
