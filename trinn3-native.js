@@ -1,4 +1,4 @@
-// Rankingstevner v0.10.0 – fast Trinn 3-logikk. Endrer ikke HTML-strukturen.
+// Rankingstevner v0.10.1 – robust øvelsestilpasset resultatfelt uten manuelle skilletegn
 (function(){
   const mark=document.getElementById('mark');
   const resultScore=document.getElementById('resultScore');
@@ -22,20 +22,75 @@
   function group(code){if(code==='5000m'||code==='3000mSC')return'distance';if(code==='10000m')return'tenk';if(code==='Decathlon'||code==='Heptathlon')return'combined';return'standard';}
   function placingScore(){const arr=placingTables[group(eventSelect.value)]?.[category.value]||[];const p=Math.max(1,Number(placing.value)||1);const val=arr[p-1];return val==null?null:Number(val);}
   function refreshScores(){const raw=String(resultScore.value||'').trim();const rs=Number(raw.replace(',','.'));const ps=placingScore();resultOut.textContent=raw!==''&&Number.isFinite(rs)?String(Math.round(rs)):'–';placingOut.textContent=ps==null?'–':String(ps);performanceOut.textContent=raw!==''&&Number.isFinite(rs)&&ps!=null?String(Math.round(rs+ps)):'–';}
-  function syncMark(value){mark.value=value;mark.dispatchEvent(new Event('input',{bubbles:true}));setTimeout(refreshScores,0);setTimeout(refreshScores,80);}
+  function syncMark(value){mark.value=value;mark.dispatchEvent(new Event('input',{bubbles:true}));setTimeout(refreshScores,0);setTimeout(refreshScores,60);}
 
-  function field(ph,maxLength,max,width){const i=document.createElement('input');i.type='text';i.inputMode='numeric';i.autocomplete='off';i.placeholder=ph;i.maxLength=maxLength;i.style.cssText=`width:${width}px;font-size:1.2rem;font-weight:800;text-align:center`;i.addEventListener('input',()=>{let v=i.value.replace(/\D/g,'').slice(0,maxLength);if(max!=null&&v!==''&&Number(v)>max)v=String(max);i.value=v;});return i;}
+  function field(ph,maxLength,max,width){
+    const i=document.createElement('input');
+    i.type='text'; i.inputMode='numeric'; i.autocomplete='off'; i.placeholder=ph; i.maxLength=maxLength;
+    i.style.cssText=`width:${width}px;font-size:1.2rem;font-weight:800;text-align:center`;
+    i.addEventListener('input',()=>{let v=i.value.replace(/\D/g,'').slice(0,maxLength);if(max!=null&&v!==''&&Number(v)>max)v=String(max);i.value=v;});
+    return i;
+  }
   function sep(t){const s=document.createElement('strong');s.textContent=t;s.style.cssText='font-size:1.25rem;color:#526170';return s;}
   function unit(t){const s=document.createElement('span');s.textContent=t;s.style.cssText='font-weight:800;color:#677585';return s;}
 
-  function buildSprint(code){editor.innerHTML='';const maxSec={100m:30,200m:60,400m:120,100mH:40,110mH:40,400mH:120}[code]||120;const sec=field('sek',maxSec>=100?3:2,maxSec,105),hun=field('00',2,99,76);const sync=()=>{if(sec.value===''||hun.value==='')return syncMark('');syncMark(`${Number(sec.value)},${String(Number(hun.value)).padStart(2,'0')}`)};sec.addEventListener('input',sync);hun.addEventListener('input',sync);editor.append(sec,sep(','),hun,unit('sek'));hint.textContent='Kun tall – komma settes inn automatisk.';}
-  function buildLong(code){editor.innerHTML='';const maxMin={800m:9,1500m:14,3000mSC:30,5000m:60,10000m:120}[code]||120;const min=field('min',maxMin>=100?3:2,maxMin,92),sec=field('sek',2,59,82),hun=field('00',2,99,72);const sync=()=>{if(min.value===''||sec.value===''||hun.value==='')return syncMark('');syncMark(`${Number(min.value)}:${String(Number(sec.value)).padStart(2,'0')},${String(Number(hun.value)).padStart(2,'0')}`)};[min,sec,hun].forEach(x=>x.addEventListener('input',sync));editor.append(min,sep(':'),sec,sep(','),hun,unit('min:sek'));hint.textContent='Kun tall – skilletegn settes inn automatisk.';}
-  function buildTechnical(code){editor.innerHTML='';const maxM={HJ:3,PV:7,LJ:10,TJ:20,SP:30,DT:100,HT:100,JT:120}[code]||120;const m=field('m',maxM>=100?3:2,maxM,95),cm=field('cm',2,99,76);const sync=()=>{if(m.value===''||cm.value==='')return syncMark('');syncMark(`${Number(m.value)},${String(Number(cm.value)).padStart(2,'0')}`)};m.addEventListener('input',sync);cm.addEventListener('input',sync);editor.append(m,sep(','),cm,unit('m'));hint.textContent='Kun tall – meter og centimeter i hvert sitt felt.';}
-  function buildCombined(code){editor.innerHTML='';const max=code==='Heptathlon'?9000:12000;const p=field('poeng',5,max,170);p.addEventListener('input',()=>syncMark(p.value));editor.append(p,unit('poeng'));hint.textContent='Kun hele poeng.';}
-  function rebuild(){const code=eventSelect.value;if(!code)return;if(code==='Decathlon'||code==='Heptathlon')buildCombined(code);else if(['HJ','PV','LJ','TJ','SP','DT','HT','JT'].includes(code))buildTechnical(code);else if(['800m','1500m','5000m','10000m','3000mSC'].includes(code))buildLong(code);else buildSprint(code);syncMark('');refreshScores();}
+  function buildSprint(code){
+    editor.innerHTML='';
+    const maxSec={100m:30,200m:60,400m:120,100mH:40,110mH:40,400mH:120}[code]||120;
+    const sec=field('sek',maxSec>=100?3:2,maxSec,105), hun=field('00',2,99,76);
+    const sync=()=>{if(sec.value===''||hun.value==='')return syncMark('');syncMark(`${Number(sec.value)},${String(Number(hun.value)).padStart(2,'0')}`);};
+    sec.addEventListener('input',sync); hun.addEventListener('input',sync);
+    editor.append(sec,sep(','),hun,unit('sek'));
+    hint.textContent='Skriv bare tall. Komma settes inn automatisk.';
+  }
+  function buildLong(code){
+    editor.innerHTML='';
+    const maxMin={800m:9,1500m:14,3000mSC:30,5000m:60,10000m:120}[code]||120;
+    const min=field('min',maxMin>=100?3:2,maxMin,92), sec=field('sek',2,59,82), hun=field('00',2,99,72);
+    const sync=()=>{if(min.value===''||sec.value===''||hun.value==='')return syncMark('');syncMark(`${Number(min.value)}:${String(Number(sec.value)).padStart(2,'0')},${String(Number(hun.value)).padStart(2,'0')}`);};
+    [min,sec,hun].forEach(x=>x.addEventListener('input',sync));
+    editor.append(min,sep(':'),sec,sep(','),hun,unit('min:sek'));
+    hint.textContent='Skriv bare tall. Minutter, sekunder og hundredeler er separate felt.';
+  }
+  function buildTechnical(code){
+    editor.innerHTML='';
+    const maxM={HJ:3,PV:7,LJ:10,TJ:20,SP:30,DT:100,HT:100,JT:120}[code]||120;
+    const m=field('m',maxM>=100?3:2,maxM,95), cm=field('cm',2,99,76);
+    const sync=()=>{if(m.value===''||cm.value==='')return syncMark('');syncMark(`${Number(m.value)},${String(Number(cm.value)).padStart(2,'0')}`);};
+    m.addEventListener('input',sync); cm.addEventListener('input',sync);
+    editor.append(m,sep(','),cm,unit('m'));
+    hint.textContent='Skriv bare tall. Meter og centimeter er separate felt.';
+  }
+  function buildCombined(code){
+    editor.innerHTML='';
+    const max=code==='Heptathlon'?9000:12000;
+    const p=field('poeng',5,max,170);
+    p.addEventListener('input',()=>syncMark(p.value));
+    editor.append(p,unit('poeng'));
+    hint.textContent='Kun hele poeng.';
+  }
 
-  eventSelect.addEventListener('change',()=>setTimeout(rebuild,20));category.addEventListener('change',refreshScores);placing.addEventListener('change',refreshScores);resultScore.addEventListener('input',refreshScores);resultScore.addEventListener('change',refreshScores);
-  const observer=new MutationObserver(refreshScores);observer.observe(resultScore,{attributes:true,attributeFilter:['value']});
-  const eventObserver=new MutationObserver(()=>{if(eventSelect.options.length&&!editor.children.length)rebuild();});eventObserver.observe(eventSelect,{childList:true});
-  setTimeout(rebuild,500);setTimeout(refreshScores,800);
+  let lastCode='__none__';
+  function rebuild(force=false){
+    const code=eventSelect.value || '100m';
+    if(!force && code===lastCode && editor.children.length)return;
+    lastCode=code;
+    if(code==='Decathlon'||code==='Heptathlon')buildCombined(code);
+    else if(['HJ','PV','LJ','TJ','SP','DT','HT','JT'].includes(code))buildTechnical(code);
+    else if(['800m','1500m','5000m','10000m','3000mSC'].includes(code))buildLong(code);
+    else buildSprint(code);
+    syncMark(''); refreshScores();
+  }
+
+  // Vis alltid et gyldig resultatfelt umiddelbart, selv før øvelseslisten er ferdig lastet.
+  rebuild(true);
+
+  eventSelect.addEventListener('change',()=>rebuild(true));
+  category.addEventListener('change',refreshScores);
+  placing.addEventListener('change',refreshScores);
+  resultScore.addEventListener('input',refreshScores);
+  resultScore.addEventListener('change',refreshScores);
+
+  // Robust sikkerhetsnett: oppdag endringer i valgt øvelse også når andre skript oppdaterer select-feltet.
+  setInterval(()=>{const code=eventSelect.value||'100m';if(code!==lastCode||!editor.children.length)rebuild(true);refreshScores();},250);
 })();
