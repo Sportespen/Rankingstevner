@@ -1,2 +1,1 @@
-/ /v074.html 200
-/index.html /v074.html 200
+# Ingen redirect av forsiden. Cloudflare skal servere /index.html direkte.
