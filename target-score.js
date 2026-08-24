@@ -1,4 +1,4 @@
-// Rankingstevner v0.9.4 – målscore + mangekamp + ny Trinn 3-layout
+// Rankingstevner v0.9.7 – målscore + mangekamp + ny Trinn 3-layout
 (function () {
   const placingTables = {
     standard:{OW:[260,230,210,190,175,160,150,140,91,84,77,70,66,63,60,57],DF:[170,150,130,120,110,100,95,90,63,56,49,42],GW:[140,120,110,100,90,80,75,70,49,42,35,32],GL:[120,105,95,85,75,70,65,60,42,35,31,28],A:[100,84,77,70,63,56,49,42,35,31,27,24],B:[70,56,49,42,38,34,30,27,24,21,18,15],C:[42,35,31,28,25,22,19,16,14,12,10,8],D:[28,24,21,18,15,13,12,11],E:[18,15,13,11,9,7],F:[11,7,4]},
@@ -15,31 +15,7 @@
   document.addEventListener('input',e=>{if(e.target.matches('.existingScore'))refresh();});document.addEventListener('change',e=>{if(e.target===eventSelect||e.target===category||e.target===placing||e.target.matches('.existingType'))setTimeout(refresh,0);});const observer=new MutationObserver(()=>setTimeout(refresh,0));observer.observe(scoreInputs,{childList:true,subtree:true});setTimeout(refresh,300);
 })();
 (function(){function loadSearch(){if(document.querySelector('script[data-ranking-search-v090]'))return;const s=document.createElement('script');s.src='athlete-search-ui.js?v=090';s.dataset.rankingSearchV090='1';document.head.appendChild(s);}if(document.readyState==='complete')setTimeout(loadSearch,0);else window.addEventListener('load',()=>setTimeout(loadSearch,0),{once:true});})();
-(function(){function loadBasis(){if(document.querySelector('script[data-ranking-basis-v092]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=092';s.dataset.rankingBasisV092='1';document.head.appendChild(s);}if(document.readyState==='complete')setTimeout(loadBasis,0);else window.addEventListener('load',()=>setTimeout(loadBasis,0),{once:true});})();
+(function(){function loadBasis(){if(document.querySelector('script[data-ranking-basis-v095]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=095';s.dataset.rankingBasisV095='1';document.head.appendChild(s);}if(document.readyState==='complete')setTimeout(loadBasis,0);else window.addEventListener('load',()=>setTimeout(loadBasis,0),{once:true});})();
 (function(){const eventSelect=document.getElementById('event'),sex=document.getElementById('sex');if(!eventSelect||!sex)return;function ensureCombinedEvent(){const code=sex.value==='W'?'Heptathlon':'Decathlon',label=sex.value==='W'?'Sjukamp':'Tikamp',other=sex.value==='W'?'Decathlon':'Heptathlon',oldOther=eventSelect.querySelector(`option[value="${other}"]`);if(oldOther)oldOther.remove();if(!eventSelect.querySelector(`option[value="${code}"]`)){const opt=document.createElement('option');opt.value=code;opt.textContent=label;eventSelect.appendChild(opt);}}setTimeout(ensureCombinedEvent,700);sex.addEventListener('change',()=>setTimeout(ensureCombinedEvent,80));})();
-
-// Fjern den gamle dupliserte "Tellende Performance Scores"-boksen. Rankinggrunnlaget
-// vises allerede i hovedfeltet, med egen stor Ranking Score-boks til høyre.
-(function(){
-  function removeDuplicateCombinedBox(){
-    document.querySelectorAll('#waProfileDetails div').forEach(el=>{
-      const strong=el.querySelector(':scope > strong');
-      if(strong && strong.textContent.trim().startsWith('Tellende Performance Scores:')) el.remove();
-    });
-  }
-  const details=document.getElementById('waProfileDetails');
-  if(details){new MutationObserver(removeDuplicateCombinedBox).observe(details,{childList:true,subtree:true});}
-  setTimeout(removeDuplicateCombinedBox,200);
-})();
-
-(function(){
-  function loadTrinn3(){
-    if(document.querySelector('script[data-trinn3-v094]'))return;
-    const s=document.createElement('script');
-    s.src='trinn3-ui.js?v=094';
-    s.dataset.trinn3V094='1';
-    document.head.appendChild(s);
-  }
-  if(document.readyState==='complete')setTimeout(loadTrinn3,0);
-  else window.addEventListener('load',()=>setTimeout(loadTrinn3,0),{once:true});
-})();
+(function(){function removeDuplicateCombinedBox(){document.querySelectorAll('#waProfileDetails div').forEach(el=>{const strong=el.querySelector(':scope > strong');if(strong && strong.textContent.trim().startsWith('Tellende Performance Scores:')) el.remove();});}const details=document.getElementById('waProfileDetails');if(details){new MutationObserver(removeDuplicateCombinedBox).observe(details,{childList:true,subtree:true});}setTimeout(removeDuplicateCombinedBox,200);})();
+(function(){function loadTrinn3(){if(document.querySelector('script[data-trinn3-v097]'))return;const s=document.createElement('script');s.src='trinn3-ui.js?v=097';s.dataset.trinn3V097='1';document.head.appendChild(s);}if(document.readyState==='complete')setTimeout(loadTrinn3,0);else window.addEventListener('load',()=>setTimeout(loadTrinn3,0),{once:true});})();
