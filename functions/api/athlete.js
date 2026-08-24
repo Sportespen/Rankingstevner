@@ -10,7 +10,7 @@ export async function onRequestGet(context) {
   try {
     const res = await fetch(profileUrl, {
       headers: {
-        'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.1',
+        'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.5',
         'Accept':'text/html,application/xhtml+xml'
       }
     });
@@ -37,6 +37,7 @@ export async function onRequestGet(context) {
 
     const personalBests = parsePersonalBests(text);
     const codeMatch = text.match(/code\s+(\d{7,9})/i);
+    const rankingScores = await fetchRankingScores(name, sex, rankings);
 
     return json({
       ok:true,
@@ -45,11 +46,60 @@ export async function onRequestGet(context) {
       url:profileUrl,
       sex,
       rankings:rankings.map(({rank,event})=>({rank,event})),
+      rankingScores,
       personalBests
     });
   } catch (e) {
     return json({ok:false,error:'Kunne ikke hente World Athletics-profilen'},502);
   }
+}
+
+async function fetchRankingScores(name, sex, rankings){
+  if(!name || !sex || !Array.isArray(rankings)) return [];
+  const sexPath = sex === 'W' ? 'women' : 'men';
+  const slugMap = {
+    'Decathlon':'decathlon',
+    'Heptathlon':'heptathlon',
+    '100 Metres':'100m',
+    '200 Metres':'200m',
+    '400 Metres':'400m',
+    '800 Metres':'800m',
+    '1500 Metres':'1500m',
+    '5000 Metres':'5000m',
+    '10000 Metres':'10000m',
+    '110 Metres Hurdles':'110mh',
+    '100 Metres Hurdles':'100mh',
+    '400 Metres Hurdles':'400mh',
+    '3000 Metres Steeplechase':'3000msc',
+    'High Jump':'high-jump',
+    'Pole Vault':'pole-vault',
+    'Long Jump':'long-jump',
+    'Triple Jump':'triple-jump',
+    'Shot Put':'shot-put',
+    'Discus Throw':'discus-throw',
+    'Hammer Throw':'hammer-throw',
+    'Javelin Throw':'javelin-throw'
+  };
+  const out=[];
+  for(const r of rankings.slice(0,4)){
+    const slug=slugMap[r.event];
+    if(!slug) continue;
+    const page = Math.max(1, Math.ceil((Number(r.rank)||1)/100));
+    const rankingUrl=`https://worldathletics.org/world-rankings/${slug}/${sexPath}?page=${page}`;
+    try{
+      const res=await fetch(rankingUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.5','Accept':'text/html,application/xhtml+xml'}});
+      if(!res.ok) continue;
+      const html=await res.text();
+      const text=decode(html.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' '));
+      const idx=text.toLowerCase().indexOf(name.toLowerCase());
+      if(idx<0) continue;
+      const window=text.slice(idx,idx+350);
+      const eventPattern=r.event==='Decathlon' ? 'Decathlon' : r.event==='Heptathlon' ? 'Heptathlon' : r.event.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const m=window.match(new RegExp(`\\b(9\\d{2}|1[0-5]\\d{2})\\b\\s+${eventPattern}`,'i'));
+      if(m) out.push({event:r.event,rank:r.rank,score:Number(m[1]),url:rankingUrl});
+    }catch(_){ }
+  }
+  return out;
 }
 
 function parseRankings(text){
