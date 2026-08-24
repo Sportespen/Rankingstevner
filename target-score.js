@@ -62,14 +62,13 @@
 })();
 
 // Last den nye søkemotoren først etter at hele siden og den gamle inline-koden
-// er ferdig registrert. Da kan v0.8.8 koble fra den gamle MutationObserveren
-// ved å erstatte resultatnoden trygt.
+// er ferdig registrert. Da kobles gammel observer fra ved å erstatte resultatnoden.
 (function(){
   function loadSearch(){
-    if (document.querySelector('script[data-ranking-search-v088]')) return;
+    if (document.querySelector('script[data-ranking-search-v089]')) return;
     const s=document.createElement('script');
-    s.src='athlete-search-ui.js?v=088';
-    s.dataset.rankingSearchV088='1';
+    s.src='athlete-search-ui.js?v=089';
+    s.dataset.rankingSearchV089='1';
     document.head.appendChild(s);
   }
   if(document.readyState==='complete') setTimeout(loadSearch,0);
