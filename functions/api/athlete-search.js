@@ -5,22 +5,16 @@ const LOCAL_ATHLETES = [
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const q = (url.searchParams.get('q') || '').trim();
-  if (q.length < 2) return json({ok:true,results:[]});
+  if (q.length < 1) return json({ok:true,results:[]});
 
   const qNorm = normalize(q);
   const parts = q.split(/\s+/).filter(Boolean);
   const qTokens = parts.map(normalize).filter(Boolean);
 
-  // Gi lokale/allerede kjente treff umiddelbart. Da står ikke navnefeltet og venter
-  // på World Athletics når vi allerede kjenner et sikkert treff.
-  const localResults = LOCAL_ATHLETES
-    .map(a => ({...a,_score:matchScore(a,qNorm,qTokens)}))
-    .filter(a => a._score > 0)
-    .sort((a,b) => b._score - a._score)
-    .map(({_score,...a}) => a);
-
-  if (localResults.length) {
-    return json({ok:true,results:localResults,source:'local-fast'});
+  const merged = new Map();
+  for (const a of LOCAL_ATHLETES) {
+    const score = matchScore(a,qNorm,qTokens);
+    if (score > 0) merged.set(String(a.id), {...a,_score:score});
   }
 
   try {
@@ -38,25 +32,31 @@ export async function onRequestGet(context) {
 
     const uniqueQueries = [...new Set(queries.map(s=>s.trim()).filter(Boolean))];
     const settled = await Promise.allSettled(uniqueQueries.map(searchWa));
-    const merged = new Map();
     for (const response of settled) {
       if (response.status !== 'fulfilled') continue;
-      for (const a of response.value) {
-        const mapped = mapAthlete(a);
-        if (mapped && !merged.has(mapped.id)) merged.set(mapped.id, mapped);
+      for (const raw of response.value) {
+        const a = mapAthlete(raw);
+        if (!a) continue;
+        const score = matchScore(a,qNorm,qTokens);
+        if (score <= 0) continue;
+        const key = String(a.id);
+        const existing = merged.get(key);
+        if (!existing || score > existing._score) merged.set(key,{...a,_score:score});
       }
     }
 
     const results = [...merged.values()]
-      .map(a => ({...a,_score:matchScore(a,qNorm,qTokens)}))
-      .filter(a => a._score > 0)
       .sort((a,b) => b._score - a._score || displayName(a).localeCompare(displayName(b),'no'))
-      .slice(0,12)
+      .slice(0,20)
       .map(({_score,...a}) => a);
 
-    return json({ok:true,results,source:'wa'});
+    return json({ok:true,results,source:'merged'});
   } catch (e) {
-    return json({ok:false,error:'Kunne ikke søke etter utøver',detail:String(e?.message || e)},502);
+    const results = [...merged.values()]
+      .sort((a,b) => b._score - a._score || displayName(a).localeCompare(displayName(b),'no'))
+      .slice(0,20)
+      .map(({_score,...a}) => a);
+    return json({ok:true,results,source:'local-fallback',warning:String(e?.message||e)});
   }
 }
 
@@ -67,7 +67,7 @@ async function searchWa(name) {
   try {
     const res = await fetch(endpoint, {
       signal: controller.signal,
-      headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.8.6','Accept':'application/json'}
+      headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.9.0','Accept':'application/json'}
     });
     const text = await res.text();
     let data = null;
