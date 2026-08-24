@@ -62,3 +62,15 @@
   function idFromInput(){return waInput.value.trim().match(/(\d{7,9})/)?.[1]||'';}
   eventSelect.addEventListener('change',()=>setTimeout(refresh,220));sex.addEventListener('change',()=>setTimeout(refresh,260));waInput.addEventListener('change',()=>load(idFromInput()));if(waStatus){new MutationObserver(()=>{const id=idFromInput();if(id)setTimeout(()=>load(id),50);}).observe(waStatus,{childList:true,subtree:true,characterData:true});}const initial=idFromInput();if(initial)setTimeout(()=>load(initial),400);
 })();
+
+// Trinn 3 skal ikke gjenta scoregrunnlaget som allerede vises i Trinn 2.
+// Vi beholder feltene skjult i DOM fordi beregningslogikken fortsatt bruker dem.
+(function(){
+  function hideDuplicateScoreEditor(){
+    const scoreInputs=document.getElementById('scoreInputs');
+    const block=scoreInputs?.closest('.existing');
+    if(block) block.style.display='none';
+  }
+  hideDuplicateScoreEditor();
+  setTimeout(hideDuplicateScoreEditor,300);
+})();
