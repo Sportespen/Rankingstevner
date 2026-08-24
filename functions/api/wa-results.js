@@ -7,13 +7,14 @@ export async function onRequestGet(context) {
   const now = new Date();
   const years = [now.getUTCFullYear(), now.getUTCFullYear()-1, now.getUTCFullYear()-2];
   const attempts = [];
+  const results = [];
   const combined = [];
 
   for (const year of years) {
     const endpoint = `https://worldathletics.nimarion.de/athletes/${id}/results?year=${year}`;
     try {
       const res = await fetch(endpoint, {
-        headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.8.1','Accept':'application/json'}
+        headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.9.1','Accept':'application/json'}
       });
       const text = await res.text();
       let data = null;
@@ -22,9 +23,9 @@ export async function onRequestGet(context) {
       if (!res.ok || !Array.isArray(data)) continue;
 
       for (const r of data) {
-        const discipline = String(r.discipline || r.event || '');
-        if (!/decathlon|heptathlon|pentathlon/i.test(discipline)) continue;
-        combined.push({
+        const discipline = String(r.discipline || r.event || '').trim();
+        if (!discipline) continue;
+        const item = {
           year,
           discipline,
           mark:r.mark ?? r.result ?? null,
@@ -36,14 +37,16 @@ export async function onRequestGet(context) {
           date:r.date ?? null,
           legal:r.legal !== false,
           wind:r.wind ?? null
-        });
+        };
+        results.push(item);
+        if (/decathlon|heptathlon|pentathlon/i.test(discipline)) combined.push(item);
       }
     } catch (e) {
       attempts.push({year,error:String(e?.message || e)});
     }
   }
 
-  return json({ok:true,id:Number(id),attempts,combined});
+  return json({ok:true,id:Number(id),attempts,results,combined});
 }
 
 function json(body,status=200){
