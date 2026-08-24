@@ -80,41 +80,64 @@ async function fetchRankingScores(name, sex, rankings){
     'Hammer Throw':'hammer-throw',
     'Javelin Throw':'javelin-throw'
   };
+
   const out=[];
+  const wantedName = normalizeName(name);
+
   for(const r of rankings.slice(0,4)){
     const slug=slugMap[r.event];
     if(!slug) continue;
+
     const page = Math.max(1, Math.ceil((Number(r.rank)||1)/100));
     const rankingUrl=`https://worldathletics.org/world-rankings/${slug}/${sexPath}?page=${page}`;
+
     try{
-      const res=await fetch(rankingUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.5','Accept':'text/html,application/xhtml+xml'}});
+      const res=await fetch(rankingUrl,{
+        headers:{
+          'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.5',
+          'Accept':'text/html,application/xhtml+xml'
+        }
+      });
       if(!res.ok) continue;
+
       const html=await res.text();
-      const text=decode(html.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' '));
-      const hay=normalizeName(text);
-      const needle=normalizeName(name);
-      const idx=hay.indexOf(needle);
-      if(idx<0) continue;
+      const text=decode(
+        html
+          .replace(/<script[\s\S]*?<\/script>/gi,' ')
+          .replace(/<style[\s\S]*?<\/style>/gi,' ')
+          .replace(/<[^>]+>/g,' ')
+          .replace(/\s+/g,' ')
+      );
 
-      // Use the normalized-text index only as an anchor. Then inspect a broad raw-text window
-      // around all plausible occurrences of the athlete surname/last token.
-      const lastToken=normalizeName(name).split(' ').filter(Boolean).pop() || '';
-      const rawLower=normalizeName(text);
-      let rawIdx=lastToken ? rawLower.indexOf(lastToken) : -1;
-      if(rawIdx<0) rawIdx=idx;
-      const window=text.slice(Math.max(0,rawIdx-180), rawIdx+520);
-      const eventPattern=r.event==='Decathlon' ? 'Decathlon' : r.event==='Heptathlon' ? 'Heptathlon' : r.event.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const rank = Number(r.rank);
+      if(!Number.isFinite(rank)) continue;
 
-      let m=window.match(new RegExp(`\\b(9\\d{2}|1[0-5]\\d{2})\\b\\s+(?:${eventPattern}|${eventPattern}\\s*\\[)`,'i'));
-      if(!m){
-        // Fallback: on WA ranking tables the score sits after DOB/country and before Event List.
-        const nums=[...window.matchAll(/\b(9\d{2}|1[0-5]\d{2})\b/g)].map(x=>Number(x[1]));
-        const plausible=nums.find(v=>v>=900 && v<=1600);
-        if(plausible) m=[String(plausible),String(plausible)];
+      // Finn raden ved å bruke den kjente plasseringen fra utøverprofilen som anker.
+      const rankRe = new RegExp(`(?:^|\\s)${rank}\\s+`,'g');
+      let match;
+      let found = null;
+
+      while((match = rankRe.exec(text))){
+        const row = text.slice(match.index, match.index + 420);
+        if(!normalizeName(row).includes(wantedName)) continue;
+
+        // WA-tabellen har rekkefølgen: plass, navn, fødselsdato, land, Score, Event List.
+        const eventLabel = r.event === 'Decathlon' ? 'Decathlon' : r.event === 'Heptathlon' ? 'Heptathlon' : r.event;
+        const eventPos = row.toLowerCase().lastIndexOf(eventLabel.toLowerCase());
+        const scoreArea = eventPos > 0 ? row.slice(0,eventPos) : row;
+        const nums = [...scoreArea.matchAll(/\b(9\d{2}|1[0-5]\d{2})\b/g)].map(m=>Number(m[1]));
+        const score = nums.length ? nums[nums.length-1] : null;
+
+        if(score && score >= 900 && score <= 1600){
+          found = {event:r.event,rank:r.rank,score,url:rankingUrl};
+          break;
+        }
       }
-      if(m) out.push({event:r.event,rank:r.rank,score:Number(m[1]),url:rankingUrl});
+
+      if(found) out.push(found);
     }catch(_){ }
   }
+
   return out;
 }
 
