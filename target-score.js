@@ -61,12 +61,17 @@
   setTimeout(refresh,300);
 })();
 
-// Last den nye søkemotoren etter at den gamle profillogikken er registrert.
-// Søkemotoren bruker capture-event og overstyrer derfor den gamle trege input-handleren.
+// Last den nye søkemotoren først etter at hele siden og den gamle inline-koden
+// er ferdig registrert. Da kan v0.8.8 koble fra den gamle MutationObserveren
+// ved å erstatte resultatnoden trygt.
 (function(){
-  if (document.querySelector('script[data-ranking-search-v087]')) return;
-  const s=document.createElement('script');
-  s.src='athlete-search-ui.js?v=087';
-  s.dataset.rankingSearchV087='1';
-  document.head.appendChild(s);
+  function loadSearch(){
+    if (document.querySelector('script[data-ranking-search-v088]')) return;
+    const s=document.createElement('script');
+    s.src='athlete-search-ui.js?v=088';
+    s.dataset.rankingSearchV088='1';
+    document.head.appendChild(s);
+  }
+  if(document.readyState==='complete') setTimeout(loadSearch,0);
+  else window.addEventListener('load',()=>setTimeout(loadSearch,0),{once:true});
 })();
