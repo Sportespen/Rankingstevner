@@ -1,0 +1,1 @@
+Force Cloudflare Pages deployment for Rankingstevner v0.12.2. Static fail-safe result input verified in index.html; score-card listener verified in trinn3.js. 2026-08-25.
