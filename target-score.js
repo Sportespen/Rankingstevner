@@ -72,3 +72,15 @@
   if(document.readyState==='complete') setTimeout(loadSearch,0);
   else window.addEventListener('load',()=>setTimeout(loadSearch,0),{once:true});
 })();
+
+(function(){
+  function loadBasis(){
+    if(document.querySelector('script[data-ranking-basis-v091]'))return;
+    const s=document.createElement('script');
+    s.src='ranking-basis.js?v=091';
+    s.dataset.rankingBasisV091='1';
+    document.head.appendChild(s);
+  }
+  if(document.readyState==='complete')setTimeout(loadBasis,0);
+  else window.addEventListener('load',()=>setTimeout(loadBasis,0),{once:true});
+})();
