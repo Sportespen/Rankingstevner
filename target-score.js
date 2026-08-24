@@ -1,4 +1,4 @@
-// Rankingstevner v0.7.5 – målscore for nytt tellende resultat
+// Rankingstevner v0.9.3 – målscore + mangekamp i øvelsesutvalget
 (function () {
   const placingTables = {
     standard:{OW:[260,230,210,190,175,160,150,140,91,84,77,70,66,63,60,57],DF:[170,150,130,120,110,100,95,90,63,56,49,42],GW:[140,120,110,100,90,80,75,70,49,42,35,32],GL:[120,105,95,85,75,70,65,60,42,35,31,28],A:[100,84,77,70,63,56,49,42,35,31,27,24],B:[70,56,49,42,38,34,30,27,24,21,18,15],C:[42,35,31,28,25,22,19,16,14,12,10,8],D:[28,24,21,18,15,13,12,11],E:[18,15,13,11,9,7],F:[11,7,4]},
@@ -83,4 +83,24 @@
   }
   if(document.readyState==='complete')setTimeout(loadBasis,0);
   else window.addEventListener('load',()=>setTimeout(loadBasis,0),{once:true});
+})();
+
+// Sørg for at senior mangekamp alltid finnes i øvelsesutvalget, også når den eksterne
+// scoringtabellen ikke eksponerer mangekamp som egen disiplin.
+(function(){
+  const eventSelect=document.getElementById('event');
+  const sex=document.getElementById('sex');
+  if(!eventSelect||!sex)return;
+  function ensureCombinedEvent(){
+    const code=sex.value==='W'?'Heptathlon':'Decathlon';
+    const label=sex.value==='W'?'Sjukamp':'Tikamp';
+    const other=sex.value==='W'?'Decathlon':'Heptathlon';
+    const oldOther=eventSelect.querySelector(`option[value="${other}"]`);
+    if(oldOther)oldOther.remove();
+    if(!eventSelect.querySelector(`option[value="${code}"]`)){
+      const opt=document.createElement('option');opt.value=code;opt.textContent=label;eventSelect.appendChild(opt);
+    }
+  }
+  setTimeout(ensureCombinedEvent,700);
+  sex.addEventListener('change',()=>setTimeout(ensureCombinedEvent,80));
 })();
