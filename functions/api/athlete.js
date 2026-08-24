@@ -9,7 +9,7 @@ export async function onRequestGet(context) {
 
   try {
     const res = await fetch(profileUrl, {
-      headers: {'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.7','Accept':'text/html,application/xhtml+xml'}
+      headers: {'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.8','Accept':'text/html,application/xhtml+xml'}
     });
     if (!res.ok) return json({ok:false,error:`World Athletics svarte ${res.status}`},502);
 
@@ -24,7 +24,7 @@ export async function onRequestGet(context) {
     const sexInfo = inferSex(text, rankings, personalBests);
     const sex = sexInfo.sex;
     const codeMatch = text.match(/code\s+(\d{7,9})/i);
-    const rankingScores = await fetchRankingScores(name, sex, rankings, personalBests);
+    const rankingResult = await fetchRankingScores(name, sex, rankings, personalBests);
 
     return json({
       ok:true,
@@ -33,18 +33,19 @@ export async function onRequestGet(context) {
       url:profileUrl,
       sex,
       rankings:rankings.map(({rank,event})=>({rank,event})),
-      rankingScores,
+      rankingScores:rankingResult.scores,
       personalBests,
       diagnostics:{
         sexReason:sexInfo.reason,
         rankingEvents:[...new Set([
           ...(rankings || []).map(r=>r.event),
           ...(personalBests || []).map(p=>p.event)
-        ])]
+        ])],
+        rankingFetch:rankingResult.attempts
       }
     });
   } catch (e) {
-    return json({ok:false,error:'Kunne ikke hente World Athletics-profilen'},502);
+    return json({ok:false,error:'Kunne ikke hente World Athletics-profilen',detail:String(e?.message||e)},502);
   }
 }
 
@@ -64,7 +65,7 @@ function inferSex(text, rankings, personalBests){
 }
 
 async function fetchRankingScores(name, sex, rankings, personalBests){
-  if(!name) return [];
+  if(!name) return {scores:[],attempts:[]};
 
   const slugMap = {
     'Decathlon':'decathlon','Heptathlon':'heptathlon','100 Metres':'100m','200 Metres':'200m','400 Metres':'400m',
@@ -86,7 +87,8 @@ async function fetchRankingScores(name, sex, rankings, personalBests){
 
   const uniqueEvents = [...new Set(candidates)].slice(0,6);
   const sexPaths = sex === 'W' ? ['women'] : sex === 'M' ? ['men'] : ['men','women'];
-  const out=[];
+  const scores=[];
+  const attempts=[];
 
   for(const event of uniqueEvents){
     const slug = slugMap[event];
@@ -97,9 +99,10 @@ async function fetchRankingScores(name, sex, rankings, personalBests){
     for(const sexPath of sexPaths){
       for(const page of pages){
         const rankingUrl=`https://worldathletics.org/world-rankings/${slug}/${sexPath}?page=${page}`;
-        const rankingText = await fetchRankingText(rankingUrl, name);
-        if(!rankingText) continue;
-        found = findRankingRow(rankingText, name, event, knownRank);
+        const fetched = await fetchRankingText(rankingUrl, name);
+        attempts.push({event,sexPath,page,url:rankingUrl,...fetched.diagnostic});
+        if(!fetched.text) continue;
+        found = findRankingRow(fetched.text, name, event, knownRank);
         if(found){
           found.url = rankingUrl;
           break;
@@ -107,29 +110,37 @@ async function fetchRankingScores(name, sex, rankings, personalBests){
       }
       if(found) break;
     }
-    if(found) out.push(found);
+    if(found) scores.push(found);
   }
 
-  return out;
+  return {scores,attempts:attempts.slice(0,24)};
 }
 
 async function fetchRankingText(rankingUrl, name){
+  const diagnostic={directStatus:null,directNameFound:false,readerStatus:null,readerNameFound:false};
   try{
-    const direct=await fetch(rankingUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.7','Accept':'text/html,application/xhtml+xml'}});
+    const direct=await fetch(rankingUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.8','Accept':'text/html,application/xhtml+xml'}});
+    diagnostic.directStatus=direct.status;
     if(direct.ok){
       const directText=htmlToText(await direct.text());
-      if(normalizeName(directText).includes(normalizeName(name))) return directText;
+      diagnostic.directNameFound=normalizeName(directText).includes(normalizeName(name));
+      if(diagnostic.directNameFound) return {text:directText,diagnostic};
     }
-  }catch(_){ }
+  }catch(e){ diagnostic.directError=String(e?.message||e); }
 
   try{
     const u = new URL(rankingUrl);
     const readerUrl=`https://r.jina.ai/https://worldathletics.org${u.pathname}${u.search}`;
-    const reader=await fetch(readerUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.7','Accept':'text/plain'}});
-    if(reader.ok) return decode(await reader.text());
-  }catch(_){ }
+    const reader=await fetch(readerUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.8','Accept':'text/plain'}});
+    diagnostic.readerStatus=reader.status;
+    if(reader.ok){
+      const readerText=decode(await reader.text());
+      diagnostic.readerNameFound=normalizeName(readerText).includes(normalizeName(name));
+      if(diagnostic.readerNameFound) return {text:readerText,diagnostic};
+    }
+  }catch(e){ diagnostic.readerError=String(e?.message||e); }
 
-  return '';
+  return {text:'',diagnostic};
 }
 
 function findRankingRow(text, name, event, knownRank){
@@ -150,10 +161,7 @@ function findRankingRow(text, name, event, knownRank){
   const normalized=normalizeName(raw);
   const idx=normalized.indexOf(wanted);
   if(idx>=0){
-    const tokens=normalizeName(name).split(' ').filter(Boolean);
-    const last=tokens[tokens.length-1] || '';
-    const anchor=last ? normalized.indexOf(last) : idx;
-    const window=raw.slice(Math.max(0,anchor-260),anchor+760);
+    const window=raw.slice(Math.max(0,idx-260),idx+900);
     const nums=[...window.matchAll(/\b(9\d{2}|1[0-5]\d{2})\b/g)].map(m=>Number(m[1]));
     const score=nums.find(v=>v>=900&&v<=1600);
     if(score) return {event,rank:Number.isFinite(knownRank)?knownRank:null,score};
