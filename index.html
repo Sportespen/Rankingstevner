@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rankingstevner – prototype v0.3.3</title>
+  <title>Rankingstevner – prototype v0.5.1</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -15,7 +15,7 @@
         <p>Finn stevnet som faktisk kan forbedre rankingen din</p>
       </div>
     </div>
-    <span class="badge">Prototype v0.3.3</span>
+    <span class="badge">Prototype v0.5.1</span>
   </header>
 
   <main>
@@ -23,10 +23,7 @@
       <div>
         <span class="eyebrow">FOR AKTIVE FRIIDRETTSUTØVERE</span>
         <h2>Hvor bør du konkurrere for å forbedre rankingscoren?</h2>
-        <p class="lead">
-          Skriv inn faktisk prestasjon, stevnekategori, plassering og vind – og se om resultatet
-          forbedrer World Athletics-rankingen din.
-        </p>
+        <p class="lead">Skriv inn faktisk prestasjon, stevnekategori, plassering og vind – og se om resultatet forbedrer World Athletics-rankingen din.</p>
       </div>
       <div class="hero-stat">
         <span>World Athletics-logikk</span>
@@ -44,72 +41,52 @@
         <span class="status-dot" id="dataStatus">Laster scoringtabell…</span>
       </div>
 
+      <div class="existing" style="margin-top:0;margin-bottom:22px">
+        <div class="section-head compact">
+          <div>
+            <span class="eyebrow">UTØVERPROFIL</span>
+            <h4 style="margin-top:6px">Lagre rankinggrunnlaget ditt</h4>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:end">
+          <label>Navn
+            <input id="profileName" type="text" placeholder="f.eks. Ola Nordmann" />
+          </label>
+          <button id="saveProfile" class="primary" type="button">Lagre profil og scores</button>
+          <button id="clearProfile" class="secondary" type="button">Nullstill profil</button>
+        </div>
+        <p id="profileStatus" class="muted" style="margin:8px 0 0">Ingen lagret profil ennå.</p>
+        <p class="muted" style="margin:6px 0 0">Profilen lagres bare i denne nettleseren. Når du kommer tilbake til samme øvelse, fylles lagrede Performance Scores automatisk inn.</p>
+      </div>
+
       <div class="grid">
-        <label>Kjønn
-          <select id="sex"><option value="M">Menn</option><option value="W">Kvinner</option></select>
-        </label>
+        <label>Kjønn<select id="sex"><option value="M">Menn</option><option value="W">Kvinner</option></select></label>
         <label>Øvelse<select id="event"></select></label>
-        <label>Resultat
-          <input id="mark" type="text" inputmode="decimal" placeholder="f.eks. 10,32" />
-          <small id="markHint">Skriv inn resultatet.</small>
-        </label>
-        <label>Result Score
-          <input id="resultScore" type="text" readonly />
-          <small id="scoreHint">Beregnes automatisk og vindjusteres.</small>
-        </label>
+        <label>Resultat<input id="mark" type="text" inputmode="decimal" placeholder="f.eks. 10,32" /><small id="markHint">Skriv inn resultatet.</small></label>
+        <label>Result Score<input id="resultScore" type="text" readonly /><small id="scoreHint">Beregnes automatisk og vindjusteres.</small></label>
       </div>
 
       <div class="grid" style="margin-top:14px">
-        <label>Stevnekategori
-          <select id="category"><option>OW</option><option>DF</option><option>GW</option><option>GL</option><option selected>A</option><option>B</option><option>C</option><option>D</option><option>E</option><option>F</option></select>
-        </label>
+        <label>Stevnekategori<select id="category"><option>OW</option><option>DF</option><option>GW</option><option>GL</option><option selected>A</option><option>B</option><option>C</option><option>D</option><option>E</option><option>F</option></select></label>
         <label>Plassering<select id="placing"></select></label>
-        <label>Øvelsesgruppe
-          <input id="eventGroupLabel" type="text" readonly />
-          <small id="mainRequirement"></small>
-        </label>
-        <label>Ny prestasjon
-          <input id="newEventType" type="text" value="Main Event" readonly />
-          <small>Alle øvelsene som kan velges her er Main Events.</small>
-        </label>
+        <label>Øvelsesgruppe<input id="eventGroupLabel" type="text" readonly /><small id="mainRequirement"></small></label>
+        <label>Ny prestasjon<input id="newEventType" type="text" value="Main Event" readonly /><small>Alle øvelsene som kan velges her er Main Events.</small></label>
       </div>
 
-      <div id="windSection" class="grid" style="margin-top:14px; display:none">
-        <label>Vind (m/s)
-          <input id="wind" type="text" inputmode="decimal" placeholder="f.eks. +2,4 eller -1,2" />
-          <small>Skriv NWI hvis vind mangler.</small>
-        </label>
-        <label id="bljMarkLabel" style="display:none">Best Legal Jump
-          <input id="bljMark" type="text" inputmode="decimal" placeholder="f.eks. 7,71" />
-          <small>Brukes bare dersom sluttresultatet er vindassistert.</small>
-        </label>
-        <label id="bljWindLabel" style="display:none">Vind på BLJ
-          <input id="bljWind" type="text" inputmode="decimal" placeholder="maks +2,0" />
-          <small>Må være ≤ +2,0 m/s.</small>
-        </label>
-        <label>Vindjustering
-          <input id="windAdjustment" type="text" readonly value="0" />
-          <small>Headwind gir tillegg, sterk medvind gir trekk.</small>
-        </label>
+      <div id="windSection" class="grid" style="margin-top:14px;display:none">
+        <label>Vind (m/s)<input id="wind" type="text" inputmode="decimal" placeholder="f.eks. +2,4 eller -1,2" /><small>Skriv NWI hvis vind mangler.</small></label>
+        <label id="bljMarkLabel" style="display:none">Best Legal Jump<input id="bljMark" type="text" inputmode="decimal" placeholder="f.eks. 7,71" /><small>Brukes bare dersom sluttresultatet er vindassistert.</small></label>
+        <label id="bljWindLabel" style="display:none">Vind på BLJ<input id="bljWind" type="text" inputmode="decimal" placeholder="maks +2,0" /><small>Må være ≤ +2,0 m/s.</small></label>
+        <label>Vindjustering<input id="windAdjustment" type="text" readonly value="0" /><small>Headwind gir tillegg, sterk medvind gir trekk.</small></label>
       </div>
 
-      <div id="combinedWindSection" class="grid" style="margin-top:14px; display:none">
-        <label>Vindstatus mangekamp
-          <select id="combinedWindStatus">
-            <option value="normal">Innenfor grensene</option>
-            <option value="excess">Minst én > +4,0 og snitt > +2,0</option>
-            <option value="nwi">Vindinfo mangler (NWI)</option>
-          </select>
-          <small>WA trekker 24 poeng ved de to siste tilfellene.</small>
-        </label>
+      <div id="combinedWindSection" class="grid" style="margin-top:14px;display:none">
+        <label>Vindstatus mangekamp<select id="combinedWindStatus"><option value="normal">Innenfor grensene</option><option value="excess">Minst én &gt; +4,0 og snitt &gt; +2,0</option><option value="nwi">Vindinfo mangler (NWI)</option></select><small>WA trekker 24 poeng ved de to siste tilfellene.</small></label>
       </div>
 
       <div class="existing">
         <div class="section-head compact">
-          <div>
-            <h4>Dine nåværende Performance Scores</h4>
-            <p id="requiredText"></p>
-          </div>
+          <div><h4>Dine nåværende Performance Scores</h4><p id="requiredText"></p></div>
           <button id="fillDemo" class="secondary">Fyll eksempel</button>
         </div>
         <div id="scoreInputs" class="score-inputs"></div>
@@ -124,25 +101,18 @@
           <div><span>Ny Performance Score</span><strong id="performanceScoreOut">–</strong></div>
           <div><span>Ny Ranking Score</span><strong id="newRankingOut">–</strong></div>
         </div>
-
         <div id="bljComparison" style="display:none;margin-top:16px;padding:16px;border:1px solid #cfe2dc;border-radius:12px;background:#fff"></div>
-
         <div id="improvement" class="improvement"></div>
         <p id="currentRankingLine" class="muted"></p>
         <p id="replaceInfo" class="muted"></p>
         <p id="ruleInfo" class="muted"></p>
       </div>
 
-      <div class="notice">
-        <strong>v0.3.3:</strong> Vindmotoren er kontrollert mot World Athletics World Ranking Rules 2026. Automatisk selvtest kontrollerer motvind, lovlig medvind, vindassistert resultat og NWI ved hver innlasting.
-      </div>
+      <div class="notice"><strong>v0.5.1:</strong> Utøverprofil og World Athletics-profiloppslag er aktivert. Vindmotoren er fortsatt validert mot 2026-reglene.</div>
     </section>
 
     <section class="panel">
-      <div class="section-head">
-        <div><span class="eyebrow">STEVNEFINNER</span><h3>Aktuelle stevner i Europa</h3></div>
-        <span class="muted">Demodata i v0.3.3</span>
-      </div>
+      <div class="section-head"><div><span class="eyebrow">STEVNEFINNER</span><h3>Aktuelle stevner i Europa</h3></div><span class="muted">Demodata i v0.5.1</span></div>
       <div class="filters">
         <select id="meetCategoryFilter"><option value="all">Alle kategorier</option><option value="GW">GW</option><option value="GL">GL</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option></select>
         <select id="countryFilter"><option value="all">Alle land</option><option value="AUT">Østerrike</option><option value="FRA">Frankrike</option><option value="NOR">Norge</option><option value="FIN">Finland</option></select>
@@ -151,15 +121,16 @@
     </section>
 
     <section class="roadmap">
-      <div><strong>Neste:</strong> flere Similar Events + automatisk utøverprofil</div>
+      <div><strong>Neste:</strong> hente tellende rankinggrunnlag fra WA</div>
       <div><strong>Deretter:</strong> levende stevnedatabase + kart</div>
       <div><strong>Så:</strong> Road to-mesterskap + personlig anbefaling</div>
     </section>
   </main>
 
   <footer>Prototype – World Athletics World Ranking Rules 2026. Result Score-data: World Athletics Scoring Tables 2025.</footer>
-  <script src="app.js?v=033"></script>
-  <script src="blj-debug.js?v=033"></script>
-  <script src="wind-validation.js?v=033"></script>
+  <script src="app.js?v=051"></script>
+  <script src="blj-debug.js?v=051"></script>
+  <script src="wind-validation.js?v=051"></script>
+  <script src="athlete-profile.js?v=051"></script>
 </body>
 </html>
