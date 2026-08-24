@@ -1,6 +1,5 @@
-// Rankingstevner v0.7.1 – én utøverprofil + konservativ WA-visning
+// Rankingstevner v0.7.5 – én utøverprofil + WA Ranking Score
 (function () {
-  const VERSION = 'v0.7.1';
   const STORAGE_KEY = "rankingstevner.profile.v1";
   const profileName = document.getElementById("profileName");
   const profileStatus = document.getElementById("profileStatus");
@@ -12,10 +11,6 @@
   const waBtn = document.getElementById('loadWaProfile');
   const waStatus = document.getElementById('waProfileStatus');
   const waDetails = document.getElementById('waProfileDetails');
-
-  const badge = document.querySelector('.badge');
-  if (badge) badge.textContent = `Prototype ${VERSION}`;
-  document.title = `Rankingstevner – prototype ${VERSION}`;
 
   if (!profileName || !profileStatus || !saveProfileBtn || !clearProfileBtn || !sex || !eventSelect) return;
 
@@ -65,13 +60,20 @@
   }
   function renderWaDetails(data) {
     if (!waDetails) return;
+    const scoreByEvent = new Map((data.rankingScores || []).map(r => [normalizeEvent(r.event), r]));
     const rankingHtml = data.rankings?.length
-      ? `<div><strong>Gjeldende WA-ranking:</strong> ${data.rankings.map(r=>`#${r.rank} ${r.event}`).join(' · ')}</div>`
+      ? `<div><strong>Gjeldende WA-ranking:</strong><br>${data.rankings.map(r=>{
+          const rs = scoreByEvent.get(normalizeEvent(r.event));
+          return `#${r.rank} ${r.event}${rs?.score ? ` · <strong>${rs.score} Ranking Score</strong>` : ''}`;
+        }).join('<br>')}</div>`
       : '<div><strong>Gjeldende WA-ranking:</strong> ikke funnet sikkert på profilsiden.</div>';
     const pbHtml = data.personalBests?.length
       ? `<div style="margin-top:8px"><strong>Sikre profilresultater:</strong><br>${data.personalBests.slice(0,8).map(p=>`${p.event}: ${p.result} · score ${p.score}`).join('<br>')}</div>`
       : '<div style="margin-top:8px"><strong>Profilresultater:</strong> ingen sikre resultatrader funnet.</div>';
-    waDetails.innerHTML = rankingHtml + pbHtml + '<div class="muted" style="margin-top:8px">Disse resultatene brukes ikke automatisk som de tellende Performance Scores. Rankinggrunnlaget hentes først når vi har en sikker datakilde for de tellende resultatene.</div>';
+    const basisHtml = data.rankingScores?.length
+      ? `<div style="margin-top:10px;padding:10px;border-radius:8px;background:#eef8f5"><strong>Rankinggrunnlag – trinn 1:</strong> gjeldende Ranking Score hentes nå direkte fra World Athletics. Neste trinn er de individuelle tellende Performance Scores.</div>`
+      : '<div class="muted" style="margin-top:8px">Gjeldende Ranking Score kunne ikke leses sikkert fra rankinglisten denne gangen.</div>';
+    waDetails.innerHTML = rankingHtml + pbHtml + basisHtml;
     waDetails.style.display = 'block';
   }
   function restoreProfile() {
@@ -124,7 +126,7 @@
     const id = raw.match(/(\d{7,9})/)?.[1];
     if (!id) { waStatus.textContent = 'Skriv inn en gyldig WA-ID eller profil-lenke.'; return; }
     waBtn.disabled = true;
-    waStatus.textContent = 'Henter World Athletics-profil…';
+    waStatus.textContent = 'Henter World Athletics-profil og Ranking Score…';
     try {
       const res = await fetch(`/api/athlete?id=${encodeURIComponent(id)}`, {cache:'no-store'});
       const data = await res.json();
