@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rankingstevner – prototype v0.5.2</title>
+  <title>Rankingstevner – prototype v0.7</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -15,7 +15,7 @@
         <p>Finn stevnet som faktisk kan forbedre rankingen din</p>
       </div>
     </div>
-    <span class="badge">Prototype v0.5.2</span>
+    <span class="badge">Prototype v0.7</span>
   </header>
 
   <main>
@@ -108,11 +108,11 @@
         <p id="ruleInfo" class="muted"></p>
       </div>
 
-      <div class="notice"><strong>v0.5.2:</strong> Synlig versjonslogg er synkronisert med publisert kode. Utøverprofil og World Athletics-profiloppslag er aktivert. Vindmotoren er fortsatt validert mot 2026-reglene.</div>
+      <div class="notice"><strong>v0.7:</strong> Ny målscore viser hvilken justert Result Score som minst må til for å slå svakeste tellende Performance Score ved valgt kategori og plassering. WA-profiloppslag og vindmotor er fortsatt aktive.</div>
     </section>
 
     <section class="panel">
-      <div class="section-head"><div><span class="eyebrow">STEVNEFINNER</span><h3>Aktuelle stevner i Europa</h3></div><span class="muted">Demodata i v0.5.2</span></div>
+      <div class="section-head"><div><span class="eyebrow">STEVNEFINNER</span><h3>Aktuelle stevner i Europa</h3></div><span class="muted">Demodata i v0.7</span></div>
       <div class="filters">
         <select id="meetCategoryFilter"><option value="all">Alle kategorier</option><option value="GW">GW</option><option value="GL">GL</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option></select>
         <select id="countryFilter"><option value="all">Alle land</option><option value="AUT">Østerrike</option><option value="FRA">Frankrike</option><option value="NOR">Norge</option><option value="FIN">Finland</option></select>
@@ -128,9 +128,10 @@
   </main>
 
   <footer>Prototype – World Athletics World Ranking Rules 2026. Result Score-data: World Athletics Scoring Tables 2025.</footer>
-  <script src="app.js?v=052"></script>
-  <script src="blj-debug.js?v=052"></script>
-  <script src="wind-validation.js?v=052"></script>
-  <script src="athlete-profile.js?v=052"></script>
+  <script src="app.js?v=070"></script>
+  <script src="blj-debug.js?v=070"></script>
+  <script src="wind-validation.js?v=070"></script>
+  <script src="athlete-profile.js?v=070"></script>
+  <script src="target-score.js?v=070"></script>
 </body>
 </html>
