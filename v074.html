@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rankingstevner – prototype v0.8.2</title>
-  <link rel="stylesheet" href="style.css?v=082" />
+  <title>Rankingstevner – prototype v0.8.3</title>
+  <link rel="stylesheet" href="style.css?v=083" />
 </head>
 <body>
   <header class="topbar">
@@ -12,7 +12,7 @@
       <div class="logo">R</div>
       <div><h1>Rankingstevner</h1><p>Finn stevnet som faktisk kan forbedre rankingen din</p></div>
     </div>
-    <span class="badge">Prototype v0.8.2</span>
+    <span class="badge">Prototype v0.8.3</span>
   </header>
 
   <main>
@@ -53,8 +53,8 @@
           </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:end;margin-top:12px">
-          <label>Valgt utøver<input id="profileName" type="text" readonly placeholder="Ingen utøver valgt" /></label>
+        <input id="profileName" type="hidden" />
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap">
           <button id="saveProfile" class="primary" type="button">Lagre profil og scores</button>
           <button id="clearProfile" class="secondary" type="button">Nullstill profil</button>
         </div>
@@ -100,19 +100,19 @@
       <div class="existing"><div class="section-head compact"><div><h4>Dine nåværende Performance Scores</h4><p id="requiredText"></p></div><button id="fillDemo" class="secondary">Fyll eksempel</button></div><div id="scoreInputs" class="score-inputs"></div></div>
       <button id="calculate" class="primary">Beregn rankingeffekt</button>
       <div id="resultBox" class="result-box hidden"><div class="result-grid"><div><span>Justert Result Score</span><strong id="resultScoreOut">–</strong></div><div><span>Placing Score</span><strong id="placingScoreOut">–</strong></div><div><span>Ny Performance Score</span><strong id="performanceScoreOut">–</strong></div><div><span>Ny Ranking Score</span><strong id="newRankingOut">–</strong></div></div><div id="bljComparison" style="display:none;margin-top:16px;padding:16px;border:1px solid #cfe2dc;border-radius:12px;background:#fff"></div><div id="improvement" class="improvement"></div><p id="currentRankingLine" class="muted"></p><p id="replaceInfo" class="muted"></p><p id="ruleInfo" class="muted"></p></div>
-      <div class="notice"><strong>v0.8.2:</strong> Finn utøver først, deretter velg øvelse. Navn og WA-ID kobles sammen.</div>
+      <div class="notice"><strong>v0.8.3:</strong> Finn utøver først, deretter velg øvelse. Utøvernavnet vises bare én gang.</div>
     </section>
 
-    <section class="panel"><div class="section-head"><div><span class="eyebrow">STEVNEFINNER</span><h3>Aktuelle stevner i Europa</h3></div><span class="muted">Demodata i v0.8.2</span></div><div class="filters"><select id="meetCategoryFilter"><option value="all">Alle kategorier</option><option value="GW">GW</option><option value="GL">GL</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option></select><select id="countryFilter"><option value="all">Alle land</option><option value="AUT">Østerrike</option><option value="FRA">Frankrike</option><option value="NOR">Norge</option><option value="FIN">Finland</option></select></div><div id="meetList" class="meet-list"></div></section>
+    <section class="panel"><div class="section-head"><div><span class="eyebrow">STEVNEFINNER</span><h3>Aktuelle stevner i Europa</h3></div><span class="muted">Demodata i v0.8.3</span></div><div class="filters"><select id="meetCategoryFilter"><option value="all">Alle kategorier</option><option value="GW">GW</option><option value="GL">GL</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option></select><select id="countryFilter"><option value="all">Alle land</option><option value="AUT">Østerrike</option><option value="FRA">Frankrike</option><option value="NOR">Norge</option><option value="FIN">Finland</option></select></div><div id="meetList" class="meet-list"></div></section>
 
     <section class="roadmap"><div><strong>Neste:</strong> automatisk rankinggrunnlag for flere øvelser</div><div><strong>Deretter:</strong> levende stevnedatabase + kart</div><div><strong>Så:</strong> Road to-mesterskap + personlig anbefaling</div></section>
   </main>
   <footer>Prototype – World Athletics World Ranking Rules 2026. Result Score-data: World Athletics Scoring Tables 2025.</footer>
-  <script src="app.js?v=082"></script>
-  <script src="blj-debug.js?v=082"></script>
-  <script src="wind-validation.js?v=082"></script>
-  <script src="athlete-profile.js?v=082"></script>
-  <script src="target-score.js?v=082"></script>
-  <script>document.querySelector('.badge').textContent='Prototype v0.8.2';document.title='Rankingstevner – prototype v0.8.2';</script>
+  <script src="app.js?v=083"></script>
+  <script src="blj-debug.js?v=083"></script>
+  <script src="wind-validation.js?v=083"></script>
+  <script src="athlete-profile.js?v=083"></script>
+  <script src="target-score.js?v=083"></script>
+  <script>document.querySelector('.badge').textContent='Prototype v0.8.3';document.title='Rankingstevner – prototype v0.8.3';</script>
 </body>
 </html>
