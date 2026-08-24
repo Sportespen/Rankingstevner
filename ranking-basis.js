@@ -1,4 +1,4 @@
-// Rankingstevner v0.9.1 – automatisk rankinggrunnlag fra WA-resultater
+// Rankingstevner v0.9.2 – automatisk rankinggrunnlag fra WA-resultater
 (function(){
   const eventSelect=document.getElementById('event');
   const sex=document.getElementById('sex');
@@ -6,6 +6,21 @@
   const waStatus=document.getElementById('waProfileStatus');
   const waDetails=document.getElementById('waProfileDetails');
   if(!eventSelect||!sex||!waInput)return;
+
+  if(!document.getElementById('rankingBasisLayoutStyle')){
+    const style=document.createElement('style');
+    style.id='rankingBasisLayoutStyle';
+    style.textContent=`
+      #autoRankingBasisAllEvents{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:18px;align-items:stretch}
+      #autoRankingBasisAllEvents .ranking-basis-left{min-width:0}
+      #autoRankingBasisAllEvents .ranking-score-card{background:#f7fbfa;border:1px solid #cfe2dc;border-radius:14px;padding:22px 18px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;box-shadow:0 4px 16px rgba(24,39,52,.05)}
+      #autoRankingBasisAllEvents .ranking-score-label{font-size:13px;letter-spacing:.12em;font-weight:900;color:#0f766e}
+      #autoRankingBasisAllEvents .ranking-score-value{font-size:52px;line-height:1;font-weight:900;color:#0b4f4a;margin:14px 0 10px}
+      #autoRankingBasisAllEvents .ranking-score-note{font-size:12px;color:#677585;line-height:1.4}
+      @media(max-width:850px){#autoRankingBasisAllEvents{grid-template-columns:1fr}.ranking-score-card{min-height:150px}}
+    `;
+    document.head.appendChild(style);
+  }
 
   const placingTables={
     standard:{OW:[260,230,210,190,175,160,150,140,91,84,77,70,66,63,60,57],DF:[170,150,130,120,110,100,95,90,63,56,49,42],GW:[140,120,110,100,90,80,75,70,49,42,35,32],GL:[120,105,95,85,75,70,65,60,42,35,31,28],A:[100,84,77,70,63,56,49,42,35,31,27,24],B:[70,56,49,42,38,34,30,27,24,21,18,15],C:[42,35,31,28,25,22,19,16,14,12,10,8],D:[28,24,21,18,15,13,12,11],E:[18,15,13,11,9,7],F:[11,7,4]},
@@ -60,18 +75,27 @@
   function renderBasis(basis){
     if(!waDetails)return;
     const old=document.getElementById('autoRankingBasisAllEvents');if(old)old.remove();
-    const box=document.createElement('div');box.id='autoRankingBasisAllEvents';box.style.cssText='margin-top:10px;padding:10px;border-radius:8px;background:#eef8f5';
+    const box=document.createElement('div');box.id='autoRankingBasisAllEvents';
     const label=eventSelect.options[eventSelect.selectedIndex]?.textContent||eventSelect.value;
-    if(!basis.selected.length){box.innerHTML=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br><span class="muted">Ingen gyldige WA-resultater med Result Score og Placing Score funnet i de siste tre sesongene.</span>`;}
-    else{
+
+    let leftHtml='';
+    if(!basis.selected.length){
+      leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br><span class="muted">Ingen gyldige WA-resultater med Result Score og Placing Score funnet i de siste tre sesongene.</span>`;
+    }else{
       const rows=basis.selected.map(x=>`${x.mark??''} ${x.discipline} · ${x.resultScore} Result Score + ${x.placingScore} Placing Score = <strong>${x.score} Performance Score</strong>${x.type==='similar'?' (Similar Event)':''}`).join('<br>');
-      const total=basis.complete?`<br><strong>Ranking Score: ${basis.rankingScore}</strong>`:`<br><span class="muted">Fant ${basis.selected.length} av ${basis.needed} nødvendige tellende resultater.</span>`;
-      box.innerHTML=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br>${rows}${total}`;
+      const status=basis.complete?'':`<br><span class="muted">Fant ${basis.selected.length} av ${basis.needed} nødvendige tellende resultater.</span>`;
+      leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br>${rows}${status}`;
     }
+
+    const rightHtml=basis.complete
+      ? `<div class="ranking-score-card"><div class="ranking-score-label">RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div><div class="ranking-score-note">Basert på de ${basis.needed} beste tellende Performance Scores.</div></div>`
+      : '';
+
+    box.innerHTML=`<div class="ranking-basis-left">${leftHtml}</div>${rightHtml}`;
     waDetails.appendChild(box);waDetails.style.display='block';
   }
   function refresh(){if(!allResults.length)return;const b=basisFor(eventSelect.value);fillScores(b);setTimeout(()=>renderBasis(b),180);}
-  async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){refresh();return;}loading=true;try{const res=await fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=091`,{cache:'no-store'});const data=await res.json();if(data?.ok&&Array.isArray(data.results)){currentId=String(id);allResults=data.results;refresh();}}catch(_){}finally{loading=false;}}
+  async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){refresh();return;}loading=true;try{const res=await fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=092`,{cache:'no-store'});const data=await res.json();if(data?.ok&&Array.isArray(data.results)){currentId=String(id);allResults=data.results;refresh();}}catch(_){}finally{loading=false;}}
   function idFromInput(){return waInput.value.trim().match(/(\d{7,9})/)?.[1]||'';}
 
   eventSelect.addEventListener('change',()=>setTimeout(refresh,220));
