@@ -3,43 +3,38 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rankingstevner – prototype v0.7.3</title>
-  <link rel="stylesheet" href="style.css?v=073" />
+  <title>Rankingstevner – prototype v0.10.0</title>
+  <link rel="stylesheet" href="style.css?v=100" />
+  <style>
+    #legacyEventMeta,#legacyScores{display:none!important}
+    #trinn3Native{margin-top:18px}
+    #safeResultEditor{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .score-strip{display:grid;grid-template-columns:repeat(3,minmax(170px,1fr));gap:14px;margin-top:14px;max-width:900px}
+    .score-card{border:1px solid #cfe2dc;border-radius:12px;background:#f7fbfa;padding:14px 16px}
+    .score-card.performance{border-color:#b8d9d1;background:#eef8f5}
+    .score-card span{font-size:12px;color:#677585}
+    .score-card.performance span{font-weight:800;color:#087f5b}
+    .score-card strong{display:block;font-size:1.8rem;line-height:1.1;margin-top:4px}
+    .score-card.performance strong{color:#0b4f4a}
+    .result-entry{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+    .meet-place-row{display:grid;grid-template-columns:minmax(180px,.7fr) minmax(180px,.7fr);gap:14px;margin-top:14px;max-width:900px}
+    @media(max-width:800px){.score-strip,.meet-place-row{grid-template-columns:1fr}}
+  </style>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">
-      <div class="logo">R</div>
-      <div>
-        <h1>Rankingstevner</h1>
-        <p>Finn stevnet som faktisk kan forbedre rankingen din</p>
-      </div>
-    </div>
-    <span class="badge">Prototype v0.7.3</span>
+    <div class="brand"><div class="logo">R</div><div><h1>Rankingstevner</h1><p>Finn stevnet som faktisk kan forbedre rankingen din</p></div></div>
+    <span class="badge">Prototype v0.10.0</span>
   </header>
 
   <main>
     <section class="hero">
-      <div>
-        <span class="eyebrow">FOR AKTIVE FRIIDRETTSUTØVERE</span>
-        <h2>Hvor bør du konkurrere for å forbedre rankingscoren?</h2>
-        <p class="lead">Skriv inn faktisk prestasjon, stevnekategori, plassering og vind – og se om resultatet forbedrer World Athletics-rankingen din.</p>
-      </div>
-      <div class="hero-stat">
-        <span>World Athletics-logikk</span>
-        <strong>Justert Result Score + Placing Score</strong>
-        <small>= Performance Score</small>
-      </div>
+      <div><span class="eyebrow">FOR AKTIVE FRIIDRETTSUTØVERE</span><h2>Hvor bør du konkurrere for å forbedre rankingscoren?</h2><p class="lead">Skriv inn faktisk prestasjon, stevnekategori, plassering og vind – og se om resultatet forbedrer World Athletics-rankingen din.</p></div>
+      <div class="hero-stat"><span>World Athletics-logikk</span><strong>Justert Result Score + Placing Score</strong><small>= Performance Score</small></div>
     </section>
 
     <section class="panel calculator">
-      <div class="section-head">
-        <div>
-          <span class="eyebrow">RANKINGKALKULATOR</span>
-          <h3>Beregn forbedringen</h3>
-        </div>
-        <span class="status-dot" id="dataStatus">Laster scoringtabell…</span>
-      </div>
+      <div class="section-head"><div><span class="eyebrow">RANKINGKALKULATOR</span><h3>Beregn forbedringen</h3></div><span class="status-dot" id="dataStatus">Laster scoringtabell…</span></div>
 
       <div class="existing" style="margin-top:0;margin-bottom:22px">
         <div class="section-head compact"><div><span class="eyebrow">UTØVERPROFIL</span><h4 style="margin-top:6px">Lagre rankinggrunnlaget ditt</h4></div></div>
@@ -50,94 +45,89 @@
         </div>
         <p id="profileStatus" class="muted" style="margin:8px 0 0">Ingen lagret profil ennå.</p>
         <p class="muted" style="margin:6px 0 0">Profilen lagres bare i denne nettleseren. Når du kommer tilbake til samme øvelse, fylles lagrede Performance Scores automatisk inn.</p>
-
         <div id="waProfileBlock" style="margin-top:16px;padding-top:14px;border-top:1px solid #d9e5e1">
           <div style="font-weight:800;margin-bottom:6px">World Athletics-profil</div>
-          <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end">
-            <label style="margin:0">WA-ID eller profil-lenke<input id="waProfileId" type="text" placeholder="f.eks. 14989292 eller lim inn WA-lenke" /></label>
-            <button id="loadWaProfile" class="secondary" type="button">Hent fra WA</button>
-          </div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end"><label style="margin:0">WA-ID eller profil-lenke<input id="waProfileId" type="text" placeholder="f.eks. 14989292 eller lim inn WA-lenke" /></label><button id="loadWaProfile" class="secondary" type="button">Hent fra WA</button></div>
           <div id="waProfileStatus" class="muted" style="margin-top:7px">Henter navn, kjønn og sikre profilopplysninger fra World Athletics.</div>
           <div id="waProfileDetails" style="display:none;margin-top:10px;padding:12px;border:1px solid #d9e5e1;border-radius:10px;background:#fff"></div>
         </div>
       </div>
 
+      <!-- Disse to brukes av Trinn 2 / eksisterende logikk -->
       <div class="grid">
         <label>Kjønn<select id="sex"><option value="M">Menn</option><option value="W">Kvinner</option></select></label>
         <label>Øvelse<select id="event"></select></label>
-        <label>Resultat<input id="mark" type="text" inputmode="decimal" placeholder="f.eks. 10,32" /><small id="markHint">Skriv inn resultatet.</small></label>
-        <label>Result Score<input id="resultScore" type="text" readonly /><small id="scoreHint">Beregnes automatisk og vindjusteres.</small></label>
       </div>
 
-      <div class="grid" style="margin-top:14px">
-        <label>Stevnekategori<select id="category"><option>OW</option><option>DF</option><option>GW</option><option>GL</option><option selected>A</option><option>B</option><option>C</option><option>D</option><option>E</option><option>F</option></select></label>
-        <label>Plassering<select id="placing"></select></label>
+      <!-- TRINN 3 er nå fast HTML. Ingen dynamisk ombygging/hiding. -->
+      <div id="trinn3Native">
+        <div style="border-top:1px solid #d9e5e1;padding-top:24px;margin-top:22px">
+          <span class="eyebrow">TRINN 3</span>
+          <h4 style="font-size:1.35rem;margin:8px 0 4px">Ny prestasjon</h4>
+          <p class="muted" style="margin:0 0 16px">Skriv inn resultatet du vurderer i den valgte øvelsen.</p>
+        </div>
+
+        <div class="result-entry">
+          <label style="font-weight:700">Resultat</label>
+          <div id="safeResultEditor"></div>
+          <small id="safeResultHint" class="muted"></small>
+          <input id="mark" type="hidden" />
+          <input id="resultScore" type="hidden" />
+          <small id="markHint" style="display:none"></small>
+          <small id="scoreHint" style="display:none"></small>
+        </div>
+
+        <div class="meet-place-row">
+          <label>Stevnekategori<select id="category"><option>OW</option><option>DF</option><option>GW</option><option>GL</option><option selected>A</option><option>B</option><option>C</option><option>D</option><option>E</option><option>F</option></select></label>
+          <label>Plassering<select id="placing"></select></label>
+        </div>
+
+        <div class="score-strip">
+          <div class="score-card"><span>Result Score</span><strong id="resultScoreMirror">–</strong></div>
+          <div class="score-card"><span>Placing Score</span><strong id="placingScorePreview">–</strong></div>
+          <div class="score-card performance"><span>Performance Score</span><strong id="performanceScorePreview">–</strong></div>
+        </div>
+
+        <div id="windSection" class="grid" style="margin-top:14px;display:none">
+          <label>Vind (m/s)<input id="wind" type="text" inputmode="decimal" placeholder="f.eks. +2,4 eller -1,2" /><small>Skriv NWI hvis vind mangler.</small></label>
+          <label id="bljMarkLabel" style="display:none">Best Legal Jump<input id="bljMark" type="text" inputmode="decimal" placeholder="f.eks. 7,71" /><small>Brukes bare dersom sluttresultatet er vindassistert.</small></label>
+          <label id="bljWindLabel" style="display:none">Vind på BLJ<input id="bljWind" type="text" inputmode="decimal" placeholder="maks +2,0" /><small>Må være ≤ +2,0 m/s.</small></label>
+          <label>Vindjustering<input id="windAdjustment" type="text" readonly value="0" /><small>Headwind gir tillegg, sterk medvind gir trekk.</small></label>
+        </div>
+        <div id="combinedWindSection" class="grid" style="margin-top:14px;display:none"><label>Vindstatus mangekamp<select id="combinedWindStatus"><option value="normal">Innenfor grensene</option><option value="excess">Minst én &gt; +4,0 og snitt &gt; +2,0</option><option value="nwi">Vindinfo mangler (NWI)</option></select><small>WA trekker 24 poeng ved de to siste tilfellene.</small></label></div>
+      </div>
+
+      <!-- Beholdes bare for eksisterende beregningsmotor, aldri synlig -->
+      <div id="legacyEventMeta">
         <label>Øvelsesgruppe<input id="eventGroupLabel" type="text" readonly /><small id="mainRequirement"></small></label>
-        <label>Ny prestasjon<input id="newEventType" type="text" value="Main Event" readonly /><small>Alle øvelsene som kan velges her er Main Events.</small></label>
+        <label>Ny prestasjon<input id="newEventType" type="text" value="Main Event" readonly /></label>
       </div>
+      <div id="legacyScores" class="existing"><div class="section-head compact"><div><h4>Dine nåværende Performance Scores</h4><p id="requiredText"></p></div><button id="fillDemo" class="secondary">Fyll eksempel</button></div><div id="scoreInputs" class="score-inputs"></div></div>
 
-      <div id="windSection" class="grid" style="margin-top:14px;display:none">
-        <label>Vind (m/s)<input id="wind" type="text" inputmode="decimal" placeholder="f.eks. +2,4 eller -1,2" /><small>Skriv NWI hvis vind mangler.</small></label>
-        <label id="bljMarkLabel" style="display:none">Best Legal Jump<input id="bljMark" type="text" inputmode="decimal" placeholder="f.eks. 7,71" /><small>Brukes bare dersom sluttresultatet er vindassistert.</small></label>
-        <label id="bljWindLabel" style="display:none">Vind på BLJ<input id="bljWind" type="text" inputmode="decimal" placeholder="maks +2,0" /><small>Må være ≤ +2,0 m/s.</small></label>
-        <label>Vindjustering<input id="windAdjustment" type="text" readonly value="0" /><small>Headwind gir tillegg, sterk medvind gir trekk.</small></label>
-      </div>
-
-      <div id="combinedWindSection" class="grid" style="margin-top:14px;display:none">
-        <label>Vindstatus mangekamp<select id="combinedWindStatus"><option value="normal">Innenfor grensene</option><option value="excess">Minst én &gt; +4,0 og snitt &gt; +2,0</option><option value="nwi">Vindinfo mangler (NWI)</option></select><small>WA trekker 24 poeng ved de to siste tilfellene.</small></label>
-      </div>
-
-      <div class="existing">
-        <div class="section-head compact"><div><h4>Dine nåværende Performance Scores</h4><p id="requiredText"></p></div><button id="fillDemo" class="secondary">Fyll eksempel</button></div>
-        <div id="scoreInputs" class="score-inputs"></div>
-      </div>
-
-      <button id="calculate" class="primary">Beregn rankingeffekt</button>
+      <div id="targetScorePanelHost"></div>
+      <button id="calculate" class="primary" style="margin-top:18px">Beregn rankingeffekt</button>
 
       <div id="resultBox" class="result-box hidden">
-        <div class="result-grid">
-          <div><span>Justert Result Score</span><strong id="resultScoreOut">–</strong></div>
-          <div><span>Placing Score</span><strong id="placingScoreOut">–</strong></div>
-          <div><span>Ny Performance Score</span><strong id="performanceScoreOut">–</strong></div>
-          <div><span>Ny Ranking Score</span><strong id="newRankingOut">–</strong></div>
-        </div>
+        <div class="result-grid"><div><span>Justert Result Score</span><strong id="resultScoreOut">–</strong></div><div><span>Placing Score</span><strong id="placingScoreOut">–</strong></div><div><span>Ny Performance Score</span><strong id="performanceScoreOut">–</strong></div><div><span>Ny Ranking Score</span><strong id="newRankingOut">–</strong></div></div>
         <div id="bljComparison" style="display:none;margin-top:16px;padding:16px;border:1px solid #cfe2dc;border-radius:12px;background:#fff"></div>
-        <div id="improvement" class="improvement"></div>
-        <p id="currentRankingLine" class="muted"></p>
-        <p id="replaceInfo" class="muted"></p>
-        <p id="ruleInfo" class="muted"></p>
+        <div id="improvement" class="improvement"></div><p id="currentRankingLine" class="muted"></p><p id="replaceInfo" class="muted"></p><p id="ruleInfo" class="muted"></p>
       </div>
-
-      <div class="notice"><strong>v0.7.3:</strong> én autoritativ utøverprofil, tvungen fersk lasting av frontend-filer og fast versjonsmerking.</div>
+      <div class="notice"><strong>v0.10.0:</strong> Trinn 3 er bygget direkte i siden, uten dynamisk ombygging.</div>
     </section>
 
-    <section class="panel">
-      <div class="section-head"><div><span class="eyebrow">STEVNEFINNER</span><h3>Aktuelle stevner i Europa</h3></div><span class="muted">Demodata i v0.7.3</span></div>
-      <div class="filters"><select id="meetCategoryFilter"><option value="all">Alle kategorier</option><option value="GW">GW</option><option value="GL">GL</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option></select><select id="countryFilter"><option value="all">Alle land</option><option value="AUT">Østerrike</option><option value="FRA">Frankrike</option><option value="NOR">Norge</option><option value="FIN">Finland</option></select></div>
-      <div id="meetList" class="meet-list"></div>
-    </section>
-
+    <section class="panel"><div class="section-head"><div><span class="eyebrow">STEVNEFINNER</span><h3>Aktuelle stevner i Europa</h3></div><span class="muted">Demodata</span></div><div class="filters"><select id="meetCategoryFilter"><option value="all">Alle kategorier</option><option value="GW">GW</option><option value="GL">GL</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option></select><select id="countryFilter"><option value="all">Alle land</option><option value="AUT">Østerrike</option><option value="FRA">Frankrike</option><option value="NOR">Norge</option><option value="FIN">Finland</option></select></div><div id="meetList" class="meet-list"></div></section>
     <section class="roadmap"><div><strong>Neste:</strong> hente tellende rankinggrunnlag fra WA</div><div><strong>Deretter:</strong> levende stevnedatabase + kart</div><div><strong>Så:</strong> Road to-mesterskap + personlig anbefaling</div></section>
   </main>
 
   <footer>Prototype – World Athletics World Ranking Rules 2026. Result Score-data: World Athletics Scoring Tables 2025.</footer>
-  <script src="app.js?v=073"></script>
-  <script src="blj-debug.js?v=073"></script>
-  <script src="wind-validation.js?v=073"></script>
-  <script src="athlete-profile.js?v=073"></script>
-  <script src="target-score.js?v=099"></script>
-  <script src="trinn3-ui.js?v=099"></script>
+  <script src="app.js?v=100"></script>
+  <script src="blj-debug.js?v=100"></script>
+  <script src="wind-validation.js?v=100"></script>
+  <script src="athlete-profile.js?v=100"></script>
+  <script src="target-score.js?v=100"></script>
+  <script src="trinn3-native.js?v=100"></script>
   <script>
-    (() => {
-      const VERSION = 'v0.7.3';
-      const badge = document.querySelector('.badge');
-      if (badge) badge.textContent = `Prototype ${VERSION}`;
-      document.title = `Rankingstevner – prototype ${VERSION}`;
-      const profileInputs = [...document.querySelectorAll('#profileName')];
-      profileInputs.slice(1).forEach((input) => {const block = input.closest('.existing');if (block) block.remove();});
-      const waBlocks = [...document.querySelectorAll('#waProfileBlock')];
-      waBlocks.slice(1).forEach((block) => block.remove());
-    })();
+    (()=>{const badge=document.querySelector('.badge');if(badge)badge.textContent='Prototype v0.10.0';document.title='Rankingstevner – prototype v0.10.0';const profileInputs=[...document.querySelectorAll('#profileName')];profileInputs.slice(1).forEach(input=>input.closest('.existing')?.remove());const waBlocks=[...document.querySelectorAll('#waProfileBlock')];waBlocks.slice(1).forEach(block=>block.remove());})();
   </script>
 </body>
 </html>
