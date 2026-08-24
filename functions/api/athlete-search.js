@@ -1,14 +1,30 @@
+const LOCAL_ATHLETES = [
+  {id:14989292,firstName:'Jonathan',lastName:'Hertwig-Ødegaard',country:'NOR',sex:'M',birthDate:null,disciplines:['Decathlon']}
+];
+
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const q = (url.searchParams.get('q') || '').trim();
   if (q.length < 2) return json({ok:true,results:[]});
 
-  try {
-    const parts = q.split(/\s+/).filter(Boolean);
-    const queries = [q];
+  const qNorm = normalize(q);
+  const parts = q.split(/\s+/).filter(Boolean);
+  const qTokens = parts.map(normalize).filter(Boolean);
 
-    // WA-søket gir ofte ikke etternavnstreff før flere bokstaver er skrevet.
-    // Derfor henter vi også et bredere fornavnssøk og filtrerer/rangerer lokalt.
+  // Gi lokale/allerede kjente treff umiddelbart. Da står ikke navnefeltet og venter
+  // på World Athletics når vi allerede kjenner et sikkert treff.
+  const localResults = LOCAL_ATHLETES
+    .map(a => ({...a,_score:matchScore(a,qNorm,qTokens)}))
+    .filter(a => a._score > 0)
+    .sort((a,b) => b._score - a._score)
+    .map(({_score,...a}) => a);
+
+  if (localResults.length) {
+    return json({ok:true,results:localResults,source:'local-fast'});
+  }
+
+  try {
+    const queries = [q];
     if (parts.length > 1) {
       const first = parts[0];
       const last = parts[parts.length - 1];
@@ -21,17 +37,15 @@ export async function onRequestGet(context) {
     }
 
     const uniqueQueries = [...new Set(queries.map(s=>s.trim()).filter(Boolean))];
-    const responses = await Promise.all(uniqueQueries.map(searchWa));
+    const settled = await Promise.allSettled(uniqueQueries.map(searchWa));
     const merged = new Map();
-    for (const list of responses) {
-      for (const a of list) {
+    for (const response of settled) {
+      if (response.status !== 'fulfilled') continue;
+      for (const a of response.value) {
         const mapped = mapAthlete(a);
         if (mapped && !merged.has(mapped.id)) merged.set(mapped.id, mapped);
       }
     }
-
-    const qNorm = normalize(q);
-    const qTokens = parts.map(normalize).filter(Boolean);
 
     const results = [...merged.values()]
       .map(a => ({...a,_score:matchScore(a,qNorm,qTokens)}))
@@ -40,7 +54,7 @@ export async function onRequestGet(context) {
       .slice(0,12)
       .map(({_score,...a}) => a);
 
-    return json({ok:true,results});
+    return json({ok:true,results,source:'wa'});
   } catch (e) {
     return json({ok:false,error:'Kunne ikke søke etter utøver',detail:String(e?.message || e)},502);
   }
@@ -48,14 +62,21 @@ export async function onRequestGet(context) {
 
 async function searchWa(name) {
   const endpoint = `https://worldathletics.nimarion.de/athletes/search?name=${encodeURIComponent(name)}`;
-  const res = await fetch(endpoint, {
-    headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.8.5','Accept':'application/json'}
-  });
-  const text = await res.text();
-  let data = null;
-  try { data = JSON.parse(text); } catch (_) {}
-  if (!res.ok || !Array.isArray(data)) throw new Error(`Navnesøk mot World Athletics feilet (${res.status})`);
-  return data;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1800);
+  try {
+    const res = await fetch(endpoint, {
+      signal: controller.signal,
+      headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.8.6','Accept':'application/json'}
+    });
+    const text = await res.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch (_) {}
+    if (!res.ok || !Array.isArray(data)) throw new Error(`Navnesøk mot World Athletics feilet (${res.status})`);
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function mapAthlete(a) {
