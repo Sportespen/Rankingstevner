@@ -1,4 +1,4 @@
-// Rankingstevner v0.9.2 – automatisk rankinggrunnlag fra WA-resultater
+// Rankingstevner v0.9.5 – automatisk rankinggrunnlag med Main/Similar-markering
 (function(){
   const eventSelect=document.getElementById('event');
   const sex=document.getElementById('sex');
@@ -17,6 +17,9 @@
       #autoRankingBasisAllEvents .ranking-score-label{font-size:13px;letter-spacing:.12em;font-weight:900;color:#0f766e}
       #autoRankingBasisAllEvents .ranking-score-value{font-size:52px;line-height:1;font-weight:900;color:#0b4f4a;margin:14px 0 10px}
       #autoRankingBasisAllEvents .ranking-score-note{font-size:12px;color:#677585;line-height:1.4}
+      #autoRankingBasisAllEvents .event-type-badge{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;vertical-align:2px;white-space:nowrap}
+      #autoRankingBasisAllEvents .event-type-main{background:#e7f6f2;color:#087f5b}
+      #autoRankingBasisAllEvents .event-type-similar{background:#eef2f7;color:#526170}
       @media(max-width:850px){#autoRankingBasisAllEvents{grid-template-columns:1fr}.ranking-score-card{min-height:150px}}
     `;
     document.head.appendChild(style);
@@ -33,74 +36,29 @@
 
   function group(code){if(code==='5000m'||code==='3000mSC')return'distance';if(code==='10000m')return'tenk';if(code==='Decathlon'||code==='Heptathlon')return'combined';return'standard';}
   function norm(s){return String(s||'').toLowerCase().replace(/metres?|meters?/g,'m').replace(/hurdles?/g,'h').replace(/steeplechase/g,'sc').replace(/[^a-z0-9]+/g,'');}
-  const aliases={
-    '100m':['100m'],'200m':['200m'],'400m':['400m'],'800m':['800m'],'1500m':['1500m'],'5000m':['5000m'],'10000m':['10000m'],
-    '100mH':['100mh'],'110mH':['110mh'],'400mH':['400mh'],'3000mSC':['3000msc'],
-    HJ:['highjump'],PV:['polevault'],LJ:['longjump'],TJ:['triplejump'],SP:['shotput'],DT:['discusthrow'],HT:['hammerthrow'],JT:['javelinthrow'],
-    Decathlon:['decathlon'],Heptathlon:['heptathlon']
-  };
+  const aliases={'100m':['100m'],'200m':['200m'],'400m':['400m'],'800m':['800m'],'1500m':['1500m'],'5000m':['5000m'],'10000m':['10000m'],'100mH':['100mh'],'110mH':['110mh'],'400mH':['400mh'],'3000mSC':['3000msc'],HJ:['highjump'],PV:['polevault'],LJ:['longjump'],TJ:['triplejump'],SP:['shotput'],DT:['discusthrow'],HT:['hammerthrow'],JT:['javelinthrow'],Decathlon:['decathlon'],Heptathlon:['heptathlon']};
   function exactMatch(discipline,code){const n=norm(discipline);return (aliases[code]||[]).some(a=>n===a||n.startsWith(a));}
   function combinedType(discipline,code){const n=norm(discipline);if(code==='Decathlon'){if(n.startsWith('decathlon'))return'main';if(n.includes('heptathlonshorttrack'))return'similar';}if(code==='Heptathlon'){if(n.startsWith('heptathlon')&&!n.includes('shorttrack'))return'main';if(n.includes('pentathlonshorttrack'))return'similar';}return null;}
-  function candidate(r,code){
-    const g=group(code),type=g==='combined'?combinedType(r.discipline,code):(exactMatch(r.discipline,code)?'main':null);
-    if(!type||r.legal===false)return null;
-    const rs=Number(r.resultScore),place=Number(r.place),cat=String(r.category||'').toUpperCase();
-    const ps=placingTables[g]?.[cat]?.[place-1];
-    if(!Number.isFinite(rs)||rs<=0||!Number.isFinite(place)||ps==null)return null;
-    return {...r,type,resultScore:rs,placingScore:ps,score:rs+ps};
-  }
-  function basisFor(code){
-    const needed=req[group(code)];
-    const candidates=allResults.map(r=>candidate(r,code)).filter(Boolean).sort((a,b)=>b.score-a.score);
-    if(group(code)==='combined'){
-      const mains=candidates.filter(x=>x.type==='main');
-      const selected=[];
-      if(mains.length)selected.push(mains[0]);
-      for(const x of candidates){if(selected.length>=needed)break;if(!selected.includes(x))selected.push(x);}
-      if(selected.length<needed)return {selected,candidates,needed,complete:false};
-      return {selected,needed,complete:true,rankingScore:Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed)};
-    }
-    const selected=candidates.slice(0,needed);
-    return {selected,candidates,needed,complete:selected.length>=needed,rankingScore:selected.length>=needed?Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed):null};
-  }
-  function fillScores(basis){
-    setTimeout(()=>{
-      const scores=[...document.querySelectorAll('.existingScore')],types=[...document.querySelectorAll('.existingType')];
-      if(!scores.length)return;
-      scores.forEach(el=>el.value='');types.forEach(el=>el.value='main');
-      basis.selected.slice(0,scores.length).forEach((x,i)=>{scores[i].value=String(x.score);if(types[i])types[i].value=x.type;});
-      scores.forEach(el=>el.dispatchEvent(new Event('input',{bubbles:true})));
-    },140);
-  }
+  function candidate(r,code){const g=group(code),type=g==='combined'?combinedType(r.discipline,code):(exactMatch(r.discipline,code)?'main':null);if(!type||r.legal===false)return null;const rs=Number(r.resultScore),place=Number(r.place),cat=String(r.category||'').toUpperCase();const ps=placingTables[g]?.[cat]?.[place-1];if(!Number.isFinite(rs)||rs<=0||!Number.isFinite(place)||ps==null)return null;return {...r,type,resultScore:rs,placingScore:ps,score:rs+ps};}
+  function basisFor(code){const needed=req[group(code)];const candidates=allResults.map(r=>candidate(r,code)).filter(Boolean).sort((a,b)=>b.score-a.score);if(group(code)==='combined'){const mains=candidates.filter(x=>x.type==='main');const selected=[];if(mains.length)selected.push(mains[0]);for(const x of candidates){if(selected.length>=needed)break;if(!selected.includes(x))selected.push(x);}if(selected.length<needed)return {selected,candidates,needed,complete:false};return {selected,needed,complete:true,rankingScore:Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed)};}const selected=candidates.slice(0,needed);return {selected,candidates,needed,complete:selected.length>=needed,rankingScore:selected.length>=needed?Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed):null};}
+  function fillScores(basis){setTimeout(()=>{const scores=[...document.querySelectorAll('.existingScore')],types=[...document.querySelectorAll('.existingType')];if(!scores.length)return;scores.forEach(el=>el.value='');types.forEach(el=>el.value='main');basis.selected.slice(0,scores.length).forEach((x,i)=>{scores[i].value=String(x.score);if(types[i])types[i].value=x.type;});scores.forEach(el=>el.dispatchEvent(new Event('input',{bubbles:true})));},140);}
   function renderBasis(basis){
     if(!waDetails)return;
     const old=document.getElementById('autoRankingBasisAllEvents');if(old)old.remove();
     const box=document.createElement('div');box.id='autoRankingBasisAllEvents';
     const label=eventSelect.options[eventSelect.selectedIndex]?.textContent||eventSelect.value;
-
     let leftHtml='';
-    if(!basis.selected.length){
-      leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br><span class="muted">Ingen gyldige WA-resultater med Result Score og Placing Score funnet i de siste tre sesongene.</span>`;
-    }else{
-      const rows=basis.selected.map(x=>`${x.mark??''} ${x.discipline} · ${x.resultScore} Result Score + ${x.placingScore} Placing Score = <strong>${x.score} Performance Score</strong>${x.type==='similar'?' (Similar Event)':''}`).join('<br>');
+    if(!basis.selected.length){leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br><span class="muted">Ingen gyldige WA-resultater med Result Score og Placing Score funnet i de siste tre sesongene.</span>`;}
+    else{
+      const rows=basis.selected.map(x=>{const badge=x.type==='similar'?'<span class="event-type-badge event-type-similar">Similar Event</span>':'<span class="event-type-badge event-type-main">Main Event</span>';return `${x.mark??''} ${x.discipline} · ${x.resultScore} Result Score + ${x.placingScore} Placing Score = <strong>${x.score} Performance Score</strong>${badge}`;}).join('<br>');
       const status=basis.complete?'':`<br><span class="muted">Fant ${basis.selected.length} av ${basis.needed} nødvendige tellende resultater.</span>`;
       leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br>${rows}${status}`;
     }
-
-    const rightHtml=basis.complete
-      ? `<div class="ranking-score-card"><div class="ranking-score-label">RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div><div class="ranking-score-note">Basert på de ${basis.needed} beste tellende Performance Scores.</div></div>`
-      : '';
-
-    box.innerHTML=`<div class="ranking-basis-left">${leftHtml}</div>${rightHtml}`;
-    waDetails.appendChild(box);waDetails.style.display='block';
+    const rightHtml=basis.complete?`<div class="ranking-score-card"><div class="ranking-score-label">RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div><div class="ranking-score-note">Basert på de ${basis.needed} beste tellende Performance Scores.</div></div>`:'';
+    box.innerHTML=`<div class="ranking-basis-left">${leftHtml}</div>${rightHtml}`;waDetails.appendChild(box);waDetails.style.display='block';
   }
   function refresh(){if(!allResults.length)return;const b=basisFor(eventSelect.value);fillScores(b);setTimeout(()=>renderBasis(b),180);}
-  async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){refresh();return;}loading=true;try{const res=await fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=092`,{cache:'no-store'});const data=await res.json();if(data?.ok&&Array.isArray(data.results)){currentId=String(id);allResults=data.results;refresh();}}catch(_){}finally{loading=false;}}
+  async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){refresh();return;}loading=true;try{const res=await fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=095`,{cache:'no-store'});const data=await res.json();if(data?.ok&&Array.isArray(data.results)){currentId=String(id);allResults=data.results;refresh();}}catch(_){}finally{loading=false;}}
   function idFromInput(){return waInput.value.trim().match(/(\d{7,9})/)?.[1]||'';}
-
-  eventSelect.addEventListener('change',()=>setTimeout(refresh,220));
-  sex.addEventListener('change',()=>setTimeout(refresh,260));
-  waInput.addEventListener('change',()=>load(idFromInput()));
-  if(waStatus){new MutationObserver(()=>{const id=idFromInput();if(id)setTimeout(()=>load(id),50);}).observe(waStatus,{childList:true,subtree:true,characterData:true});}
-  const initial=idFromInput();if(initial)setTimeout(()=>load(initial),400);
+  eventSelect.addEventListener('change',()=>setTimeout(refresh,220));sex.addEventListener('change',()=>setTimeout(refresh,260));waInput.addEventListener('change',()=>load(idFromInput()));if(waStatus){new MutationObserver(()=>{const id=idFromInput();if(id)setTimeout(()=>load(id),50);}).observe(waStatus,{childList:true,subtree:true,characterData:true});}const initial=idFromInput();if(initial)setTimeout(()=>load(initial),400);
 })();
