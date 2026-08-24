@@ -91,15 +91,45 @@ async function fetchRankingScores(name, sex, rankings){
       if(!res.ok) continue;
       const html=await res.text();
       const text=decode(html.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' '));
-      const idx=text.toLowerCase().indexOf(name.toLowerCase());
+      const hay=normalizeName(text);
+      const needle=normalizeName(name);
+      const idx=hay.indexOf(needle);
       if(idx<0) continue;
-      const window=text.slice(idx,idx+350);
+
+      // Use the normalized-text index only as an anchor. Then inspect a broad raw-text window
+      // around all plausible occurrences of the athlete surname/last token.
+      const lastToken=normalizeName(name).split(' ').filter(Boolean).pop() || '';
+      const rawLower=normalizeName(text);
+      let rawIdx=lastToken ? rawLower.indexOf(lastToken) : -1;
+      if(rawIdx<0) rawIdx=idx;
+      const window=text.slice(Math.max(0,rawIdx-180), rawIdx+520);
       const eventPattern=r.event==='Decathlon' ? 'Decathlon' : r.event==='Heptathlon' ? 'Heptathlon' : r.event.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-      const m=window.match(new RegExp(`\\b(9\\d{2}|1[0-5]\\d{2})\\b\\s+${eventPattern}`,'i'));
+
+      let m=window.match(new RegExp(`\\b(9\\d{2}|1[0-5]\\d{2})\\b\\s+(?:${eventPattern}|${eventPattern}\\s*\\[)`,'i'));
+      if(!m){
+        // Fallback: on WA ranking tables the score sits after DOB/country and before Event List.
+        const nums=[...window.matchAll(/\b(9\d{2}|1[0-5]\d{2})\b/g)].map(x=>Number(x[1]));
+        const plausible=nums.find(v=>v>=900 && v<=1600);
+        if(plausible) m=[String(plausible),String(plausible)];
+      }
       if(m) out.push({event:r.event,rank:r.rank,score:Number(m[1]),url:rankingUrl});
     }catch(_){ }
   }
   return out;
+}
+
+function normalizeName(s){
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .replace(/Ø/g,'O').replace(/ø/g,'o')
+    .replace(/Æ/g,'AE').replace(/æ/g,'ae')
+    .replace(/Å/g,'A').replace(/å/g,'a')
+    .replace(/[‐‑‒–—-]/g,' ')
+    .replace(/[^a-zA-Z0-9 ]+/g,' ')
+    .replace(/\s+/g,' ')
+    .trim()
+    .toLowerCase();
 }
 
 function parseRankings(text){
