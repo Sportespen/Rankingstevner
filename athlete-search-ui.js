@@ -1,10 +1,18 @@
-// Rankingstevner v0.8.7 – egen klientstyrt søkeflyt
+// Rankingstevner v0.8.8 – isolert klientstyrt søkeflyt
 (function () {
   const input = document.getElementById('athleteNameSearch');
-  const box = document.getElementById('athleteSearchResults');
+  let box = document.getElementById('athleteSearchResults');
   const waId = document.getElementById('waProfileId');
   const load = document.getElementById('loadWaProfile');
   if (!input || !box || !waId || !load) return;
+
+  // Viktig: den gamle v0.8.6-koden har en MutationObserver på det opprinnelige
+  // resultatfeltet. Den observeren kan trigge seg selv i en endeløs løkke.
+  // Bytt derfor ut selve DOM-noden. Den gamle observeren blir hengende på en
+  // frakoblet node, mens denne søkemotoren får et rent resultatfelt.
+  const cleanBox = box.cloneNode(false);
+  box.replaceWith(cleanBox);
+  box = cleanBox;
 
   const INDEX_KEY = 'rankingstevner.athleteIndex.v2';
   const seed = [
@@ -95,7 +103,7 @@
     const controller=new AbortController();
     const timeout=setTimeout(()=>controller.abort(),1800);
     try{
-      const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=087`,{cache:'no-store',signal:controller.signal});
+      const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=088`,{cache:'no-store',signal:controller.signal});
       const data=await res.json();
       if(myRequest!==requestNo || input.value.trim()!==q) return;
       const remote=Array.isArray(data?.results)?data.results:[];
@@ -105,15 +113,20 @@
     }finally{ clearTimeout(timeout); }
   }
 
-  // Capture: overstyr gammel søkelogikk helt, slik at den ikke kan skrive "Søker…" over raske treff.
+  // Capture gjør at den gamle input-handleren aldri får kjøre.
   input.addEventListener('input',(ev)=>{
     ev.stopImmediatePropagation();
     clearTimeout(timer);
     const q=input.value.trim();
     requestNo++;
-    if(q.length<2){ box.style.display='none'; box.innerHTML=''; return; }
+    if(q.length<1){ box.style.display='none'; box.innerHTML=''; return; }
+
+    // Lokale kjente treff vises allerede fra første bokstav. Ingen nettverkskall
+    // gjøres før to tegn er skrevet.
     const local=localMatches(q);
-    if(local.length) render(local); else render([], 'Søker…');
+    if(local.length) render(local); else if(q.length>=2) render([], 'Søker…'); else { box.style.display='none'; box.innerHTML=''; }
+    if(q.length<2) return;
+
     const myRequest=requestNo;
     timer=setTimeout(()=>remoteSearch(q,local,myRequest),180);
   },true);
