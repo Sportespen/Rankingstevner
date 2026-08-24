@@ -75,24 +75,12 @@
 
 (function(){
   function loadBasis(){
-    if(document.querySelector('script[data-ranking-basis-v091]'))return;
+    if(document.querySelector('script[data-ranking-basis-v092]'))return;
     const s=document.createElement('script');
-    s.src='ranking-basis.js?v=091';
-    s.dataset.rankingBasisV091='1';
+    s.src='ranking-basis.js?v=092';
+    s.dataset.rankingBasisV092='1';
     document.head.appendChild(s);
   }
   if(document.readyState==='complete')setTimeout(loadBasis,0);
   else window.addEventListener('load',()=>setTimeout(loadBasis,0),{once:true});
-})();
-
-(function(){
-  function loadRankingCard(){
-    if(document.querySelector('script[data-ranking-score-card-v092]'))return;
-    const s=document.createElement('script');
-    s.src='ranking-score-card.js?v=092';
-    s.dataset.rankingScoreCardV092='1';
-    document.head.appendChild(s);
-  }
-  if(document.readyState==='complete')setTimeout(loadRankingCard,0);
-  else window.addEventListener('load',()=>setTimeout(loadRankingCard,0),{once:true});
 })();
