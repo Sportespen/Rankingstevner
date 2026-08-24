@@ -1,1 +1,2 @@
 # Ingen redirect av forsiden. Cloudflare skal servere /index.html direkte.
+/trinn3-native.js /trinn3-v102.js 200
