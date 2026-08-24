@@ -21,15 +21,9 @@ export async function onRequestGet(context) {
     const title = decode(titleMatch ? titleMatch[1] : '');
     const name = title.replace(/\s*\|\s*Profile\s*\|\s*World Athletics.*$/i,'').trim();
 
-    const text = decode(
-      html
-        .replace(/<script[\s\S]*?<\/script>/gi,' ')
-        .replace(/<style[\s\S]*?<\/style>/gi,' ')
-        .replace(/<[^>]+>/g,' ')
-        .replace(/\s+/g,' ')
-    );
-
+    const text = htmlToText(html);
     const rankings = parseRankings(text);
+
     let sex = null;
     const sexSource = rankings[0]?.label || text.match(/#\d+\s+(Men(?:'|’)s|Woman(?:'|’)s|Women(?:'|’)s)\s+/)?.[1] || '';
     if (/^Men/i.test(sexSource)) sex = 'M';
@@ -58,87 +52,92 @@ async function fetchRankingScores(name, sex, rankings){
   if(!name || !sex || !Array.isArray(rankings)) return [];
   const sexPath = sex === 'W' ? 'women' : 'men';
   const slugMap = {
-    'Decathlon':'decathlon',
-    'Heptathlon':'heptathlon',
-    '100 Metres':'100m',
-    '200 Metres':'200m',
-    '400 Metres':'400m',
-    '800 Metres':'800m',
-    '1500 Metres':'1500m',
-    '5000 Metres':'5000m',
-    '10000 Metres':'10000m',
-    '110 Metres Hurdles':'110mh',
-    '100 Metres Hurdles':'100mh',
-    '400 Metres Hurdles':'400mh',
-    '3000 Metres Steeplechase':'3000msc',
-    'High Jump':'high-jump',
-    'Pole Vault':'pole-vault',
-    'Long Jump':'long-jump',
-    'Triple Jump':'triple-jump',
-    'Shot Put':'shot-put',
-    'Discus Throw':'discus-throw',
-    'Hammer Throw':'hammer-throw',
-    'Javelin Throw':'javelin-throw'
+    'Decathlon':'decathlon','Heptathlon':'heptathlon','100 Metres':'100m','200 Metres':'200m','400 Metres':'400m',
+    '800 Metres':'800m','1500 Metres':'1500m','5000 Metres':'5000m','10000 Metres':'10000m',
+    '110 Metres Hurdles':'110mh','100 Metres Hurdles':'100mh','400 Metres Hurdles':'400mh',
+    '3000 Metres Steeplechase':'3000msc','High Jump':'high-jump','Pole Vault':'pole-vault',
+    'Long Jump':'long-jump','Triple Jump':'triple-jump','Shot Put':'shot-put','Discus Throw':'discus-throw',
+    'Hammer Throw':'hammer-throw','Javelin Throw':'javelin-throw'
   };
 
   const out=[];
-  const wantedName = normalizeName(name);
+  const wantedName=normalizeName(name);
 
   for(const r of rankings.slice(0,4)){
     const slug=slugMap[r.event];
     if(!slug) continue;
 
-    const page = Math.max(1, Math.ceil((Number(r.rank)||1)/100));
+    const page=Math.max(1,Math.ceil((Number(r.rank)||1)/100));
     const rankingUrl=`https://worldathletics.org/world-rankings/${slug}/${sexPath}?page=${page}`;
 
+    let text='';
     try{
-      const res=await fetch(rankingUrl,{
-        headers:{
-          'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.5',
-          'Accept':'text/html,application/xhtml+xml'
-        }
+      const direct=await fetch(rankingUrl,{
+        headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.5','Accept':'text/html,application/xhtml+xml'}
       });
-      if(!res.ok) continue;
-
-      const html=await res.text();
-      const text=decode(
-        html
-          .replace(/<script[\s\S]*?<\/script>/gi,' ')
-          .replace(/<style[\s\S]*?<\/style>/gi,' ')
-          .replace(/<[^>]+>/g,' ')
-          .replace(/\s+/g,' ')
-      );
-
-      const rank = Number(r.rank);
-      if(!Number.isFinite(rank)) continue;
-
-      // Finn raden ved å bruke den kjente plasseringen fra utøverprofilen som anker.
-      const rankRe = new RegExp(`(?:^|\\s)${rank}\\s+`,'g');
-      let match;
-      let found = null;
-
-      while((match = rankRe.exec(text))){
-        const row = text.slice(match.index, match.index + 420);
-        if(!normalizeName(row).includes(wantedName)) continue;
-
-        // WA-tabellen har rekkefølgen: plass, navn, fødselsdato, land, Score, Event List.
-        const eventLabel = r.event === 'Decathlon' ? 'Decathlon' : r.event === 'Heptathlon' ? 'Heptathlon' : r.event;
-        const eventPos = row.toLowerCase().lastIndexOf(eventLabel.toLowerCase());
-        const scoreArea = eventPos > 0 ? row.slice(0,eventPos) : row;
-        const nums = [...scoreArea.matchAll(/\b(9\d{2}|1[0-5]\d{2})\b/g)].map(m=>Number(m[1]));
-        const score = nums.length ? nums[nums.length-1] : null;
-
-        if(score && score >= 900 && score <= 1600){
-          found = {event:r.event,rank:r.rank,score,url:rankingUrl};
-          break;
-        }
-      }
-
-      if(found) out.push(found);
+      if(direct.ok) text=htmlToText(await direct.text());
     }catch(_){ }
+
+    // WA can serve an anti-bot shell to server-side fetches. If the actual table is not present,
+    // use a text-reader fallback and still parse the official World Athletics page content.
+    if(!normalizeName(text).includes(wantedName)){
+      try{
+        const readerUrl=`https://r.jina.ai/https://worldathletics.org/world-rankings/${slug}/${sexPath}?page=${page}`;
+        const reader=await fetch(readerUrl,{
+          headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.5','Accept':'text/plain'}
+        });
+        if(reader.ok) text=decode(await reader.text()).replace(/\s+/g,' ');
+      }catch(_){ }
+    }
+
+    if(!text) continue;
+    const found=findRankingRow(text,r,name);
+    if(found) out.push({...found,url:rankingUrl});
   }
 
   return out;
+}
+
+function findRankingRow(text,r,name){
+  const rank=Number(r.rank);
+  if(!Number.isFinite(rank)) return null;
+  const wantedName=normalizeName(name);
+
+  // Markdown table form from reader fallback: 83 | Jonathan ... | DOB | ... | 1120 | Decathlon
+  const lines=String(text).split(/\n|\r/).map(s=>s.trim()).filter(Boolean);
+  for(const line of lines){
+    const n=normalizeName(line);
+    if(!n.includes(wantedName)) continue;
+    if(!new RegExp(`(^|\\D)${rank}(\\D|$)`).test(line)) continue;
+    const nums=[...line.matchAll(/\b(9\d{2}|1[0-5]\d{2})\b/g)].map(m=>Number(m[1]));
+    if(nums.length){
+      const score=nums[nums.length-1];
+      if(score>=900&&score<=1600) return {event:r.event,rank:r.rank,score};
+    }
+  }
+
+  // Flattened HTML/text form.
+  const rankRe=new RegExp(`(?:^|\\s)${rank}\\s+`,'g');
+  let match;
+  while((match=rankRe.exec(text))){
+    const row=text.slice(match.index,match.index+520);
+    if(!normalizeName(row).includes(wantedName)) continue;
+    const eventLabel=r.event==='Decathlon'?'Decathlon':r.event==='Heptathlon'?'Heptathlon':r.event;
+    const eventPos=row.toLowerCase().lastIndexOf(eventLabel.toLowerCase());
+    const scoreArea=eventPos>0?row.slice(0,eventPos):row;
+    const nums=[...scoreArea.matchAll(/\b(9\d{2}|1[0-5]\d{2})\b/g)].map(m=>Number(m[1]));
+    const score=nums.length?nums[nums.length-1]:null;
+    if(score&&score>=900&&score<=1600) return {event:r.event,rank:r.rank,score};
+  }
+  return null;
+}
+
+function htmlToText(html){
+  return decode(String(html||'')
+    .replace(/<script[\s\S]*?<\/script>/gi,' ')
+    .replace(/<style[\s\S]*?<\/style>/gi,' ')
+    .replace(/<[^>]+>/g,' ')
+    .replace(/\s+/g,' '));
 }
 
 function normalizeName(s){
@@ -156,11 +155,7 @@ function normalizeName(s){
 }
 
 function parseRankings(text){
-  const eventNames = [
-    'Decathlon','Heptathlon','100 Metres','200 Metres','400 Metres','800 Metres','1500 Metres','5000 Metres','10000 Metres',
-    '110 Metres Hurdles','100 Metres Hurdles','400 Metres Hurdles','3000 Metres Steeplechase',
-    'High Jump','Pole Vault','Long Jump','Triple Jump','Shot Put','Discus Throw','Hammer Throw','Javelin Throw'
-  ];
+  const eventNames=['Decathlon','Heptathlon','100 Metres','200 Metres','400 Metres','800 Metres','1500 Metres','5000 Metres','10000 Metres','110 Metres Hurdles','100 Metres Hurdles','400 Metres Hurdles','3000 Metres Steeplechase','High Jump','Pole Vault','Long Jump','Triple Jump','Shot Put','Discus Throw','Hammer Throw','Javelin Throw'];
   const out=[];
   for(const event of eventNames){
     const esc=event.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
@@ -174,11 +169,7 @@ function parseRankings(text){
 function parsePersonalBests(text){
   const section=(text.split(/Personal bests/i)[1] || '').split(/Season(?:'|’)s bests/i)[0] || '';
   if(!section) return [];
-  const eventNames = [
-    'Decathlon','Heptathlon','Heptathlon Short Track','100 Metres','200 Metres','400 Metres','800 Metres','1500 Metres','5000 Metres','10000 Metres',
-    '60 Metres','60 Metres Hurdles','110 Metres Hurdles','100 Metres Hurdles','400 Metres Hurdles','3000 Metres Steeplechase',
-    'High Jump','Pole Vault','Long Jump','Triple Jump','Shot Put','Discus Throw','Hammer Throw','Javelin Throw'
-  ];
+  const eventNames=['Decathlon','Heptathlon','Heptathlon Short Track','100 Metres','200 Metres','400 Metres','800 Metres','1500 Metres','5000 Metres','10000 Metres','60 Metres','60 Metres Hurdles','110 Metres Hurdles','100 Metres Hurdles','400 Metres Hurdles','3000 Metres Steeplechase','High Jump','Pole Vault','Long Jump','Triple Jump','Shot Put','Discus Throw','Hammer Throw','Javelin Throw'];
   const found=[];
   for(const event of eventNames){
     const esc=event.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
@@ -191,24 +182,11 @@ function parsePersonalBests(text){
 
 function decode(s){
   return String(s)
-    .replace(/&amp;/g,'&')
-    .replace(/&quot;/g,'"')
-    .replace(/&#39;/g,"'")
-    .replace(/&nbsp;/g,' ')
-    .replace(/&Oslash;/g,'Ø')
-    .replace(/&oslash;/g,'ø')
-    .replace(/&AElig;/g,'Æ')
-    .replace(/&aelig;/g,'æ')
-    .replace(/&Aring;/g,'Å')
-    .replace(/&aring;/g,'å');
+    .replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&nbsp;/g,' ')
+    .replace(/&Oslash;/g,'Ø').replace(/&oslash;/g,'ø').replace(/&AElig;/g,'Æ').replace(/&aelig;/g,'æ')
+    .replace(/&Aring;/g,'Å').replace(/&aring;/g,'å');
 }
 
 function json(body,status=200){
-  return new Response(JSON.stringify(body),{
-    status,
-    headers:{
-      'content-type':'application/json; charset=utf-8',
-      'cache-control':'no-store'
-    }
-  });
+  return new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}});
 }
