@@ -17,7 +17,7 @@ export async function onRequestGet(context){
 
   try{
     const athleteRes=await fetch(`https://worldathletics.nimarion.de/athletes/${id}`,{
-      headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.19.5','Accept':'application/json'}
+      headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.19.6','Accept':'application/json'}
     });
     const athlete=athleteRes.ok?await athleteRes.json():null;
     if(!athlete) return json({ok:false,error:'Kunne ikke hente WA-profil'},502);
@@ -35,21 +35,23 @@ export async function onRequestGet(context){
 
     let text='';
     let readerStatus=null;
+    let directStatus=null;
     try{
-      const rr=await fetch(readerUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.19.5','Accept':'text/plain'}});
+      const rr=await fetch(readerUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.19.6','Accept':'text/plain'}});
       readerStatus=rr.status;
       if(rr.ok) text=await rr.text();
     }catch(_){ }
 
     if(!text){
       try{
-        const direct=await fetch(rankingUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.19.5','Accept':'text/html,application/xhtml+xml'}});
+        const direct=await fetch(rankingUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.19.6','Accept':'text/html,application/xhtml+xml'}});
+        directStatus=direct.status;
         if(direct.ok) text=htmlToLines(await direct.text());
       }catch(_){ }
     }
 
     const score=findScore(text,name,rank);
-    return json({ok:true,id:Number(id),event,name,rank,score,source:'World Athletics',rankingUrl,diagnostics:{readerStatus,page}});
+    return json({ok:true,id:Number(id),event,name,rank,score,source:'World Athletics',rankingUrl,diagnostics:{readerStatus,directStatus,page,textLength:text.length}});
   }catch(e){
     return json({ok:false,error:'Kunne ikke hente offisiell WA Ranking Score',detail:String(e?.message||e)},502);
   }
@@ -65,18 +67,44 @@ function rankingEventMatches(eventGroup,code){
 }
 function norm(s){return String(s||'').toLowerCase().replace(/metres?|meters?/g,'m').replace(/women'?s|woman'?s|men'?s/g,'').replace(/short track/g,'sh').replace(/[^a-z0-9]+/g,'');}
 function normalizeName(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/Ø/g,'O').replace(/ø/g,'o').replace(/Æ/g,'AE').replace(/æ/g,'ae').replace(/Å/g,'A').replace(/å/g,'a').replace(/[‐‑‒–—-]/g,' ').replace(/[^a-zA-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim().toLowerCase();}
+function scoreCandidates(fragment,knownRank){
+  return [...String(fragment||'').matchAll(/\b(\d{3,4})\b/g)]
+    .map(m=>Number(m[1]))
+    .filter(v=>v>=500&&v<=1800&&v!==knownRank&&!(v>=1900&&v<=2100));
+}
 function findScore(text,name,knownRank){
   if(!text||!name)return null;
   const wanted=normalizeName(name);
   const lines=String(text).split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-  const matching=lines.filter(line=>normalizeName(line).includes(wanted));
-  for(const line of matching){
-    const nums=[...line.matchAll(/\b(\d{3,4})\b/g)].map(m=>Number(m[1]));
-    const scores=nums.filter(v=>v>=500&&v<=1800);
-    if(scores.length){
-      // Fødselsår (19xx/20xx) faller utenfor scoreintervallet. Ranking Score står derfor igjen.
-      const exact=scores.filter(v=>v!==knownRank);
-      if(exact.length) return exact[exact.length-1];
+
+  // Normal WA/Jina tabell: hele utøverraden på én linje.
+  for(const line of lines){
+    if(!normalizeName(line).includes(wanted)) continue;
+    const scores=scoreCandidates(line,knownRank);
+    if(scores.length) return scores[scores.length-1];
+  }
+
+  // Jina kan dele en tabellrad over flere linjer. Finn navnelinjen og les et lite
+  // vindu rundt den. Fødselsår filtreres eksplisitt bort; rank < 500 faller bort.
+  for(let i=0;i<lines.length;i++){
+    if(!normalizeName(lines[i]).includes(wanted)) continue;
+    const block=lines.slice(Math.max(0,i-3),Math.min(lines.length,i+7)).join(' | ');
+    const scores=scoreCandidates(block,knownRank);
+    if(scores.length) return scores[0];
+  }
+
+  // Siste fallback mot rå tekst når Markdown/formatering gjør linjedelingen ubrukelig.
+  const parts=wanted.split(' ').filter(Boolean);
+  if(parts.length){
+    const raw=String(text);
+    const lower=normalizeName(raw);
+    const idx=lower.indexOf(wanted);
+    if(idx>=0){
+      // Normalisering endrer lengder noe, så bruk et romslig utdrag av råteksten.
+      const rough=Math.max(0,Math.min(raw.length,idx));
+      const window=raw.slice(Math.max(0,rough-400),Math.min(raw.length,rough+1200));
+      const scores=scoreCandidates(window,knownRank);
+      if(scores.length) return scores[0];
     }
   }
   return null;
