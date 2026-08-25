@@ -2,120 +2,44 @@
 (function(){
   function loadSearch(){
     if(document.querySelector('script[data-ranking-search-v090]'))return;
-    const s=document.createElement('script');
-    s.src='athlete-search-ui.js?v=090';
-    s.dataset.rankingSearchV090='1';
-    document.head.appendChild(s);
-  }
-  setTimeout(loadSearch,0);
+    const s=document.createElement('script');s.src='athlete-search-ui.js?v=090';s.dataset.rankingSearchV090='1';document.head.appendChild(s);
+  }setTimeout(loadSearch,0);
 })();
-
 (function(){
-  function loadBasis(){
-    if(document.querySelector('script[data-ranking-basis-v193]'))return;
-    const s=document.createElement('script');
-    s.src='ranking-basis.js?v=193';
-    s.dataset.rankingBasisV193='1';
-    document.head.appendChild(s);
-  }
-  setTimeout(loadBasis,0);
+  function loadLayout(){if(document.querySelector('script[data-ranking-layout-v016]'))return;const s=document.createElement('script');s.src='layout-v016.js?v=0160';s.dataset.rankingLayoutV016='1';document.head.appendChild(s);}setTimeout(loadLayout,0);
 })();
-
 (function(){
-  function loadLayout(){
-    if(document.querySelector('script[data-ranking-layout-v016]'))return;
-    const s=document.createElement('script');
-    s.src='layout-v016.js?v=0160';
-    s.dataset.rankingLayoutV016='1';
-    document.head.appendChild(s);
-  }
-  setTimeout(loadLayout,0);
+  function loadCombinedFix(){if(document.querySelector('script[data-combined-ranking-fix-v0163]'))return;const s=document.createElement('script');s.src='combined-ranking-fix.js?v=0163';s.dataset.combinedRankingFixV0163='1';document.head.appendChild(s);}setTimeout(loadCombinedFix,0);
 })();
-
 (function(){
-  function loadCombinedFix(){
-    if(document.querySelector('script[data-combined-ranking-fix-v0163]'))return;
-    const s=document.createElement('script');
-    s.src='combined-ranking-fix.js?v=0163';
-    s.dataset.combinedRankingFixV0163='1';
-    document.head.appendChild(s);
-  }
-  setTimeout(loadCombinedFix,0);
+  function loadProfileUx(){if(document.querySelector('script[data-profile-ux-v0165]'))return;const s=document.createElement('script');s.src='profile-ux-v0165.js?v=0165';s.dataset.profileUxV0165='1';document.head.appendChild(s);}setTimeout(loadProfileUx,0);
 })();
-
 (function(){
-  function loadProfileUx(){
-    if(document.querySelector('script[data-profile-ux-v0165]'))return;
-    const s=document.createElement('script');
-    s.src='profile-ux-v0165.js?v=0165';
-    s.dataset.profileUxV0165='1';
-    document.head.appendChild(s);
-  }
-  setTimeout(loadProfileUx,0);
+  function loadGenderReset(){if(document.querySelector('script[data-gender-reset-v0166]'))return;const s=document.createElement('script');s.src='gender-reset.js?v=0166';s.dataset.genderResetV0166='1';document.head.appendChild(s);}setTimeout(loadGenderReset,0);
 })();
-
 (function(){
-  function loadGenderReset(){
-    if(document.querySelector('script[data-gender-reset-v0166]'))return;
-    const s=document.createElement('script');
-    s.src='gender-reset.js?v=0166';
-    s.dataset.genderResetV0166='1';
-    document.head.appendChild(s);
-  }
-  setTimeout(loadGenderReset,0);
+  function loadRankingBasisReset(){if(document.querySelector('script[data-ranking-basis-reset-v0168]'))return;const s=document.createElement('script');s.src='ranking-basis-reset-v0168.js?v=0168';s.dataset.rankingBasisResetV0168='1';document.head.appendChild(s);}setTimeout(loadRankingBasisReset,0);
 })();
-
 (function(){
-  function loadRankingBasisReset(){
-    if(document.querySelector('script[data-ranking-basis-reset-v0168]'))return;
-    const s=document.createElement('script');
-    s.src='ranking-basis-reset-v0168.js?v=0168';
-    s.dataset.rankingBasisResetV0168='1';
-    document.head.appendChild(s);
-  }
-  setTimeout(loadRankingBasisReset,0);
+  const eventSelect=document.getElementById('event'),sex=document.getElementById('sex');if(!eventSelect||!sex)return;
+  function ensureCombinedEvent(){const code=sex.value==='W'?'Heptathlon':'Decathlon',label=sex.value==='W'?'Sjukamp':'Tikamp',other=sex.value==='W'?'Decathlon':'Heptathlon';const oldOther=eventSelect.querySelector(`option[value="${other}"]`);if(oldOther)oldOther.remove();if(!eventSelect.querySelector(`option[value="${code}"]`)){const opt=document.createElement('option');opt.value=code;opt.textContent=label;eventSelect.appendChild(opt);}}
+  setTimeout(ensureCombinedEvent,700);sex.addEventListener('change',()=>setTimeout(ensureCombinedEvent,80));
 })();
-
 (function(){
-  const eventSelect=document.getElementById('event');
-  const sex=document.getElementById('sex');
-  if(!eventSelect||!sex)return;
-  function ensureCombinedEvent(){
-    const code=sex.value==='W'?'Heptathlon':'Decathlon';
-    const label=sex.value==='W'?'Sjukamp':'Tikamp';
-    const other=sex.value==='W'?'Decathlon':'Heptathlon';
-    const oldOther=eventSelect.querySelector(`option[value="${other}"]`);
-    if(oldOther)oldOther.remove();
-    if(!eventSelect.querySelector(`option[value="${code}"]`)){
-      const opt=document.createElement('option');
-      opt.value=code;
-      opt.textContent=label;
-      eventSelect.appendChild(opt);
-    }
-  }
-  setTimeout(ensureCombinedEvent,700);
-  sex.addEventListener('change',()=>setTimeout(ensureCombinedEvent,80));
+  function removeDuplicateCombinedBox(){document.querySelectorAll('#waProfileDetails div').forEach(el=>{const strong=el.querySelector(':scope > strong');if(strong&&strong.textContent.trim().startsWith('Tellende Performance Scores:'))el.remove();});}
+  const details=document.getElementById('waProfileDetails');if(details)new MutationObserver(removeDuplicateCombinedBox).observe(details,{childList:true,subtree:true});setTimeout(removeDuplicateCombinedBox,200);
 })();
-
-(function(){
-  function removeDuplicateCombinedBox(){
-    document.querySelectorAll('#waProfileDetails div').forEach(el=>{
-      const strong=el.querySelector(':scope > strong');
-      if(strong && strong.textContent.trim().startsWith('Tellende Performance Scores:')) el.remove();
-    });
-  }
-  const details=document.getElementById('waProfileDetails');
-  if(details)new MutationObserver(removeDuplicateCombinedBox).observe(details,{childList:true,subtree:true});
-  setTimeout(removeDuplicateCombinedBox,200);
-})();
-
+// v0.19.8: Last offisiell WA-score først. Deretter får ranking-basis lov til å vise resultatgrunnlaget,
+// men aldri overstyre en offisiell score.
 (function(){
   function loadOfficialRanking(){
-    if(document.querySelector('script[data-official-ranking-v197]'))return;
-    const s=document.createElement('script');
-    s.src='official-ranking.js?v=197';
-    s.dataset.officialRankingV197='1';
-    document.head.appendChild(s);
+    if(document.querySelector('script[data-official-ranking-v198]'))return;
+    const s=document.createElement('script');s.src='official-ranking.js?v=198';s.dataset.officialRankingV198='1';document.head.appendChild(s);
+    s.addEventListener('load',()=>setTimeout(loadBasis,0));
+  }
+  function loadBasis(){
+    if(document.querySelector('script[data-ranking-basis-v198]'))return;
+    const s=document.createElement('script');s.src='ranking-basis.js?v=198';s.dataset.rankingBasisV198='1';document.head.appendChild(s);
   }
   setTimeout(loadOfficialRanking,0);
 })();
