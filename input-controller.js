@@ -27,10 +27,10 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 // Last inn det raske, generelle navnesøket etter at Trinn 3 har registrert sitt eldre søk.
 (() => {
   function loadFastAthleteSearch(){
-    if(document.querySelector('script[data-fast-athlete-search-v0171]')) return;
+    if(document.querySelector('script[data-fast-athlete-search-v0172]')) return;
     const s=document.createElement('script');
-    s.src='athlete-search-fast.js?v=0171';
-    s.dataset.fastAthleteSearchV0171='1';
+    s.src='athlete-search-fast.js?v=0172';
+    s.dataset.fastAthleteSearchV0172='1';
     document.head.appendChild(s);
   }
   setTimeout(loadFastAthleteSearch,0);
