@@ -1,4 +1,4 @@
-// Rankingstevner v0.16.3 – sikker Tikamp/Combined Events-beregning
+// Rankingstevner v0.22.3 – robust Result Score for mangekamp
 (() => {
   'use strict';
 
@@ -22,29 +22,34 @@
     [8703,1235],[8784,1248],[8804,1251],[8909,1268]
   ];
 
-  function interpolateScore(mark, anchors){
-    if(!Number.isFinite(mark)) return null;
-    if(mark <= anchors[0][0]){
-      const [x1,y1]=anchors[0], [x2,y2]=anchors[1];
-      return Math.round(y1 + (mark-x1)*(y2-y1)/(x2-x1));
-    }
-    for(let i=0;i<anchors.length-1;i++){
-      const [x1,y1]=anchors[i], [x2,y2]=anchors[i+1];
-      if(mark===x1) return y1;
-      if(mark>=x1 && mark<=x2){
-        return Math.round(y1 + (mark-x1)*(y2-y1)/(x2-x1));
-      }
-    }
-    const [x1,y1]=anchors[anchors.length-2], [x2,y2]=anchors[anchors.length-1];
-    return Math.round(y2 + (mark-x2)*(y2-y1)/(x2-x1));
-  }
-
   function parseCombinedMark(raw){
     const s=String(raw ?? '').trim().replace(',','.');
     if(!s) return null;
     const n=Number(s);
     return Number.isFinite(n) ? n : null;
   }
+
+  function interpolate(mark, rows){
+    if(!Number.isFinite(mark) || !Array.isArray(rows) || rows.length < 2) return null;
+    const clean=rows
+      .map(r=>[Number(r[0]),Number(r[1])])
+      .filter(r=>Number.isFinite(r[0])&&Number.isFinite(r[1]))
+      .sort((a,b)=>a[1]-b[1]);
+    if(clean.length<2) return null;
+    for(const [pts,m] of clean){ if(m===mark) return Math.round(pts); }
+    if(mark<=clean[0][1]){
+      const [p1,m1]=clean[0],[p2,m2]=clean[1];
+      return Math.round(p1+(mark-m1)*(p2-p1)/(m2-m1));
+    }
+    for(let i=0;i<clean.length-1;i++){
+      const [p1,m1]=clean[i],[p2,m2]=clean[i+1];
+      if(mark>=m1&&mark<=m2) return Math.round(p1+(mark-m1)*(p2-p1)/(m2-m1));
+    }
+    const [p1,m1]=clean[clean.length-2],[p2,m2]=clean[clean.length-1];
+    return Math.round(p2+(mark-m2)*(p2-p1)/(m2-m1));
+  }
+
+  function fallbackDecathlon(mark){ return interpolate(mark,decathlonAnchors.map(([m,p])=>[p,m])); }
 
   function install(){
     const event=document.getElementById('event');
@@ -59,46 +64,48 @@
 
     try{ if(typeof placingTables!=='undefined') placingTables.combined=combinedPlacing2026; }catch(_){ }
 
-    try{
-      const original=lookupScoreFor;
+    let originalLookup=null;
+    try{ originalLookup=lookupScoreFor; }catch(_){ }
+
+    if(originalLookup && !window.__combinedLookupPatched223){
+      window.__combinedLookupPatched223=true;
       window.lookupScoreFor=function(code,raw){
-        if(code==='Decathlon'){
-          const n=parseCombinedMark(raw);
-          return n===null ? null : interpolateScore(n,decathlonAnchors);
+        if(code==='Decathlon'||code==='Heptathlon'){
+          const markValue=parseCombinedMark(raw);
+          if(markValue===null) return null;
+          try{
+            const evt=(typeof scoringData!=='undefined' && typeof sex!=='undefined') ? scoringData?.[sex.value]?.[code] : null;
+            const fromTable=evt?.data ? interpolate(markValue,evt.data) : null;
+            if(Number.isFinite(fromTable)) return fromTable;
+          }catch(_){ }
+          if(code==='Decathlon') return fallbackDecathlon(markValue);
+          return null;
         }
-        return original(code,raw);
+        return originalLookup(code,raw);
       };
-    }catch(_){ }
+    }
 
     function placingScore(){
-      if(event.value!=='Decathlon' || !category.value || !placing.value) return null;
+      if(!category.value||!placing.value) return null;
       return combinedPlacing2026[category.value]?.[Number(placing.value)-1] ?? null;
     }
 
     function sync(){
-      if(event.value!=='Decathlon') return;
-      const n=parseCombinedMark(mark.value);
+      if(event.value!=='Decathlon'&&event.value!=='Heptathlon') return;
+      let rs=null;
+      try{ rs=lookupScoreFor(event.value,mark.value); }catch(_){ }
       const ps=placingScore();
-      if(n===null){
-        resultScore.value='';
-        resultOut.textContent='–';
-        placingOut.textContent=ps==null?'–':String(ps);
-        performanceOut.textContent='–';
-        return;
-      }
-      const rs=interpolateScore(n,decathlonAnchors);
-      resultScore.value=String(rs);
-      resultOut.textContent=String(rs);
+      resultScore.value=Number.isFinite(rs)?String(rs):'';
+      resultOut.textContent=Number.isFinite(rs)?String(rs):'–';
       placingOut.textContent=ps==null?'–':String(ps);
-      performanceOut.textContent=ps==null?'–':String(rs+ps);
+      performanceOut.textContent=Number.isFinite(rs)&&ps!=null?String(rs+ps):'–';
     }
 
     ['input','change'].forEach(type=>mark.addEventListener(type,()=>setTimeout(sync,0)));
     category.addEventListener('change',()=>setTimeout(sync,0));
     placing.addEventListener('change',()=>setTimeout(sync,0));
     event.addEventListener('change',()=>setTimeout(sync,50));
-    new MutationObserver(()=>setTimeout(sync,0)).observe(resultOut.parentElement.parentElement,{childList:true,subtree:true,characterData:true});
-    setTimeout(sync,200);
+    setTimeout(sync,250);
   }
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',install,{once:true});
