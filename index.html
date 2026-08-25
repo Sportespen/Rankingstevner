@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rankingstevner – prototype v0.12.4</title>
-  <link rel="stylesheet" href="style.css?v=124" />
+  <title>Rankingstevner – prototype v0.13.0</title>
+  <link rel="stylesheet" href="style.css?v=130" />
   <style>
     #legacyEventMeta,#legacyScores{display:none!important}
     #trinn3Native{margin-top:24px;padding-top:24px;border-top:1px solid #d9e5e1}
@@ -30,7 +30,7 @@
 <body>
   <header class="topbar">
     <div class="brand"><div class="logo">R</div><div><h1>Rankingstevner</h1><p>Finn stevnet som faktisk kan forbedre rankingen din</p></div></div>
-    <span class="badge">Prototype v0.12.4</span>
+    <span class="badge">Prototype v0.13.0</span>
   </header>
 
   <main>
@@ -92,10 +92,10 @@
         </div>
 
         <div id="windSection" class="grid" style="margin-top:14px;display:none">
-          <label>Vind (m/s)<input id="wind" type="text" inputmode="decimal" placeholder="f.eks. +2,4 eller -1,2" /><small>Skriv NWI hvis vind mangler.</small></label>
+          <label>Vind (m/s)<input id="wind" type="text" inputmode="decimal" placeholder="Velg + / − / NWI" /><small>Velg eksplisitt + for medvind, − for motvind eller NWI.</small></label>
           <label id="bljMarkLabel" style="display:none">Best Legal Jump<input id="bljMark" type="text" inputmode="decimal" placeholder="f.eks. 7,71" /><small>Brukes bare dersom sluttresultatet er vindassistert.</small></label>
           <label id="bljWindLabel" style="display:none">Vind på BLJ<input id="bljWind" type="text" inputmode="decimal" placeholder="maks +2,0" /><small>Må være ≤ +2,0 m/s.</small></label>
-          <label>Vindjustering<input id="windAdjustment" type="text" readonly value="0" /><small>Headwind gir tillegg, sterk medvind gir trekk.</small></label>
+          <label>Vindjustering<input id="windAdjustment" type="text" readonly value="–" /><small>Motvind gir tillegg, sterk medvind gir trekk.</small></label>
         </div>
         <div id="combinedWindSection" class="grid" style="margin-top:14px;display:none"><label>Vindstatus mangekamp<select id="combinedWindStatus"><option value="normal">Innenfor grensene</option><option value="excess">Minst én &gt; +4,0 og snitt &gt; +2,0</option><option value="nwi">Vindinfo mangler (NWI)</option></select><small>WA trekker 24 poeng ved de to siste tilfellene.</small></label></div>
 
@@ -118,7 +118,7 @@
         <div id="bljComparison" style="display:none;margin-top:16px;padding:16px;border:1px solid #cfe2dc;border-radius:12px;background:#fff"></div>
         <div id="improvement" class="improvement"></div><p id="currentRankingLine" class="muted"></p><p id="replaceInfo" class="muted"></p><p id="ruleInfo" class="muted"></p>
       </div>
-      <div class="notice"><strong>v0.12.4:</strong> Resultat, stevnekategori og plassering er toppjustert og står parallelt på samme linje.</div>
+      <div class="notice"><strong>v0.13.0:</strong> Versjonsvisningen er synkronisert. Vind krever eksplisitt +, − eller NWI før beregning.</div>
     </section>
 
     <section class="panel"><div class="section-head"><div><span class="eyebrow">STEVNEFINNER</span><h3>Aktuelle stevner i Europa</h3></div><span class="muted">Demodata</span></div><div class="filters"><select id="meetCategoryFilter"><option value="all">Alle kategorier</option><option value="GW">GW</option><option value="GL">GL</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option></select><select id="countryFilter"><option value="all">Alle land</option><option value="AUT">Østerrike</option><option value="FRA">Frankrike</option><option value="NOR">Norge</option><option value="FIN">Finland</option></select></div><div id="meetList" class="meet-list"></div></section>
@@ -126,15 +126,16 @@
   </main>
 
   <footer>Prototype – World Athletics World Ranking Rules 2026. Result Score-data: World Athletics Scoring Tables 2025.</footer>
-  <script src="app.js?v=124"></script>
-  <script src="blj-debug.js?v=124"></script>
-  <script src="wind-validation.js?v=124"></script>
-  <script src="athlete-profile.js?v=124"></script>
-  <script src="target-score.js?v=124"></script>
-  <script src="result-field.js?v=124"></script>
-  <script src="trinn3.js?v=124"></script>
+  <script src="app.js?v=130"></script>
+  <script src="blj-debug.js?v=130"></script>
+  <script src="wind-validation.js?v=130"></script>
+  <script src="athlete-profile.js?v=130"></script>
+  <script src="target-score.js?v=130"></script>
+  <script src="result-field.js?v=130"></script>
+  <script src="trinn3.js?v=130"></script>
+  <script src="input-controller.js?v=130"></script>
   <script>
-    (()=>{const badge=document.querySelector('.badge');if(badge)badge.textContent='Prototype v0.12.4';document.title='Rankingstevner – prototype v0.12.4';const profileInputs=[...document.querySelectorAll('#profileName')];profileInputs.slice(1).forEach(input=>input.closest('.existing')?.remove());const waBlocks=[...document.querySelectorAll('#waProfileBlock')];waBlocks.slice(1).forEach(block=>block.remove());})();
+    (()=>{const badge=document.querySelector('.badge');if(badge)badge.textContent='Prototype v0.13.0';document.title='Rankingstevner – prototype v0.13.0';const profileInputs=[...document.querySelectorAll('#profileName')];profileInputs.slice(1).forEach(input=>input.closest('.existing')?.remove());const waBlocks=[...document.querySelectorAll('#waProfileBlock')];waBlocks.slice(1).forEach(block=>block.remove());})();
   </script>
 </body>
 </html>
