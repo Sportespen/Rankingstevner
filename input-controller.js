@@ -56,3 +56,14 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   }
   setTimeout(loadRankingEventMatchFix,0);
 })();
+
+(() => {
+  function loadRankingEffectWaFix(){
+    if(document.querySelector('script[data-ranking-effect-wa-fix-v0223]')) return;
+    const s=document.createElement('script');
+    s.src='ranking-effect-wa-fix.js?v=0223';
+    s.dataset.rankingEffectWaFixV0223='1';
+    document.head.appendChild(s);
+  }
+  setTimeout(loadRankingEffectWaFix,0);
+})();
