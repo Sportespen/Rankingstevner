@@ -1,4 +1,4 @@
-// Rankingstevner v0.20.0 – separat visning for offisiell WA-ranking
+// Rankingstevner v0.20.4 – separat visning for offisiell WA-ranking med diagnostikk
 (function(){
   'use strict';
   const eventSelect=document.getElementById('event');
@@ -20,7 +20,12 @@
   function validScore(v){const n=Number(v);return Number.isFinite(n)&&n>0;}
   function label(){return eventSelect.options[eventSelect.selectedIndex]?.textContent||eventSelect.value;}
   function renderLoading(){mount.innerHTML=`<strong>Rankinggrunnlag for ${label()}:</strong><br><span class="muted">Henter offisiell ranking fra World Athletics …</span>`;}
-  function renderNone(){mount.innerHTML=`<strong>Rankinggrunnlag for ${label()}:</strong><br><span class="muted">Ingen offisiell WA-ranking funnet for denne øvelsen.</span>`;window.__rankingstevnerOfficialRanking=null;}
+  function esc(s){return String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+  function renderNone(data){
+    const diag=esc(JSON.stringify(data?.diagnostics??data??{},null,2));
+    mount.innerHTML=`<strong>Rankinggrunnlag for ${label()}:</strong><br><span class="muted">Ingen offisiell WA-ranking funnet for denne øvelsen.</span><details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">WA-diagnostikk</summary><pre style="white-space:pre-wrap;word-break:break-word;font-size:12px;background:#f7f9fb;padding:10px;border-radius:8px;margin-top:8px">${diag}</pre></details>`;
+    window.__rankingstevnerOfficialRanking=null;
+  }
   function render(data){
     const score=Number(data.score),rank=Number(data.rank),heading=label();
     mount.innerHTML=`<div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:18px;align-items:stretch"><div><strong>Rankinggrunnlag for ${heading}:</strong><br>${Number.isFinite(rank)&&rank>0?`#${rank} · `:''}<strong>${score} Ranking Score</strong><br><br><strong>Offisielt rankinggrunnlag for ${heading}:</strong><br><span class="muted">Ranking Score og plassering er hentet fra World Athletics. Lokal beregning brukes bare når en ny prestasjon simuleres.</span></div><div style="background:#f7fbfa;border:1px solid #cfe2dc;border-radius:14px;padding:22px 18px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center"><div style="font-size:13px;letter-spacing:.12em;font-weight:900;color:#0f766e">OFFISIELL WA RANKING SCORE</div><div style="font-size:52px;line-height:1;font-weight:900;color:#0b4f4a;margin:14px 0 10px">${score}</div><div style="font-size:12px;color:#677585">Hentet fra World Athletics.</div></div></div>`;
@@ -28,7 +33,7 @@
   }
 
   async function fetchOnce(id,seq){
-    const res=await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(id)}&event=${encodeURIComponent(eventSelect.value)}&sex=${encodeURIComponent(sex.value)}&v=200&t=${Date.now()}`,{cache:'no-store'});
+    const res=await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(id)}&event=${encodeURIComponent(eventSelect.value)}&sex=${encodeURIComponent(sex.value)}&v=204&t=${Date.now()}`,{cache:'no-store'});
     const data=await res.json();
     if(seq!==requestSeq)return null;
     return data;
@@ -39,15 +44,17 @@
     if(!id){mount.innerHTML='';return;}
     const seq=++requestSeq;
     renderLoading();
+    let lastData=null;
     for(let attempt=0;attempt<3;attempt++){
       try{
         const data=await fetchOnce(id,seq);
+        lastData=data;
         if(seq!==requestSeq)return;
         if(data?.ok&&validScore(data?.score)){render(data);return;}
-      }catch(_){ }
+      }catch(e){lastData={ok:false,error:String(e?.message||e)};}
       if(attempt<2)await new Promise(r=>setTimeout(r,350*(attempt+1)));
     }
-    if(seq===requestSeq)renderNone();
+    if(seq===requestSeq)renderNone(lastData);
   }
 
   eventSelect.addEventListener('change',()=>setTimeout(load,80));
