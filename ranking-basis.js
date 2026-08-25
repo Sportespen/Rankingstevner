@@ -1,4 +1,4 @@
-// Rankingstevner v0.19.8 – automatisk resultatgrunnlag, men offisiell WA Ranking Score er fasit
+// Rankingstevner v0.21.2 – vis rekonstruert rankinggrunnlag også når offisiell WA-score finnes
 (function(){
   const eventSelect=document.getElementById('event');
   const sex=document.getElementById('sex');
@@ -21,6 +21,7 @@
       #autoRankingBasisAllEvents .event-type-main{background:#e7f6f2;color:#087f5b}
       #autoRankingBasisAllEvents .event-type-similar{background:#eef2f7;color:#526170}
       #autoRankingBasisAllEvents .subevent-note{font-size:11px;color:#677585;margin-left:6px}
+      #autoRankingBasisAllEvents .basis-note{font-size:12px;color:#677585;margin-top:8px;line-height:1.45}
       @media(max-width:850px){#autoRankingBasisAllEvents{grid-template-columns:1fr}.ranking-score-card{min-height:150px}}
     `;
     document.head.appendChild(style);
@@ -48,6 +49,7 @@
   function candidate(r,code){const g=group(code),type=g==='combined'?combinedType(r.discipline,code):(exactMatch(r.discipline,code)?'main':null);if(!type||r.legal===false||!validDate(r,code))return null;let rs=Number(r.resultScore);if((!Number.isFinite(rs)||rs<=0)&&g!=='combined')rs=scoreFromTable(code,r.mark);const place=Number(r.place),cat=String(r.category||'').toUpperCase();const ps=placingTables[g]?.[cat]?.[place-1];if(!Number.isFinite(rs)||rs<=0||!Number.isFinite(place)||ps==null)return null;return {...r,type,resultScore:rs,placingScore:ps,score:rs+ps};}
   function basisFor(code){const needed=req[group(code)];const candidates=allResults.map(r=>candidate(r,code)).filter(Boolean).sort((a,b)=>b.score-a.score);if(group(code)==='combined'){const validPairs=[];for(let i=0;i<candidates.length;i++)for(let j=i+1;j<candidates.length;j++){const pair=[candidates[i],candidates[j]];if(pair.some(x=>x.type==='main'))validPairs.push(pair);}if(!validPairs.length)return {selected:candidates.slice(0,needed),candidates,needed,complete:false};validPairs.sort((a,b)=>(b[0].score+b[1].score)-(a[0].score+a[1].score));const selected=validPairs[0].sort((a,b)=>b.score-a.score);return {selected,candidates,needed,complete:true,rankingScore:Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed)};}const selected=candidates.slice(0,needed);return {selected,candidates,needed,complete:selected.length>=needed,rankingScore:selected.length>=needed?Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed):null};}
   function fillScores(basis){setTimeout(()=>{const scores=[...document.querySelectorAll('.existingScore')],types=[...document.querySelectorAll('.existingType')];if(!scores.length)return;scores.forEach(el=>el.value='');types.forEach(el=>el.value='main');basis.selected.slice(0,scores.length).forEach((x,i)=>{scores[i].value=String(x.score);if(types[i])types[i].value=x.type;});scores.forEach(el=>el.dispatchEvent(new Event('input',{bubbles:true})));},140);}
+  function rowHtml(x){const badge=x.type==='similar'?'<span class="event-type-badge event-type-similar">Similar Event</span>':'<span class="event-type-badge event-type-main">Main Event</span>';const sub=x.source==='combined-event-subevent'?'<span class="subevent-note">fra mangekamp</span>':'';const meta=[x.date,x.competition].filter(Boolean).join(' · ');return `${x.mark??''} ${x.discipline} · ${x.resultScore} Result Score + ${x.placingScore} Placing Score = <strong>${x.score} Performance Score</strong>${badge}${sub}${meta?`<div class="basis-note">${meta}</div>`:''}`;}
 
   function renderBasis(basis){
     if(!waDetails)return;
@@ -58,29 +60,28 @@
     const label=eventSelect.options[eventSelect.selectedIndex]?.textContent||eventSelect.value;
     let leftHtml='';
     if(sameOfficial){
-      leftHtml=`<strong>Offisielt rankinggrunnlag for ${label}:</strong><br><span class="muted">Nåværende Ranking Score og plassering er hentet fra World Athletics. Lokal beregning brukes bare når en ny prestasjon simuleres.</span>`;
+      const rows=basis.selected.length?basis.selected.map(rowHtml).join('<br><br>'):'<span class="muted">Fant ikke nok resultatdetaljer til å rekonstruere grunnlaget.</span>';
+      const calc=basis.complete&&Number.isFinite(basis.rankingScore)?`<div class="basis-note">Rekonstruert snitt fra disse resultatene: <strong>${basis.rankingScore}</strong>. Offisiell WA Ranking Score er <strong>${Number(official.score)}</strong> og er fasit.</div>`:'';
+      leftHtml=`<strong>Rankinggrunnlag for ${label}:</strong><br>${rows}${calc}<div class="basis-note">Resultatene er hentet fra WA-resultatdata og koblet mot WA-tabellene for Result Score og Placing Score. Den publiserte WA Ranking Score overstyrer alltid denne rekonstruksjonen.</div>`;
     }else if(!basis.selected.length){
       leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br><span class="muted">Ingen gyldige WA-resultater funnet innenfor gjeldende rankingperiode.</span>`;
     }else{
-      const rows=basis.selected.map(x=>{const badge=x.type==='similar'?'<span class="event-type-badge event-type-similar">Similar Event</span>':'<span class="event-type-badge event-type-main">Main Event</span>';const sub=x.source==='combined-event-subevent'?'<span class="subevent-note">fra mangekamp</span>':'';return `${x.mark??''} ${x.discipline} · ${x.resultScore} Result Score + ${x.placingScore} Placing Score = <strong>${x.score} Performance Score</strong>${badge}${sub}`;}).join('<br>');
+      const rows=basis.selected.map(rowHtml).join('<br><br>');
       const status=basis.complete?'':`<br><span class="muted">Fant ${basis.selected.length} av ${basis.needed} nødvendige tellende resultater innenfor rankingperioden. Ingen gyldig Ranking Score ennå.</span>`;
       leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br>${rows}${status}`;
     }
     let rightHtml='';
     if(sameOfficial){
-      rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">OFFISIELL WA RANKING SCORE</div><div class="ranking-score-value">${Number(official.score)}</div><div class="ranking-score-note">Hentet fra World Athletics.</div></div>`;
+      rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">OFFISIELL WA RANKING SCORE</div><div class="ranking-score-value">${Number(official.score)}</div><div class="ranking-score-note">Verifisert mot World Athletics.</div></div>`;
     }else if(basis.complete){
-      const periodText=group(eventSelect.value)==='combined'?'18-månedersperioden':'rankingperioden';
       rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">BEREGNET RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div><div class="ranking-score-note">Midlertidig beregning. Ingen offisiell WA Ranking Score funnet.</div></div>`;
     }
     box.innerHTML=`<div class="ranking-basis-left">${leftHtml}</div>${rightHtml}`;waDetails.appendChild(box);waDetails.style.display='block';
-    // Hvis offisiell score kom etter denne renderingen, la official-ranking.js eie sluttvisningen.
-    setTimeout(()=>{if(window.__rankingstevnerOfficialRanking?.event===eventSelect.value&&typeof window.__rankingstevnerOfficialRanking.score==='number'){window.dispatchEvent(new CustomEvent('rankingbasisrendered'));}},0);
   }
   function refresh(){if(!allResults.length)return;const b=basisFor(eventSelect.value);fillScores(b);setTimeout(()=>renderBasis(b),180);}
-  async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){await ensureScoring();refresh();return;}loading=true;try{const [res]=await Promise.all([fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=198`,{cache:'no-store'}),ensureScoring()]);const data=await res.json();if(data?.ok&&Array.isArray(data.results)){currentId=String(id);allResults=data.results;refresh();}}catch(_){}finally{loading=false;}}
+  async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){await ensureScoring();refresh();return;}loading=true;try{const [res]=await Promise.all([fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=212`,{cache:'no-store'}),ensureScoring()]);const data=await res.json();if(data?.ok&&Array.isArray(data.results)){currentId=String(id);allResults=data.results;refresh();}}catch(_){}finally{loading=false;}}
   function idFromInput(){return waInput.value.trim().match(/(\d{7,9})/)?.[1]||'';}
-  eventSelect.addEventListener('change',()=>setTimeout(refresh,220));sex.addEventListener('change',()=>setTimeout(refresh,260));waInput.addEventListener('change',()=>load(idFromInput()));if(waStatus){new MutationObserver(()=>{const id=idFromInput();if(id)setTimeout(()=>load(id),50);}).observe(waStatus,{childList:true,subtree:true,characterData:true});}const initial=idFromInput();if(initial)setTimeout(()=>load(initial),400);
+  eventSelect.addEventListener('change',()=>setTimeout(refresh,220));sex.addEventListener('change',()=>setTimeout(refresh,260));waInput.addEventListener('change',()=>load(idFromInput()));if(waStatus){new MutationObserver(()=>{const id=idFromInput();if(id)setTimeout(()=>load(id),50);}).observe(waStatus,{childList:true,subtree:true,characterData:true});}window.addEventListener('rankingofficialloaded',()=>setTimeout(refresh,40));const initial=idFromInput();if(initial)setTimeout(()=>load(initial),400);
 })();
 
 (function(){function hideDuplicateScoreEditor(){const scoreInputs=document.getElementById('scoreInputs');const block=scoreInputs?.closest('.existing');if(block)block.style.display='none';}hideDuplicateScoreEditor();setTimeout(hideDuplicateScoreEditor,300);})();
