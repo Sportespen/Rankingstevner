@@ -1,4 +1,4 @@
-// Rankingstevner Trinn 3 v0.14.8 – skjul manuelt kjønnsvalg, bruk WA-profil
+// Rankingstevner Trinn 3 v0.14.9 – plassholdere utenfor dropdown + nullstill hele Ny prestasjon + navnesøk
 (() => {
   'use strict';
 
@@ -17,21 +17,6 @@
     return 'standard';
   }
 
-  function compactEventChoice(){
-    const sex=$('sex');
-    const eventChoice=document.querySelector('.event-choice');
-    if(!sex||!eventChoice) return;
-    const sexLabel=sex.closest('label');
-    if(sexLabel) sexLabel.style.display='none';
-    const heading=eventChoice.querySelector('h4');
-    if(heading) heading.textContent='Velg øvelse';
-    const grid=eventChoice.querySelector('.grid');
-    if(grid){
-      grid.style.gridTemplateColumns='minmax(220px,320px)';
-      grid.style.maxWidth='320px';
-    }
-  }
-
   function init(){
     const event=$('event'), category=$('category'), placing=$('placing'), resultScore=$('resultScore'), mark=$('mark');
     const wind=$('wind'), bljMark=$('bljMark'), bljWind=$('bljWind'), combinedWindStatus=$('combinedWindStatus');
@@ -39,8 +24,6 @@
     if(![event,category,placing,resultScore,mark,resultOut,placingOut,performanceOut].every(Boolean)){
       setTimeout(init,100); return;
     }
-
-    compactEventChoice();
 
     const realCategoryOptions=[...category.options].filter(o=>o.value!=='').map(o=>`<option value="${o.value}">${o.textContent}</option>`).join('');
     category.innerHTML='<option value="" disabled hidden>f.eks. A</option>'+realCategoryOptions;
@@ -115,6 +98,58 @@
       });
     }
 
+    function installVisibleNameSearch(){
+      const input=$('profileName');
+      const waInput=$('waProfileId');
+      const waButton=$('loadWaProfile');
+      if(!input || input.dataset.liveSearchInstalled==='1') return;
+      input.dataset.liveSearchInstalled='1';
+      const host=input.parentElement;
+      if(!host) return;
+      host.style.position='relative';
+      let results=$('profileNameSearchResults');
+      if(!results){
+        results=document.createElement('div');
+        results.id='profileNameSearchResults';
+        results.style.cssText='display:none;position:absolute;left:0;right:0;top:100%;z-index:50;background:#fff;border:1px solid #d5dfdf;border-radius:10px;box-shadow:0 10px 24px rgba(0,0,0,.10);max-height:320px;overflow:auto;margin-top:4px';
+        host.appendChild(results);
+      }
+      let timer=null, requestNo=0;
+      input.addEventListener('input',()=>{
+        const q=input.value.trim();
+        clearTimeout(timer);
+        if(q.length<2){results.style.display='none';results.innerHTML='';return;}
+        timer=setTimeout(async()=>{
+          const mine=++requestNo;
+          results.style.display='block';
+          results.innerHTML='<div style="padding:10px 12px;color:#677585">Søker…</div>';
+          try{
+            const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=149`,{cache:'no-store'});
+            const data=await res.json();
+            if(mine!==requestNo) return;
+            if(!data.ok) throw new Error(data.error||'Søk feilet');
+            if(!data.results?.length){results.innerHTML='<div style="padding:10px 12px;color:#677585">Ingen utøvere funnet.</div>';return;}
+            results.innerHTML=data.results.map((a,i)=>{
+              const full=`${a.firstName||''} ${a.lastName||''}`.trim();
+              const meta=[a.country,a.birthDate?String(a.birthDate).slice(0,10):'',`WA-ID ${a.id}`].filter(Boolean).join(' · ');
+              return `<button type="button" data-i="${i}" style="display:block;width:100%;padding:10px 12px;text-align:left;border:0;border-bottom:1px solid #edf2f0;background:#fff;cursor:pointer"><strong>${full||a.id}</strong><br><span style="color:#677585;font-size:12px">${meta}</span></button>`;
+            }).join('');
+            [...results.querySelectorAll('[data-i]')].forEach(btn=>btn.addEventListener('click',()=>{
+              const a=data.results[Number(btn.dataset.i)];
+              const full=`${a.firstName||''} ${a.lastName||''}`.trim();
+              input.value=full;
+              if(waInput) waInput.value=String(a.id);
+              results.style.display='none';
+              if(waButton) waButton.click();
+            }));
+          }catch(err){
+            if(mine===requestNo) results.innerHTML=`<div style="padding:10px 12px;color:#677585">Kunne ikke søke: ${err.message}</div>`;
+          }
+        },220);
+      });
+      document.addEventListener('click',e=>{if(e.target!==input&&!results.contains(e.target))results.style.display='none';});
+    }
+
     event.addEventListener('change',()=>{ category.value=''; rebuildPlacing(true); updateAfterEngine(); });
     category.addEventListener('change',()=>{ rebuildPlacing(true); updateAfterEngine(); });
     placing.addEventListener('change',update);
@@ -132,8 +167,9 @@
 
     rebuildPlacing(true);
     installResetButton();
+    installVisibleNameSearch();
     updateAfterEngine();
-    setTimeout(()=>{ compactEventChoice(); category.value=''; rebuildPlacing(true); installResetButton(); updateAfterEngine(); },400);
+    setTimeout(()=>{ category.value=''; rebuildPlacing(true); installResetButton(); installVisibleNameSearch(); updateAfterEngine(); },400);
   }
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true});
