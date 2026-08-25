@@ -1,4 +1,4 @@
-// Rankingstevner v0.17.1 – generelt og raskt navnesøk for alle utøvere
+// Rankingstevner v0.17.2 – raskt delnavnsøk med tidlig kandidatinnlasting
 (() => {
   'use strict';
 
@@ -7,8 +7,8 @@
     const waInput=document.getElementById('waProfileId');
     const waButton=document.getElementById('loadWaProfile');
     if(!input||!waInput||!waButton){setTimeout(boot,80);return;}
-    if(input.dataset.fastAthleteSearch==='1') return;
-    input.dataset.fastAthleteSearch='1';
+    if(input.dataset.fastAthleteSearch==='172') return;
+    input.dataset.fastAthleteSearch='172';
 
     const host=input.parentElement;
     if(!host) return;
@@ -23,7 +23,8 @@
 
     const pool=new Map();
     const responseCache=new Map();
-    let timer=null, requestNo=0, controller=null, visible=[];
+    const prefixRequests=new Map();
+    let timer=null, requestNo=0, exactController=null, visible=[];
 
     function norm(s){
       return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ø/g,'o').replace(/æ/g,'ae').replace(/å/g,'a').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
@@ -70,19 +71,38 @@
       box.style.display='block';
     }
 
-    async function remote(q,myRequest){
+    async function fetchQuery(q,signal){
       const key=norm(q);
-      if(responseCache.has(key)){
-        const list=responseCache.get(key); addToPool(list); render(localMatches(q)); return;
-      }
-      controller?.abort();
-      controller=new AbortController();
+      if(responseCache.has(key)) return responseCache.get(key);
+      const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=172`,{cache:'no-store',signal});
+      const data=await res.json();
+      const list=Array.isArray(data?.results)?data.results:[];
+      responseCache.set(key,list);
+      addToPool(list);
+      return list;
+    }
+
+    function preloadFirstToken(q){
+      const first=q.trim().split(/\s+/)[0]||'';
+      if(first.length<3) return;
+      const key=norm(first);
+      if(responseCache.has(key)||prefixRequests.has(key)) return;
+      const p=fetchQuery(first).catch(()=>[]).finally(()=>prefixRequests.delete(key));
+      prefixRequests.set(key,p);
+      p.then(()=>{
+        const current=input.value.trim();
+        if(!current) return;
+        const local=localMatches(current);
+        if(local.length) render(local);
+      });
+    }
+
+    async function remoteExact(q,myRequest){
+      exactController?.abort();
+      exactController=new AbortController();
       try{
-        const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=171`,{cache:'no-store',signal:controller.signal});
-        const data=await res.json();
+        await fetchQuery(q,exactController.signal);
         if(myRequest!==requestNo||input.value.trim()!==q)return;
-        const list=Array.isArray(data?.results)?data.results:[];
-        responseCache.set(key,list); addToPool(list);
         const ranked=localMatches(q);
         render(ranked,ranked.length?'':'Ingen utøvere funnet.');
       }catch(err){
@@ -91,17 +111,23 @@
       }
     }
 
-    // Capture-fasen stopper det eldre, tregere søket i trinn3.js.
+    // Stopper eldre søk og bruker vår egen raske kandidatbuffer.
     input.addEventListener('input',ev=>{
       ev.stopImmediatePropagation();
       clearTimeout(timer);
       const q=input.value.trim();
       requestNo++;
-      if(q.length<2){controller?.abort();render([]);return;}
+      if(q.length<2){exactController?.abort();render([]);return;}
+
+      // Viktig: så snart fornavnet er brukbart, hentes en bred kandidatliste én gang.
+      // Den forespørselen avbrytes ikke når brukeren fortsetter å skrive etternavnet.
+      preloadFirstToken(q);
+
       const local=localMatches(q);
       if(local.length)render(local);else render([],'Søker…');
+
       const mine=requestNo;
-      timer=setTimeout(()=>remote(q,mine),90);
+      timer=setTimeout(()=>remoteExact(q,mine),45);
     },true);
 
     document.addEventListener('click',e=>{if(e.target!==input&&!box.contains(e.target))box.style.display='none';});
