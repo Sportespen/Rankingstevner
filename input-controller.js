@@ -20,8 +20,6 @@
       return;
     }
 
-    // app.js har allerede koblet input-listener til originalWind. Vi beholder den skjult
-    // som datakilde for beregningsmotoren, men lar brukeren skrive i en klone uten denne listeneren.
     const visibleWind = originalWind.cloneNode(true);
     visibleWind.id = 'windVisible';
     originalWind.style.display = 'none';
@@ -52,21 +50,16 @@
       originalWind.value = visibleWind.value;
       const mod = windModLocal(visibleWind.value);
       windAdjustment.value = mod === null ? '–' : `${mod > 0 ? '+' : ''}${fmt(mod)}`;
-      // Viktig: ingen input/change-event på originalWind her.
-      // Dermed endres Result Score og Performance Score ikke før Beregn-knappen trykkes.
     }
 
     visibleWind.addEventListener('input', updateWindDisplayOnly);
     visibleWind.addEventListener('change', updateWindDisplayOnly);
 
-    // Ved øvelsesbytte nullstilles både synlig og intern vindverdi.
     event.addEventListener('change', () => {
       visibleWind.value = '';
       originalWind.value = '';
     });
 
-    // Når resultatet endres, app.js beregner basis Result Score uten vind dersom vindfeltet er tomt.
-    // Vi sørger for at intern vind holdes tom akkurat under denne beregningen, og gjenopprettes etterpå.
     function recalcBaseWithoutWind() {
       const savedWind = originalWind.value;
       originalWind.value = '';
@@ -77,12 +70,12 @@
       }
     }
 
-    mark.addEventListener('input', () => setTimeout(recalcBaseWithoutWind, 0));
-    category.addEventListener('change', () => setTimeout(recalcBaseWithoutWind, 0));
-    placing.addEventListener('change', () => setTimeout(recalcBaseWithoutWind, 0));
+    // Kjør synkront etter app.js sin mark-listener. Da er basis-score satt før Trinn 3 leser den.
+    mark.addEventListener('input', recalcBaseWithoutWind);
+    mark.addEventListener('change', recalcBaseWithoutWind);
+    category.addEventListener('change', recalcBaseWithoutWind);
+    placing.addEventListener('change', recalcBaseWithoutWind);
 
-    // Etter at app.js har kjørt sin eksisterende Beregn-handler, kopierer vi den justerte
-    // Result Score tilbake til scorekortene øverst.
     calculate.addEventListener('click', () => {
       originalWind.value = visibleWind.value;
       setTimeout(() => {
