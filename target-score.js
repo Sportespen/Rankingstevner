@@ -22,6 +22,17 @@
 })();
 
 (function(){
+  function loadLayout(){
+    if(document.querySelector('script[data-ranking-layout-v016]'))return;
+    const s=document.createElement('script');
+    s.src='layout-v016.js?v=0160';
+    s.dataset.rankingLayoutV016='1';
+    document.head.appendChild(s);
+  }
+  setTimeout(loadLayout,0);
+})();
+
+(function(){
   const eventSelect=document.getElementById('event');
   const sex=document.getElementById('sex');
   if(!eventSelect||!sex)return;
