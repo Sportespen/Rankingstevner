@@ -111,10 +111,10 @@
 
 (function(){
   function loadOfficialRanking(){
-    if(document.querySelector('script[data-official-ranking-v194]'))return;
+    if(document.querySelector('script[data-official-ranking-v195]'))return;
     const s=document.createElement('script');
-    s.src='official-ranking.js?v=194';
-    s.dataset.officialRankingV194='1';
+    s.src='official-ranking.js?v=195';
+    s.dataset.officialRankingV195='1';
     document.head.appendChild(s);
   }
   setTimeout(loadOfficialRanking,0);
