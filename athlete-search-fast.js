@@ -1,4 +1,4 @@
-// Rankingstevner v0.18.1 – rollback til stabil v0.17.7 navnesøklogikk
+// Rankingstevner v0.18.2 – fornavn først, etternavn snevrer inn, hele navnet rangerer
 (() => {
   'use strict';
 
@@ -7,8 +7,8 @@
     const waInput=document.getElementById('waProfileId');
     const waButton=document.getElementById('loadWaProfile');
     if(!input||!waInput||!waButton){setTimeout(boot,80);return;}
-    if(input.dataset.fastAthleteSearch==='181') return;
-    input.dataset.fastAthleteSearch='181';
+    if(input.dataset.fastAthleteSearch==='182') return;
+    input.dataset.fastAthleteSearch='182';
 
     const host=input.parentElement;
     if(!host) return;
@@ -22,33 +22,27 @@
     }
 
     const pool=new Map();
-    const responseCache=new Map();
-    const persistentRequests=new Map();
-    let timer=null, requestNo=0, exactController=null, visible=[];
+    const cache=new Map();
+    const inflight=new Map();
+    let timer=null, visible=[];
 
-    function norm(s){
-      return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ø/g,'o').replace(/æ/g,'ae').replace(/å/g,'a').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
-    }
+    function norm(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ø/g,'o').replace(/æ/g,'ae').replace(/å/g,'a').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');}
     function fullName(a){return `${a.firstName||''} ${a.lastName||''}`.trim();}
+    function add(list){for(const a of list||[]) if(a?.id) pool.set(String(a.id),a);}
     function matches(a,q){
       const qt=norm(q).split(' ').filter(Boolean), nt=norm(fullName(a)).split(' ').filter(Boolean);
-      if(!qt.length||!nt.length) return false;
-      return qt.every(t=>nt.some(n=>n.startsWith(t)||n.includes(t)));
+      return qt.length>0 && qt.every(t=>nt.some(n=>n.startsWith(t)||n.includes(t)));
     }
-    function rank(a,q){
-      const nq=norm(q), name=norm(fullName(a));
+    function score(a,q){
+      const nq=norm(q), name=norm(fullName(a)), first=norm(a.firstName), last=norm(a.lastName), qt=nq.split(' ').filter(Boolean);
       let s=0;
-      if(name===nq)s+=12000;
-      if(name.startsWith(nq))s+=9000;
-      const qt=nq.split(' ').filter(Boolean), first=norm(a.firstName), last=norm(a.lastName);
-      if(qt[0]&&first.startsWith(qt[0]))s+=3500;
-      if(qt.length>1&&last.startsWith(qt.at(-1)))s+=6000+qt.at(-1).length*200;
+      if(name===nq)s+=20000;
+      if(name.startsWith(nq))s+=12000;
+      if(qt[0]&&first.startsWith(qt[0]))s+=6000;
+      if(qt.length>1&&last.startsWith(qt.at(-1)))s+=9000+qt.at(-1).length*300;
       return s;
     }
-    function localMatches(q){
-      return [...pool.values()].filter(a=>matches(a,q)).sort((a,b)=>rank(b,q)-rank(a,q)||fullName(a).localeCompare(fullName(b),'no')).slice(0,12);
-    }
-    function addToPool(list){for(const a of list||[])if(a?.id)pool.set(String(a.id),a);}
+    function localMatches(q){return [...pool.values()].filter(a=>matches(a,q)).sort((a,b)=>score(b,q)-score(a,q)||fullName(a).localeCompare(fullName(b),'no')).slice(0,15);}
 
     function select(a){
       input.value=fullName(a);
@@ -65,80 +59,71 @@
       }
       box.innerHTML=visible.map((a,i)=>{
         const meta=[a.country,a.birthDate?String(a.birthDate).slice(0,10):'',`WA-ID ${a.id}`].filter(Boolean).join(' · ');
-        return `<button type="button" data-fast-athlete="${i}" style="display:block;width:100%;padding:10px 12px;text-align:left;border:0;border-bottom:1px solid #edf2f0;background:#fff;cursor:pointer"><strong>${fullName(a)||a.id}</strong><br><span style="color:#677585;font-size:12px">${meta}</span></button>`;
+        return `<button type="button" data-athlete="${i}" style="display:block;width:100%;padding:10px 12px;text-align:left;border:0;border-bottom:1px solid #edf2f0;background:#fff;cursor:pointer"><strong>${fullName(a)||a.id}</strong><br><span style="color:#677585;font-size:12px">${meta}</span></button>`;
       }).join('');
-      [...box.querySelectorAll('[data-fast-athlete]')].forEach(btn=>btn.addEventListener('click',()=>select(visible[Number(btn.dataset.fastAthlete)])));
+      box.querySelectorAll('[data-athlete]').forEach(btn=>btn.addEventListener('click',()=>select(visible[Number(btn.dataset.athlete)])));
       box.style.display='block';
     }
 
-    async function fetchQuery(q,signal){
-      const key=norm(q);
-      if(responseCache.has(key)) return responseCache.get(key);
-      const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=181`,{cache:'no-store',signal});
-      const data=await res.json();
-      const list=Array.isArray(data?.results)?data.results:[];
-      responseCache.set(key,list);
-      addToPool(list);
-      return list;
+    function fetchTerm(term){
+      const key=norm(term);
+      if(!key||key.length<2) return Promise.resolve([]);
+      if(cache.has(key)) return Promise.resolve(cache.get(key));
+      if(inflight.has(key)) return inflight.get(key);
+      const p=fetch(`/api/athlete-search?q=${encodeURIComponent(term)}&v=182`,{cache:'no-store'})
+        .then(r=>r.json())
+        .then(data=>{
+          const list=Array.isArray(data?.results)?data.results:[];
+          cache.set(key,list);
+          add(list);
+          return list;
+        })
+        .catch(()=>[])
+        .finally(()=>inflight.delete(key));
+      inflight.set(key,p);
+      return p;
     }
 
-    function startPersistent(query){
-      const key=norm(query);
-      if(!key||responseCache.has(key)||persistentRequests.has(key)) return;
-      const p=fetchQuery(query).catch(()=>[]).finally(()=>persistentRequests.delete(key));
-      persistentRequests.set(key,p);
-      p.then(()=>{
-        const current=input.value.trim();
-        if(!current) return;
-        const local=localMatches(current);
-        if(local.length) render(local);
-      });
-    }
-
-    function preloadCandidates(q){
+    async function searchNow(q){
       const parts=q.trim().split(/\s+/).filter(Boolean);
       const first=parts[0]||'';
-      const last=parts.length>1 ? parts[parts.length-1] : '';
+      const last=parts.length>1?parts.at(-1):'';
+      const terms=[];
 
-      if(first.length>=4){
-        startPersistent(first.slice(0,4));
-        startPersistent(first);
-      }
+      // Naturlig brukerflyt: fornavnet starter søket.
+      if(first.length>=3) terms.push(first);
+      // Hele teksten søker alltid når vi har minst tre tegn.
+      if(q.length>=3) terms.push(q);
+      // Når etternavnet begynner, brukes det parallelt til å snevre inn.
+      if(last && last!==first && last.length>=2) terms.push(last);
 
-      if(last && last!==first){
-        if(last.length>=2) startPersistent(last);
-        if(last.length>=3) startPersistent(last.slice(0,3));
-        if(last.length>=4) startPersistent(last.slice(0,4));
-      }
-    }
+      const unique=[...new Set(terms.map(t=>t.trim()).filter(Boolean))];
+      if(!unique.length){render([]);return;}
 
-    async function remoteExact(q,myRequest){
-      exactController?.abort();
-      exactController=new AbortController();
-      try{
-        await fetchQuery(q,exactController.signal);
-        if(myRequest!==requestNo||input.value.trim()!==q)return;
-        const ranked=localMatches(q);
-        render(ranked,ranked.length?'':'Ingen utøvere funnet.');
-      }catch(err){
-        if(err?.name==='AbortError')return;
-        if(myRequest===requestNo&&!localMatches(q).length)render([],'Søket bruker litt tid.');
+      const immediate=localMatches(q);
+      if(immediate.length) render(immediate); else render([],'Søker…');
+
+      // Viktig: ingen forespørsel avbrytes når neste bokstav skrives.
+      // Alle kandidater legges i poolen, og gjeldende tekst filtrerer resultatet lokalt.
+      await Promise.allSettled(unique.map(fetchTerm));
+      if(input.value.trim()!==q) {
+        const current=input.value.trim();
+        const currentMatches=localMatches(current);
+        if(currentMatches.length) render(currentMatches);
+        return;
       }
+      const found=localMatches(q);
+      render(found,found.length?'':'Ingen utøvere funnet.');
     }
 
     input.addEventListener('input',ev=>{
       ev.stopImmediatePropagation();
       clearTimeout(timer);
       const q=input.value.trim();
-      requestNo++;
-      if(q.length<2){exactController?.abort();render([]);return;}
-
-      preloadCandidates(q);
+      if(q.length<2){render([]);return;}
       const local=localMatches(q);
-      if(local.length)render(local);else render([],'Søker…');
-
-      const mine=requestNo;
-      timer=setTimeout(()=>remoteExact(q,mine),220);
+      if(local.length) render(local); else render([],'Søker…');
+      timer=setTimeout(()=>searchNow(q),70);
     },true);
 
     document.addEventListener('click',e=>{if(e.target!==input&&!box.contains(e.target))box.style.display='none';});
