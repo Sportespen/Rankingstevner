@@ -1,4 +1,4 @@
-// Rankingstevner v0.17.3 – tidlig kandidatinnlasting for alle navn
+// Rankingstevner v0.17.4 – tidlig kandidatinnlasting for alle navn
 (() => {
   'use strict';
 
@@ -7,8 +7,8 @@
     const waInput=document.getElementById('waProfileId');
     const waButton=document.getElementById('loadWaProfile');
     if(!input||!waInput||!waButton){setTimeout(boot,80);return;}
-    if(input.dataset.fastAthleteSearch==='173') return;
-    input.dataset.fastAthleteSearch='173';
+    if(input.dataset.fastAthleteSearch==='174') return;
+    input.dataset.fastAthleteSearch='174';
 
     const host=input.parentElement;
     if(!host) return;
@@ -74,7 +74,7 @@
     async function fetchQuery(q,signal){
       const key=norm(q);
       if(responseCache.has(key)) return responseCache.get(key);
-      const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=173`,{cache:'no-store',signal});
+      const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=174`,{cache:'no-store',signal});
       const data=await res.json();
       const list=Array.isArray(data?.results)?data.results:[];
       responseCache.set(key,list);
@@ -100,11 +100,6 @@
       const parts=raw.split(/\s+/).filter(Boolean);
       const first=parts[0]||'';
       if(first.length<4) return;
-
-      // Første brede søk starter allerede etter fire bokstaver og fullføres
-      // selv om brukeren fortsetter å skrive. Når mellomrommet kommer, kjøres
-      // ett nytt søk på hele første navnedel. Dermed avbrytes ikke kandidatlisten
-      // av hvert nytt tastetrykk.
       startPersistentPrefix(first.slice(0,4));
       if(parts.length>1) startPersistentPrefix(first);
     }
@@ -131,13 +126,10 @@
       if(q.length<2){exactController?.abort();render([]);return;}
 
       preloadCandidates(q);
-
       const local=localMatches(q);
       if(local.length)render(local);else render([],'Søker…');
 
       const mine=requestNo;
-      // Det eksakte søket er bare sikkerhetsnett. Kandidatsøket over får arbeide
-      // uavbrutt og skal normalt vise treffet først.
       timer=setTimeout(()=>remoteExact(q,mine),140);
     },true);
 
