@@ -1,4 +1,4 @@
-// Rankingstevner v0.13.0 – eksplisitt + / − / NWI for vind, og vind påvirker score først ved beregning
+// Rankingstevner v0.13.1 – kompakte + / − / NWI-knapper for vind
 (() => {
   'use strict';
 
@@ -18,19 +18,37 @@
     }
     if (document.getElementById('windControl')) return;
 
-    // Skjul feltet som beregningsmotoren allerede kjenner.
     originalWind.style.display = 'none';
 
-    // Bombesikker synlig kontroll: fortegn må velges eksplisitt.
     const wrap = document.createElement('div');
     wrap.id = 'windControl';
-    wrap.style.cssText = 'display:grid;grid-template-columns:145px minmax(120px,1fr);gap:8px;margin-top:7px';
+    wrap.style.cssText = 'display:grid;grid-template-columns:auto minmax(120px,1fr);gap:8px;margin-top:7px;align-items:stretch';
 
-    const sign = document.createElement('select');
-    sign.id = 'windSign';
-    sign.setAttribute('aria-label', 'Fortegn for vind');
-    sign.style.marginTop = '0';
-    sign.innerHTML = '<option value="">Velg + / −</option><option value="+">+ medvind</option><option value="-">− motvind</option><option value="NWI">NWI</option>';
+    const signWrap = document.createElement('div');
+    signWrap.id = 'windSignButtons';
+    signWrap.style.cssText = 'display:flex;gap:6px';
+
+    let selectedSign = '';
+    const buttons = {};
+    [['+','+'],['-','−'],['NWI','NWI']].forEach(([value,label]) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = label;
+      btn.dataset.value = value;
+      btn.style.cssText = 'min-width:54px;border:1px solid #cfd7de;border-radius:11px;background:#fff;color:#14202b;font-weight:800;font-size:16px;padding:0 12px;cursor:pointer';
+      btn.addEventListener('click', () => {
+        selectedSign = value;
+        Object.entries(buttons).forEach(([k,b]) => {
+          const active = k === value;
+          b.style.background = active ? '#0f766e' : '#fff';
+          b.style.color = active ? '#fff' : '#14202b';
+          b.style.borderColor = active ? '#0f766e' : '#cfd7de';
+        });
+        updateWindDisplayOnly();
+      });
+      buttons[value] = btn;
+      signWrap.appendChild(btn);
+    });
 
     const amount = document.createElement('input');
     amount.id = 'windAmount';
@@ -41,7 +59,7 @@
     amount.style.marginTop = '0';
 
     originalWind.parentNode.insertBefore(wrap, originalWind);
-    wrap.append(sign, amount);
+    wrap.append(signWrap, amount);
 
     function sanitizeAmount() {
       let v = amount.value.replace('.', ',').replace(/[^0-9,]/g, '');
@@ -50,18 +68,16 @@
       if (v.includes(',')) {
         const [a,b=''] = v.split(',');
         v = `${a.slice(0,2)},${b.slice(0,1)}`;
-      } else {
-        v = v.slice(0,2);
-      }
+      } else v = v.slice(0,2);
       amount.value = v;
     }
 
     function composedWind() {
-      if (sign.value === 'NWI') return 'NWI';
-      if ((sign.value !== '+' && sign.value !== '-') || !amount.value) return '';
+      if (selectedSign === 'NWI') return 'NWI';
+      if ((selectedSign !== '+' && selectedSign !== '-') || !amount.value) return '';
       const n = Number(amount.value.replace(',', '.'));
       if (!Number.isFinite(n)) return '';
-      return `${sign.value}${n.toFixed(1).replace('.', ',')}`;
+      return `${selectedSign}${n.toFixed(1).replace('.', ',')}`;
     }
 
     function parseWindLocal(raw) {
@@ -81,26 +97,24 @@
       return 0;
     }
 
-    function fmt(v) {
-      return Number.isInteger(v) ? String(v) : v.toFixed(1).replace('.', ',');
-    }
+    function fmt(v) { return Number.isInteger(v) ? String(v) : v.toFixed(1).replace('.', ','); }
 
     function updateWindDisplayOnly() {
       sanitizeAmount();
       const raw = composedWind();
-      originalWind.value = raw; // ingen input/change-event -> scorekortene endres ikke nå
-      amount.disabled = sign.value === 'NWI';
-      if (sign.value === 'NWI') amount.value = '';
+      originalWind.value = raw;
+      amount.disabled = selectedSign === 'NWI';
+      if (selectedSign === 'NWI') amount.value = '';
       const mod = windModLocal(raw);
       windAdjustment.value = mod === null ? '–' : `${mod > 0 ? '+' : ''}${fmt(mod)}`;
     }
 
-    sign.addEventListener('change', updateWindDisplayOnly);
     amount.addEventListener('input', updateWindDisplayOnly);
     amount.addEventListener('change', updateWindDisplayOnly);
 
     event.addEventListener('change', () => {
-      sign.value = '';
+      selectedSign = '';
+      Object.values(buttons).forEach(b => { b.style.background='#fff'; b.style.color='#14202b'; b.style.borderColor='#cfd7de'; });
       amount.value = '';
       amount.disabled = false;
       originalWind.value = '';
@@ -110,11 +124,8 @@
     function recalcBaseWithoutWind() {
       const savedWind = originalWind.value;
       originalWind.value = '';
-      try {
-        if (typeof refreshResultScore === 'function') refreshResultScore();
-      } finally {
-        originalWind.value = savedWind;
-      }
+      try { if (typeof refreshResultScore === 'function') refreshResultScore(); }
+      finally { originalWind.value = savedWind; }
     }
 
     mark.addEventListener('input', recalcBaseWithoutWind);
@@ -122,16 +133,15 @@
     category.addEventListener('change', recalcBaseWithoutWind);
     placing.addEventListener('change', recalcBaseWithoutWind);
 
-    // Stopp beregningen før app.js hvis fortegn/NWI ikke er eksplisitt valgt.
     calculate.addEventListener('click', (e) => {
       if (originalWind.closest('#windSection')?.style.display !== 'none') {
-        if (!sign.value) {
+        if (!selectedSign) {
           e.preventDefault(); e.stopImmediatePropagation();
           alert('Velg + for medvind, − for motvind eller NWI før du beregner.');
-          sign.focus();
+          buttons['+'].focus();
           return;
         }
-        if (sign.value !== 'NWI' && !amount.value) {
+        if (selectedSign !== 'NWI' && !amount.value) {
           e.preventDefault(); e.stopImmediatePropagation();
           alert('Skriv vindstyrken etter at du har valgt + eller −.');
           amount.focus();
@@ -139,7 +149,6 @@
       }
     }, true);
 
-    // Etter beregning synkroniseres justert score til kortene øverst.
     calculate.addEventListener('click', () => {
       setTimeout(() => {
         try {
@@ -150,9 +159,7 @@
           resultScore.value = Number.isInteger(adjusted) ? String(adjusted) : String(adjusted).replace('.', ',');
           resultScore.dispatchEvent(new Event('input', { bubbles: true }));
           resultScore.dispatchEvent(new Event('change', { bubbles: true }));
-        } catch (err) {
-          console.error('Kunne ikke synkronisere justert score etter beregning', err);
-        }
+        } catch (err) { console.error('Kunne ikke synkronisere justert score etter beregning', err); }
       }, 0);
     });
 
