@@ -34,3 +34,14 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   }
   setTimeout(loadFastAthleteSearch,0);
 })();
+
+(() => {
+  function loadStevnefinner(){
+    if(document.querySelector('script[data-stevnefinner-v0190]')) return;
+    const s=document.createElement('script');
+    s.src='stevnefinner.js?v=0190';
+    s.dataset.stevnefinnerV0190='1';
+    document.head.appendChild(s);
+  }
+  setTimeout(loadStevnefinner,0);
+})();
