@@ -1,7 +1,9 @@
 const WA_GRAPHQL='https://graphql-prod-4746.prod.aws.worldathletics.org/graphql';
-const WA_API_KEY='da2-fcprvsdozzce5dx2baifenjwpu';
 
 export async function onRequestGet(context){
+  const WA_API_KEY=context?.env?.WA_API_KEY;
+  if(!WA_API_KEY)return json({ok:false,error:'WA_API_KEY mangler i Cloudflare environment'},500);
+
   const url=new URL(context.request.url);
   const raw=(url.searchParams.get('id')||'').trim();
   const id=raw.match(/(\d{7,9})/)?.[1];
@@ -12,7 +14,7 @@ export async function onRequestGet(context){
 
   let name='', athleteSlug='';
   try{
-    const nr=await fetch(`https://worldathletics.nimarion.de/athletes/${id}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.3','Accept':'application/json'}});
+    const nr=await fetch(`https://worldathletics.nimarion.de/athletes/${id}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.4','Accept':'application/json'}});
     if(nr.ok){
       const a=await nr.json();
       name=`${a?.firstname||a?.firstName||''} ${a?.lastname||a?.lastName||''}`.trim();
@@ -23,7 +25,6 @@ export async function onRequestGet(context){
 
   const diagnostics=[];
 
-  // 1) Direkte fra WA GraphQL. Skjemaet bruker id:Int og urlSlug:String!.
   try{
     const query=`query OfficialAthleteRanking($id: Int, $urlSlug: String!) {
       getCISSingleCompetitor(id: $id, urlSlug: $urlSlug) {
@@ -37,16 +38,23 @@ export async function onRequestGet(context){
       headers:{
         'content-type':'application/json','accept':'application/json',
         'x-api-key':WA_API_KEY,'x-amz-user-agent':'aws-amplify/3.0.2',
-        'user-agent':'Mozilla/5.0 Rankingstevner/0.20.3'
+        'user-agent':'Mozilla/5.0 Rankingstevner/0.20.4'
       },
       body:JSON.stringify({query,operationName:'OfficialAthleteRanking',variables})
     });
     const payload=await gr.json().catch(()=>null);
-    diagnostics.push({source:'graphql',status:gr.status,error:payload?.errors?.[0]?.message||null});
+    const current=Array.isArray(payload?.data?.getCISSingleCompetitor?.worldRankings?.current)
+      ? payload.data.getCISSingleCompetitor.worldRankings.current
+      : [];
+    diagnostics.push({
+      source:'graphql',status:gr.status,error:payload?.errors?.[0]?.message||null,
+      slugSent:variables.urlSlug,
+      currentCount:current.length,
+      current:current.map(r=>({eventGroup:r?.eventGroup,place:r?.place,rankingScore:r?.rankingScore,male:r?.male,urlSlug:r?.urlSlug}))
+    });
     const athlete=payload?.data?.getCISSingleCompetitor;
     const basic=athlete?.basicData||{};
     if(!name)name=`${basic.firstName||''} ${basic.lastName||''}`.trim();
-    const current=Array.isArray(athlete?.worldRankings?.current)?athlete.worldRankings.current:[];
     const hit=current.find(r=>rankingEventMatches(r?.eventGroup,event));
     const rank=Number(hit?.place),score=Number(hit?.rankingScore);
     if(Number.isFinite(score)&&score>0){
@@ -54,12 +62,12 @@ export async function onRequestGet(context){
     }
   }catch(e){diagnostics.push({source:'graphql',error:String(e?.message||e)});}
 
-  // 2) Fallback til den offentlige WA-rankingtabellen. Denne løsningen ga korrekt 1044 tidligere.
   try{
-    const rankInfo=await fetch(`https://worldathletics.nimarion.de/athletes/${id}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.3','Accept':'application/json'}}).then(r=>r.ok?r.json():null).catch(()=>null);
+    const rankInfo=await fetch(`https://worldathletics.nimarion.de/athletes/${id}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.4','Accept':'application/json'}}).then(r=>r.ok?r.json():null).catch(()=>null);
     const rankings=Array.isArray(rankInfo?.currentWorldRankings)?rankInfo.currentWorldRankings:[];
     const rhit=rankings.find(r=>rankingEventMatches(r?.eventGroup,event));
     const knownRank=Number(rhit?.place);
+    diagnostics.push({source:'nimarion',currentWorldRankings:rankings});
     if(Number.isFinite(knownRank)&&knownRank>0){
       const slug=rankingSlug(event);
       const page=Math.max(1,Math.ceil(knownRank/100));
@@ -71,7 +79,7 @@ export async function onRequestGet(context){
       for(const rankingUrl of variants){
         const u=new URL(rankingUrl);
         const readerUrl=`https://r.jina.ai/https://worldathletics.org${u.pathname}${u.search}`;
-        const rr=await fetch(readerUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.3','Accept':'text/plain'}}).catch(()=>null);
+        const rr=await fetch(readerUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.4','Accept':'text/plain'}}).catch(()=>null);
         const text=rr?.ok?await rr.text():'';
         const score=findScore(text,name,knownRank);
         diagnostics.push({source:'ranking-table',rankingUrl,status:rr?.status||null,foundScore:score||null});
