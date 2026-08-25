@@ -45,3 +45,14 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   }
   setTimeout(loadStevnefinner,0);
 })();
+
+(() => {
+  function loadRankingEventMatchFix(){
+    if(document.querySelector('script[data-ranking-event-match-fix-v0191]')) return;
+    const s=document.createElement('script');
+    s.src='ranking-event-match-fix.js?v=0191';
+    s.dataset.rankingEventMatchFixV0191='1';
+    document.head.appendChild(s);
+  }
+  setTimeout(loadRankingEventMatchFix,0);
+})();
