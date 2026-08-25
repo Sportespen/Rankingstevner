@@ -34,10 +34,10 @@
 
 (function(){
   function loadCombinedFix(){
-    if(document.querySelector('script[data-combined-ranking-fix-v0162]'))return;
+    if(document.querySelector('script[data-combined-ranking-fix-v0163]'))return;
     const s=document.createElement('script');
-    s.src='combined-ranking-fix.js?v=0162';
-    s.dataset.combinedRankingFixV0162='1';
+    s.src='combined-ranking-fix.js?v=0163';
+    s.dataset.combinedRankingFixV0163='1';
     document.head.appendChild(s);
   }
   setTimeout(loadCombinedFix,0);
