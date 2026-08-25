@@ -1,4 +1,4 @@
-// Rankingstevner Trinn 3 v0.14.6 – plassholdere vises i feltet, men ikke i dropdown
+// Rankingstevner Trinn 3 v0.14.7 – plassholdere utenfor dropdown + nullstill hele Ny prestasjon
 (() => {
   'use strict';
 
@@ -58,6 +58,53 @@
     }
     function updateAfterEngine(){ setTimeout(update,0); setTimeout(update,25); setTimeout(update,100); }
 
+    function installResetButton(){
+      if($('resetNewPerformance')) return;
+      const strip=document.querySelector('.score-strip');
+      if(!strip) return;
+      strip.style.maxWidth='1080px';
+      strip.style.gridTemplateColumns='repeat(3,minmax(170px,1fr)) auto';
+      const btn=document.createElement('button');
+      btn.id='resetNewPerformance';
+      btn.type='button';
+      btn.className='secondary';
+      btn.textContent='Nullstill';
+      btn.style.cssText='align-self:stretch;min-width:112px;margin:0;padding:0 18px;border-radius:12px;font-weight:800;white-space:nowrap';
+      strip.appendChild(btn);
+
+      btn.addEventListener('click',()=>{
+        // Behold valgt kjønn/øvelse, men nullstill absolutt alt under «Ny prestasjon».
+        // Et change-event på samme øvelse bruker eksisterende motor til å nullstille også intern vindstatus.
+        event.dispatchEvent(new Event('change',{bubbles:true}));
+
+        setTimeout(()=>{
+          category.value='';
+          rebuildPlacing(true);
+
+          const visibleResult=$('resultDigits')||$('resultEntryFallback');
+          if(visibleResult) visibleResult.value='';
+          mark.value='';
+          resultScore.value='';
+
+          if(wind) wind.value='';
+          if(bljMark) bljMark.value='';
+          if(bljWind) bljWind.value='';
+          if(combinedWindStatus) combinedWindStatus.value='normal';
+          const windAdj=$('windAdjustment');
+          if(windAdj) windAdj.value='–';
+
+          resultOut.textContent='–';
+          placingOut.textContent='–';
+          performanceOut.textContent='–';
+
+          const resultBox=$('resultBox');
+          if(resultBox) resultBox.classList.add('hidden');
+          ['resultScoreOut','placingScoreOut','performanceScoreOut','newRankingOut'].forEach(id=>{const el=$(id);if(el)el.textContent='–';});
+          ['improvement','currentRankingLine','replaceInfo','ruleInfo'].forEach(id=>{const el=$(id);if(el)el.textContent='';});
+        },50);
+      });
+    }
+
     event.addEventListener('change',()=>{ category.value=''; rebuildPlacing(true); updateAfterEngine(); });
     category.addEventListener('change',()=>{ rebuildPlacing(true); updateAfterEngine(); });
     placing.addEventListener('change',update);
@@ -74,8 +121,9 @@
     new MutationObserver(()=>{ if(event.options.length){ category.value=''; rebuildPlacing(true); updateAfterEngine(); } }).observe(event,{childList:true});
 
     rebuildPlacing(true);
+    installResetButton();
     updateAfterEngine();
-    setTimeout(()=>{ category.value=''; rebuildPlacing(true); updateAfterEngine(); },400);
+    setTimeout(()=>{ category.value=''; rebuildPlacing(true); installResetButton(); updateAfterEngine(); },400);
   }
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true});
