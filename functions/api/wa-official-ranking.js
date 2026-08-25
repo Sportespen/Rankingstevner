@@ -18,10 +18,9 @@ export async function onRequestGet(context){
   const diagnostics=[];
   let profile=null;
   let name='';
-  let graphQlCandidate=null;
 
   try{
-    const nr=await fetch(`https://worldathletics.nimarion.de/athletes/${id}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.8','Accept':'application/json'}});
+    const nr=await fetch(`https://worldathletics.nimarion.de/athletes/${id}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.9','Accept':'application/json'}});
     if(nr.ok){
       profile=await nr.json();
       name=`${profile?.firstname||profile?.firstName||''} ${profile?.lastname||profile?.lastName||''}`.trim();
@@ -33,41 +32,45 @@ export async function onRequestGet(context){
   const knownRank=Number(rhit?.place);
   diagnostics.push({source:'nimarion',matchedEventGroup:rhit?.eventGroup||null,knownRank:validRank(knownRank)?knownRank:null});
 
-  // 1) Offentlig publisert WA-rankingtabell er fasit når den kan leses.
+  // KUN publisert WA-rankingtabell får returnere en offisiell score.
   if(name){
     const slug=rankingSlug(event);
     if(slug){
       const page=validRank(knownRank)?Math.max(1,Math.ceil(knownRank/100)):1;
       const paths=sex==='W'?['m','women']:['men'];
+
       for(const path of paths){
         const rankingUrl=`https://worldathletics.org/world-rankings/${slug}/${path}?page=${page}`;
         try{
-          const rr=await fetch(rankingUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.8','Accept':'text/html,application/xhtml+xml'}});
+          const rr=await fetch(rankingUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.9','Accept':'text/html,application/xhtml+xml'}});
           const html=await rr.text();
           const found=findAthleteInHtml(html,name,knownRank);
-          diagnostics.push({source:'ranking-page-direct',path,page,status:rr.status,foundRank:found?.rank||null,foundScore:found?.score||null});
-          if(found&&validScore(found.score)){
-            return json({ok:true,id:Number(id),event,name,rank:found.rank,score:found.score,source:'World Athletics published ranking table',eventGroup:rhit?.eventGroup||null,diagnostics});
+          const publishedDate=findPublishedDate(html);
+          diagnostics.push({source:'ranking-page-direct',path,page,url:rankingUrl,status:rr.status,publishedDate,foundRank:found?.rank||null,foundScore:found?.score||null});
+          if(rr.ok&&found&&validScore(found.score)){
+            return json({ok:true,id:Number(id),event,name,rank:found.rank,score:found.score,source:'World Athletics published ranking table',sourceUrl:rankingUrl,sourceDate:publishedDate||null,verifiedPublished:true,eventGroup:rhit?.eventGroup||null,diagnostics});
           }
-        }catch(e){diagnostics.push({source:'ranking-page-direct',path,page,error:String(e?.message||e)});}
+        }catch(e){diagnostics.push({source:'ranking-page-direct',path,page,url:rankingUrl,error:String(e?.message||e)});}
       }
 
-      // Reserve: én lesing via Jina av den primære offentlige WA-tabellen.
+      // Én reserve-lesing av samme offentlige WA-side via reader.
       try{
         const path=sex==='W'?'m':'men';
         const rankingUrl=`https://worldathletics.org/world-rankings/${slug}/${path}?page=${page}`;
-        const rr=await fetch(`https://r.jina.ai/${rankingUrl}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.8','Accept':'text/plain'}});
+        const readerUrl=`https://r.jina.ai/${rankingUrl}`;
+        const rr=await fetch(readerUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.9','Accept':'text/plain'}});
         const text=rr.ok?await rr.text():'';
         const found=findAthleteRow(text,name,knownRank);
-        diagnostics.push({source:'ranking-table-jina',path,page,status:rr.status,foundRank:found?.rank||null,foundScore:found?.score||null});
-        if(found&&validScore(found.score)){
-          return json({ok:true,id:Number(id),event,name,rank:found.rank,score:found.score,source:'World Athletics published ranking table',eventGroup:rhit?.eventGroup||null,diagnostics});
+        const publishedDate=findPublishedDate(text);
+        diagnostics.push({source:'ranking-table-jina',url:rankingUrl,readerUrl,status:rr.status,publishedDate,foundRank:found?.rank||null,foundScore:found?.score||null});
+        if(rr.ok&&found&&validScore(found.score)){
+          return json({ok:true,id:Number(id),event,name,rank:found.rank,score:found.score,source:'World Athletics published ranking table',sourceUrl:rankingUrl,sourceDate:publishedDate||null,verifiedPublished:true,eventGroup:rhit?.eventGroup||null,diagnostics});
         }
       }catch(e){diagnostics.push({source:'ranking-table-jina',error:String(e?.message||e)});}
     }
   }
 
-  // 2) GraphQL brukes som reserve, ikke som fasit, fordi profildata kan være foran/bak den publiserte listen.
+  // GraphQL brukes nå KUN som diagnostikk. Den får ikke lenger levere "Offisiell WA Ranking Score".
   const query=`query OfficialAthleteRanking($id: Int) {
     getSingleCompetitor(id: $id) {
       basicData { familyName givenName }
@@ -81,27 +84,18 @@ export async function onRequestGet(context){
       const gr=await fetch(endpoint,{method:'POST',headers:{
         'content-type':'application/json','accept':'application/json','x-api-key':WA_API_KEY,
         'x-amz-user-agent':'aws-amplify/3.0.2','x-graphql-client-name':'worldathletics',
-        'user-agent':'Mozilla/5.0 Rankingstevner/0.20.8'
+        'user-agent':'Mozilla/5.0 Rankingstevner/0.20.9'
       },body:JSON.stringify({query,operationName:'OfficialAthleteRanking',variables})});
       const text=await gr.text();
       let payload=null;try{payload=JSON.parse(text);}catch(_){ }
       const athlete=payload?.data?.getSingleCompetitor;
       const current=Array.isArray(athlete?.worldRankings?.current)?athlete.worldRankings.current:[];
-      diagnostics.push({source:'graphql-getSingleCompetitor',endpoint,status:gr.status,error:payload?.errors?.[0]?.message||null,currentCount:current.length,bodyPreview:payload?undefined:text.slice(0,300)});
-      if(!name){const b=athlete?.basicData||{};name=`${b.givenName||''} ${b.familyName||''}`.trim();}
       const hit=current.find(r=>rankingEventMatches(r?.eventGroup,event));
-      const rank=Number(hit?.place),score=Number(hit?.rankingScore);
-      if(validScore(score)&&!graphQlCandidate){
-        graphQlCandidate={rank:validRank(rank)?rank:null,score,eventGroup:hit?.eventGroup||null};
-      }
-    }catch(e){diagnostics.push({source:'graphql-getSingleCompetitor',endpoint,error:String(e?.message||e)});}
+      diagnostics.push({source:'graphql-diagnostic-only',endpoint,status:gr.status,eventGroup:hit?.eventGroup||null,rank:Number(hit?.place)||null,score:Number(hit?.rankingScore)||null,error:payload?.errors?.[0]?.message||null});
+    }catch(e){diagnostics.push({source:'graphql-diagnostic-only',endpoint,error:String(e?.message||e)});}
   }
 
-  if(graphQlCandidate){
-    return json({ok:true,id:Number(id),event,name,rank:graphQlCandidate.rank,score:graphQlCandidate.score,source:'World Athletics GraphQL fallback',eventGroup:graphQlCandidate.eventGroup,diagnostics});
-  }
-
-  return json({ok:true,id:Number(id),event,name,rank:validRank(knownRank)?knownRank:null,score:null,source:'World Athletics',diagnostics});
+  return json({ok:true,id:Number(id),event,name,rank:validRank(knownRank)?knownRank:null,score:null,source:'World Athletics published ranking table not verified',sourceUrl:null,sourceDate:null,verifiedPublished:false,eventGroup:rhit?.eventGroup||null,diagnostics});
 }
 
 function rankingSlug(code){return ({'100m':'100m','200m':'200m','400m':'400m','800m':'800m','1500m':'1500m','5000m':'5000m','10000m':'10000m','100mH':'100mh','110mH':'110mh','400mH':'400mh','3000mSC':'3000msc',HJ:'high-jump',PV:'pole-vault',LJ:'long-jump',TJ:'triple-jump',SP:'shot-put',DT:'discus-throw',HT:'hammer-throw',JT:'javelin-throw',Decathlon:'decathlon',Heptathlon:'heptathlon'})[code]||'';}
@@ -118,7 +112,7 @@ function findAthleteRow(text,name,knownRank){
     if(cols.length<5)continue;
     const rank=Number(String(cols[0]).replace(/\D/g,''));
     const score=Number(String(cols[4]).replace(/[^0-9]/g,''));
-    if(validRank(rank)&&validScore(score)&&(!validRank(knownRank)||Math.abs(rank-knownRank)<=10))return {rank,score};
+    if(validRank(rank)&&validScore(score)&&(!validRank(knownRank)||Math.abs(rank-knownRank)<=15))return {rank,score};
   }
   return null;
 }
@@ -131,9 +125,15 @@ function findAthleteInHtml(html,name,knownRank){
   if(idx<0)return null;
   const raw=plain.slice(Math.max(0,idx-300),idx+400);
   const nums=[...raw.matchAll(/\b(\d{1,4})\b/g)].map(m=>Number(m[1]));
-  const rank=validRank(knownRank)?nums.find(v=>validRank(v)&&Math.abs(v-knownRank)<=10):nums.find(v=>validRank(v));
+  const rank=validRank(knownRank)?nums.find(v=>validRank(v)&&Math.abs(v-knownRank)<=15):nums.find(v=>validRank(v));
   const scores=nums.filter(v=>validScore(v));
   return rank&&scores.length?{rank,score:scores[scores.length-1]}:null;
+}
+function findPublishedDate(text){
+  const s=String(text||'');
+  const m=s.match(/(?:ranking|rankings)[^\n]{0,120}?(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+20\d{2})/i)
+    ||s.match(/(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+20\d{2})/i);
+  return m?m[1]:null;
 }
 function validScore(v){const n=Number(v);return Number.isFinite(n)&&n>=500&&n<=1800;}
 function validRank(v){const n=Number(v);return Number.isFinite(n)&&n>0&&n<10000;}
