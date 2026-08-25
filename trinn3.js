@@ -1,4 +1,4 @@
-// Rankingstevner Trinn 3 v0.14.3 – live scorevisning synkronisert med WA-beregningen i app.js
+// Rankingstevner Trinn 3 v0.14.5 – eksempler vises kun som plassholder, ikke i dropdown
 (() => {
   'use strict';
 
@@ -25,17 +25,16 @@
       setTimeout(init,100); return;
     }
 
-    // Stevnekategori og plassering skal velges aktivt. A og 1. plass er kun eksempler.
-    if(!category.querySelector('option[value=""]')){
-      category.insertAdjacentHTML('afterbegin','<option value="" disabled>f.eks. A</option>');
-    }
+    // Eksempelverdiene er kun plassholdere. hidden gjør at de ikke vises i selve dropdown-listen.
+    const categoryOptions=[...category.options].filter(o=>o.value!=='').map(o=>`<option value="${o.value}">${o.textContent}</option>`).join('');
+    category.innerHTML='<option value="" disabled hidden>f.eks. A</option>'+categoryOptions;
     category.value='';
 
     function placingArray(){ return placingTables[groupFor(event.value)]?.[category.value] || []; }
     function rebuildPlacing(forceExample=false){
       const arr=placingArray();
       const old=forceExample ? '' : placing.value;
-      placing.innerHTML='<option value="" disabled>f.eks. 1. plass</option>'+arr.map((_,i)=>`<option value="${i+1}">${i+1}. plass</option>`).join('');
+      placing.innerHTML='<option value="" disabled hidden>f.eks. 1. plass</option>'+arr.map((_,i)=>`<option value="${i+1}">${i+1}. plass</option>`).join('');
       placing.value = old && arr[Number(old)-1] !== undefined ? old : '';
       update();
     }
