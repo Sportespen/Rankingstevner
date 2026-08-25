@@ -1,4 +1,4 @@
-// Rankingstevner Trinn 3 v0.14.5 – eksempler vises kun som plassholder, ikke i dropdown
+// Rankingstevner Trinn 3 v0.14.6 – plassholdere vises i feltet, men ikke i dropdown
 (() => {
   'use strict';
 
@@ -25,22 +25,27 @@
       setTimeout(init,100); return;
     }
 
-    // Eksempelverdiene er kun plassholdere. hidden gjør at de ikke vises i selve dropdown-listen.
-    const categoryOptions=[...category.options].filter(o=>o.value!=='').map(o=>`<option value="${o.value}">${o.textContent}</option>`).join('');
-    category.innerHTML='<option value="" disabled hidden>f.eks. A</option>'+categoryOptions;
+    const realCategoryOptions=[...category.options].filter(o=>o.value!=='').map(o=>`<option value="${o.value}">${o.textContent}</option>`).join('');
+    category.innerHTML='<option value="" disabled hidden>f.eks. A</option>'+realCategoryOptions;
     category.value='';
 
     function placingArray(){ return placingTables[groupFor(event.value)]?.[category.value] || []; }
-    function rebuildPlacing(forceExample=false){
+    function maxPlacementCount(){
+      const tables=placingTables[groupFor(event.value)]||{};
+      return Math.max(1,...Object.values(tables).map(a=>a.length));
+    }
+    function rebuildPlacing(reset=true){
       const arr=placingArray();
-      const old=forceExample ? '' : placing.value;
-      placing.innerHTML='<option value="" disabled hidden>f.eks. 1. plass</option>'+arr.map((_,i)=>`<option value="${i+1}">${i+1}. plass</option>`).join('');
-      placing.value = old && arr[Number(old)-1] !== undefined ? old : '';
+      const count=arr.length || maxPlacementCount();
+      const previous=reset ? '' : placing.value;
+      placing.innerHTML='<option value="" disabled hidden>f.eks. 1. plass</option>'+Array.from({length:count},(_,i)=>`<option value="${i+1}">${i+1}. plass</option>`).join('');
+      placing.value=previous && Number(previous)<=count ? previous : '';
       update();
     }
     function placingScore(){
+      if(!category.value || !placing.value) return null;
       const arr=placingArray();
-      const pos=Number(placing.value||0);
+      const pos=Number(placing.value);
       return pos>0 ? (arr[pos-1] ?? null) : null;
     }
     function update(){
@@ -53,7 +58,7 @@
     }
     function updateAfterEngine(){ setTimeout(update,0); setTimeout(update,25); setTimeout(update,100); }
 
-    event.addEventListener('change',()=>{ rebuildPlacing(true); updateAfterEngine(); });
+    event.addEventListener('change',()=>{ category.value=''; rebuildPlacing(true); updateAfterEngine(); });
     category.addEventListener('change',()=>{ rebuildPlacing(true); updateAfterEngine(); });
     placing.addEventListener('change',update);
     resultScore.addEventListener('input',update);
@@ -66,7 +71,7 @@
     });
     if(combinedWindStatus) combinedWindStatus.addEventListener('change',updateAfterEngine);
 
-    new MutationObserver(()=>{ if(event.options.length) { rebuildPlacing(true); updateAfterEngine(); } }).observe(event,{childList:true});
+    new MutationObserver(()=>{ if(event.options.length){ category.value=''; rebuildPlacing(true); updateAfterEngine(); } }).observe(event,{childList:true});
 
     rebuildPlacing(true);
     updateAfterEngine();
