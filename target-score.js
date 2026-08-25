@@ -55,6 +55,17 @@
 })();
 
 (function(){
+  function loadGenderReset(){
+    if(document.querySelector('script[data-gender-reset-v0166]'))return;
+    const s=document.createElement('script');
+    s.src='gender-reset.js?v=0166';
+    s.dataset.genderResetV0166='1';
+    document.head.appendChild(s);
+  }
+  setTimeout(loadGenderReset,0);
+})();
+
+(function(){
   const eventSelect=document.getElementById('event');
   const sex=document.getElementById('sex');
   if(!eventSelect||!sex)return;
