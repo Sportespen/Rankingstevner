@@ -1,4 +1,4 @@
-// Rankingstevner Trinn 3 v0.12.5 – live scorevisning synkronisert med WA-beregningen i app.js
+// Rankingstevner Trinn 3 v0.14.3 – live scorevisning synkronisert med WA-beregningen i app.js
 (() => {
   'use strict';
 
@@ -25,12 +25,18 @@
       setTimeout(init,100); return;
     }
 
+    // Stevnekategori og plassering skal velges aktivt. A og 1. plass er kun eksempler.
+    if(!category.querySelector('option[value=""]')){
+      category.insertAdjacentHTML('afterbegin','<option value="" disabled>f.eks. A</option>');
+    }
+    category.value='';
+
     function placingArray(){ return placingTables[groupFor(event.value)]?.[category.value] || []; }
-    function rebuildPlacing(){
+    function rebuildPlacing(forceExample=false){
       const arr=placingArray();
-      const old=Number(placing.value||1);
-      placing.innerHTML=arr.map((_,i)=>`<option value="${i+1}">${i+1}. plass</option>`).join('');
-      if(arr.length) placing.value=String(Math.min(Math.max(old,1),arr.length));
+      const old=forceExample ? '' : placing.value;
+      placing.innerHTML='<option value="" disabled>f.eks. 1. plass</option>'+arr.map((_,i)=>`<option value="${i+1}">${i+1}. plass</option>`).join('');
+      placing.value = old && arr[Number(old)-1] !== undefined ? old : '';
       update();
     }
     function placingScore(){
@@ -46,15 +52,10 @@
       placingOut.textContent=ps==null ? '–' : String(ps);
       performanceOut.textContent=valid && ps!=null ? String(Math.round(rs+ps)) : '–';
     }
-    function updateAfterEngine(){
-      // app.js oppdaterer først det skjulte resultScore-feltet. Les deretter samme verdi her.
-      setTimeout(update,0);
-      setTimeout(update,25);
-      setTimeout(update,100);
-    }
+    function updateAfterEngine(){ setTimeout(update,0); setTimeout(update,25); setTimeout(update,100); }
 
-    event.addEventListener('change',()=>{ rebuildPlacing(); updateAfterEngine(); });
-    category.addEventListener('change',()=>{ rebuildPlacing(); updateAfterEngine(); });
+    event.addEventListener('change',()=>{ rebuildPlacing(true); updateAfterEngine(); });
+    category.addEventListener('change',()=>{ rebuildPlacing(true); updateAfterEngine(); });
     placing.addEventListener('change',update);
     resultScore.addEventListener('input',update);
     resultScore.addEventListener('change',update);
@@ -66,11 +67,11 @@
     });
     if(combinedWindStatus) combinedWindStatus.addEventListener('change',updateAfterEngine);
 
-    new MutationObserver(()=>{ if(event.options.length) { rebuildPlacing(); updateAfterEngine(); } }).observe(event,{childList:true});
+    new MutationObserver(()=>{ if(event.options.length) { rebuildPlacing(true); updateAfterEngine(); } }).observe(event,{childList:true});
 
-    rebuildPlacing();
+    rebuildPlacing(true);
     updateAfterEngine();
-    setTimeout(()=>{ rebuildPlacing(); updateAfterEngine(); },400);
+    setTimeout(()=>{ category.value=''; rebuildPlacing(true); updateAfterEngine(); },400);
   }
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true});
