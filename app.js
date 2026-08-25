@@ -39,7 +39,15 @@ const sex=document.getElementById("sex"), eventSelect=document.getElementById("e
 function groupForEvent(code){if(code==="5000m"||code==="3000mSC")return"distance";if(code==="10000m")return"tenk";if(code==="Decathlon"||code==="Heptathlon")return"combined";return"standard";}
 function fmt(v){return Number.isInteger(v)?String(v):v.toFixed(1).replace(".",",");}
 
-function populateEvents(){const section=scoringData?.[sex.value]||{};const available=eventDefinitions.filter(([code])=>section[code]);eventSelect.innerHTML=available.map(([code,label])=>`<option value="${code}">${label}</option>`).join("");updateEventUI();}
+function populateEvents(){
+  const section=scoringData?.[sex.value]||{};
+  const allowed=sex.value==='W'
+    ? new Set(['100m','200m','400m','800m','1500m','5000m','10000m','100mH','400mH','3000mSC','HJ','PV','LJ','TJ','SP','DT','HT','JT','Heptathlon'])
+    : new Set(['100m','200m','400m','800m','1500m','5000m','10000m','110mH','400mH','3000mSC','HJ','PV','LJ','TJ','SP','DT','HT','JT','Decathlon']);
+  const available=eventDefinitions.filter(([code])=>allowed.has(code)&&section[code]);
+  eventSelect.innerHTML=available.map(([code,label])=>`<option value="${code}">${label}</option>`).join("");
+  updateEventUI();
+}
 
 function updateEventUI(){
   const code=eventSelect.value,evt=scoringData?.[sex.value]?.[code];activeGroup=groupForEvent(code);eventGroupLabel.value=requirements[activeGroup].label;requiredText.textContent=requirements[activeGroup].text;mainRequirement.textContent=`Minst ${requirements[activeGroup].minMain} Main Event-resultat${requirements[activeGroup].minMain>1?"er":""}.`;
@@ -94,8 +102,29 @@ document.getElementById("calculate").addEventListener("click",()=>{
   const rules=[];if(windEvents.has(eventSelect.value)){rules.push(`Vindjustering: ${details.windMod>0?"+":""}${fmt(details.windMod??0)} poeng.`);if(details.usedBLJ)rules.push("Best Legal Jump ga bedre justert Result Score og ble brukt.");}if(activeGroup==="combined"&&combinedWindStatus.value!=="normal")rules.push("Mangekamp: -24 poeng for vindregel.");rules.push(`Main Event-kravet (${req.minMain} av ${req.n}) er oppfylt.`);document.getElementById("ruleInfo").textContent=rules.join(" ");document.getElementById("resultBox").classList.remove("hidden");
 });
 
-function renderMeets(){const cat=document.getElementById("meetCategoryFilter").value,country=document.getElementById("countryFilter").value,list=demoMeets.filter(m=>(cat==="all"||m.cat===cat)&&(country==="all"||m.country===country));document.getElementById("meetList").innerHTML=list.map(m=>`<article class="meet-card"><div class="meet-top"><div><h4>${m.name}</h4><div class="meta">${m.place}</div></div><span class="cat">${m.cat}</span></div><div class="chips">${m.events.map(e=>`<span class="chip">${e}</span>`).join("")}</div><div class="meta">${m.prize}<br>${m.entry}</div><div class="card-actions"><button onclick="alert('Kart kobles inn i neste versjon')">Vis i kart</button><button onclick="alert('Detaljside kobles inn i neste versjon')">Detaljer</button></div></article>`).join("")||`<p class="muted">Ingen treff med valgte filtre.</p>`;}
-document.getElementById("meetCategoryFilter").addEventListener("change",renderMeets);document.getElementById("countryFilter").addEventListener("change",renderMeets);
+function renderMeets(){
+  const catEl=document.getElementById("meetCategoryFilter"),countryEl=document.getElementById("countryFilter"),meetList=document.getElementById("meetList");
+  if(!catEl||!countryEl||!meetList)return;
+  const cat=catEl.value,country=countryEl.value,list=demoMeets.filter(m=>(cat==="all"||m.cat===cat)&&(country==="all"||m.country===country));
+  meetList.innerHTML=list.map(m=>`<article class="meet-card"><div class="meet-top"><div><h4>${m.name}</h4><div class="meta">${m.place}</div></div><span class="cat">${m.cat}</span></div><div class="chips">${m.events.map(e=>`<span class="chip">${e}</span>`).join("")}</div><div class="meta">${m.prize}<br>${m.entry}</div><div class="card-actions"><button onclick="alert('Kart kobles inn i neste versjon')">Vis i kart</button><button onclick="alert('Detaljside kobles inn i neste versjon')">Detaljer</button></div></article>`).join("")||`<p class="muted">Ingen treff med valgte filtre.</p>`;
+}
+const legacyMeetCategory=document.getElementById("meetCategoryFilter"),legacyCountryFilter=document.getElementById("countryFilter");
+if(legacyMeetCategory&&legacyCountryFilter){legacyMeetCategory.addEventListener("change",renderMeets);legacyCountryFilter.addEventListener("change",renderMeets);}
 
-async function init(){renderMeets();try{const response=await fetch(SCORING_URL,{cache:"force-cache"});if(!response.ok)throw new Error(`HTTP ${response.status}`);scoringData=await response.json();dataStatus.textContent="WA-tabell 2025 klar";populateEvents();}catch(err){console.error(err);dataStatus.textContent="Scoringdata kunne ikke lastes";eventSelect.innerHTML=`<option>Ingen data</option>`;eventGroupLabel.value="–";requiredText.textContent="Koble til internett og last siden på nytt.";}}
+async function init(){
+  renderMeets();
+  try{
+    const response=await fetch(SCORING_URL,{cache:"force-cache"});
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    scoringData=await response.json();
+    dataStatus.textContent="WA-tabell 2025 klar";
+    populateEvents();
+  }catch(err){
+    console.error(err);
+    dataStatus.textContent="Scoringdata kunne ikke lastes";
+    eventSelect.innerHTML=`<option>Ingen data</option>`;
+    eventGroupLabel.value="–";
+    requiredText.textContent="Koble til internett og last siden på nytt.";
+  }
+}
 init();
