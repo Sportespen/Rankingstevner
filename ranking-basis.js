@@ -1,4 +1,4 @@
-// Rankingstevner v0.21.2 – vis rekonstruert rankinggrunnlag også når offisiell WA-score finnes
+// Rankingstevner v0.21.3 – del rekonstruert rankinggrunnlag med offisiell WA-boks
 (function(){
   const eventSelect=document.getElementById('event');
   const sex=document.getElementById('sex');
@@ -51,7 +51,29 @@
   function fillScores(basis){setTimeout(()=>{const scores=[...document.querySelectorAll('.existingScore')],types=[...document.querySelectorAll('.existingType')];if(!scores.length)return;scores.forEach(el=>el.value='');types.forEach(el=>el.value='main');basis.selected.slice(0,scores.length).forEach((x,i)=>{scores[i].value=String(x.score);if(types[i])types[i].value=x.type;});scores.forEach(el=>el.dispatchEvent(new Event('input',{bubbles:true})));},140);}
   function rowHtml(x){const badge=x.type==='similar'?'<span class="event-type-badge event-type-similar">Similar Event</span>':'<span class="event-type-badge event-type-main">Main Event</span>';const sub=x.source==='combined-event-subevent'?'<span class="subevent-note">fra mangekamp</span>':'';const meta=[x.date,x.competition].filter(Boolean).join(' · ');return `${x.mark??''} ${x.discipline} · ${x.resultScore} Result Score + ${x.placingScore} Placing Score = <strong>${x.score} Performance Score</strong>${badge}${sub}${meta?`<div class="basis-note">${meta}</div>`:''}`;}
 
+  function exposeBasis(basis){
+    window.__rankingstevnerReconstructedBasis={
+      event:eventSelect.value,
+      rankingScore:Number.isFinite(basis.rankingScore)?basis.rankingScore:null,
+      needed:basis.needed,
+      complete:!!basis.complete,
+      selected:basis.selected.map(x=>({
+        date:x.date||null,
+        competition:x.competition||null,
+        result:x.mark??null,
+        discipline:x.discipline||null,
+        resultScore:Number(x.resultScore),
+        placingScore:Number(x.placingScore),
+        performanceScore:Number(x.score),
+        type:x.type||'main',
+        source:x.source||null
+      }))
+    };
+    window.dispatchEvent(new CustomEvent('rankingbasisupdated'));
+  }
+
   function renderBasis(basis){
+    exposeBasis(basis);
     if(!waDetails)return;
     const official=window.__rankingstevnerOfficialRanking;
     const sameOfficial=official&&official.event===eventSelect.value&&Number(official.score)>0;
@@ -71,15 +93,12 @@
       leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br>${rows}${status}`;
     }
     let rightHtml='';
-    if(sameOfficial){
-      rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">OFFISIELL WA RANKING SCORE</div><div class="ranking-score-value">${Number(official.score)}</div><div class="ranking-score-note">Verifisert mot World Athletics.</div></div>`;
-    }else if(basis.complete){
-      rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">BEREGNET RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div><div class="ranking-score-note">Midlertidig beregning. Ingen offisiell WA Ranking Score funnet.</div></div>`;
-    }
+    if(sameOfficial){rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">OFFISIELL WA RANKING SCORE</div><div class="ranking-score-value">${Number(official.score)}</div><div class="ranking-score-note">Verifisert mot World Athletics.</div></div>`;}
+    else if(basis.complete){rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">BEREGNET RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div><div class="ranking-score-note">Midlertidig beregning. Ingen offisiell WA Ranking Score funnet.</div></div>`;}
     box.innerHTML=`<div class="ranking-basis-left">${leftHtml}</div>${rightHtml}`;waDetails.appendChild(box);waDetails.style.display='block';
   }
-  function refresh(){if(!allResults.length)return;const b=basisFor(eventSelect.value);fillScores(b);setTimeout(()=>renderBasis(b),180);}
-  async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){await ensureScoring();refresh();return;}loading=true;try{const [res]=await Promise.all([fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=212`,{cache:'no-store'}),ensureScoring()]);const data=await res.json();if(data?.ok&&Array.isArray(data.results)){currentId=String(id);allResults=data.results;refresh();}}catch(_){}finally{loading=false;}}
+  function refresh(){if(!allResults.length){window.__rankingstevnerReconstructedBasis={event:eventSelect.value,selected:[],needed:req[group(eventSelect.value)],complete:false,rankingScore:null};window.dispatchEvent(new CustomEvent('rankingbasisupdated'));return;}const b=basisFor(eventSelect.value);fillScores(b);setTimeout(()=>renderBasis(b),180);}
+  async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){await ensureScoring();refresh();return;}loading=true;try{const [res]=await Promise.all([fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=213`,{cache:'no-store'}),ensureScoring()]);const data=await res.json();if(data?.ok&&Array.isArray(data.results)){currentId=String(id);allResults=data.results;refresh();}}catch(_){}finally{loading=false;}}
   function idFromInput(){return waInput.value.trim().match(/(\d{7,9})/)?.[1]||'';}
   eventSelect.addEventListener('change',()=>setTimeout(refresh,220));sex.addEventListener('change',()=>setTimeout(refresh,260));waInput.addEventListener('change',()=>load(idFromInput()));if(waStatus){new MutationObserver(()=>{const id=idFromInput();if(id)setTimeout(()=>load(id),50);}).observe(waStatus,{childList:true,subtree:true,characterData:true});}window.addEventListener('rankingofficialloaded',()=>setTimeout(refresh,40));const initial=idFromInput();if(initial)setTimeout(()=>load(initial),400);
 })();
