@@ -1,28 +1,25 @@
-// Rankingstevner v0.13.4 – vind: skriv kun siffer, vis automatisk desimal
+// Rankingstevner v0.13.5 – vindfelt som resultatfelt: 24 vises som 2,4
 (() => {
-  'use strict';
-  function init(){
-    const originalWind=document.getElementById('wind'),calculate=document.getElementById('calculate'),resultScore=document.getElementById('resultScore'),windAdjustment=document.getElementById('windAdjustment'),event=document.getElementById('event'),category=document.getElementById('category'),placing=document.getElementById('placing'),mark=document.getElementById('mark');
-    if(!originalWind||!calculate||!resultScore||!windAdjustment||!event||!category||!placing||!mark){setTimeout(init,100);return;} if(document.getElementById('windControl'))return; originalWind.style.display='none';
-    const wrap=document.createElement('div');wrap.id='windControl';wrap.style.cssText='display:grid;grid-template-columns:auto minmax(120px,1fr);gap:8px;margin-top:7px;align-items:stretch';
-    const signWrap=document.createElement('div');signWrap.id='windSignButtons';signWrap.style.cssText='display:flex;gap:6px';let selectedSign='';const buttons={};
-    [['+','+'],['-','−'],['NWI','NWI']].forEach(([value,label])=>{const btn=document.createElement('button');btn.type='button';btn.textContent=label;btn.dataset.value=value;btn.style.cssText='min-width:54px;border:1px solid #cfd7de;border-radius:11px;background:#fff;color:#14202b;font-weight:800;font-size:16px;padding:0 12px;cursor:pointer';btn.addEventListener('click',()=>{selectedSign=value;Object.entries(buttons).forEach(([k,b])=>{const a=k===value;b.style.background=a?'#0f766e':'#fff';b.style.color=a?'#fff':'#14202b';b.style.borderColor=a?'#0f766e':'#cfd7de';});updateWindDisplayOnly();});buttons[value]=btn;signWrap.appendChild(btn);});
-    const amount=document.createElement('input');amount.id='windAmount';amount.type='text';amount.inputMode='numeric';amount.autocomplete='off';amount.placeholder='f.eks. 2,4';amount.style.marginTop='0';originalWind.parentNode.insertBefore(wrap,originalWind);wrap.append(signWrap,amount);
-    function digits(){return amount.value.replace(/\D/g,'').slice(0,2);}
-    function formatDigits(d){if(!d)return '';if(d.length===1)return `0,${d}`;return `${d[0]},${d[1]}`;}
-    function numericWindAmount(){const d=digits();if(!d)return null;return Number(d)/10;}
-    function composedWind(){if(selectedSign==='NWI')return'NWI';if(selectedSign!=='+'&&selectedSign!=='-')return'';const n=numericWindAmount();if(n===null)return'';return`${selectedSign}${n.toFixed(1).replace('.',',')}`;}
-    function parseWindLocal(raw){const s=String(raw).trim().toUpperCase().replace(',','.');if(!s)return null;if(s==='NWI')return'NWI';const v=Number(s);return Number.isFinite(v)?v:null;}
-    function windModLocal(raw){const w=parseWindLocal(raw);if(w===null)return null;if(w==='NWI')return-30;if(w<0)return Math.abs(w)*6;if(w>2)return-w*6;return 0;}
-    function fmt(v){return Number.isInteger(v)?String(v):v.toFixed(1).replace('.',',');}
-    function updateWindDisplayOnly(){const d=digits();amount.value=formatDigits(d);const raw=composedWind();originalWind.value=raw;amount.disabled=selectedSign==='NWI';if(selectedSign==='NWI')amount.value='';const mod=windModLocal(raw);windAdjustment.value=mod===null?'–':`${mod>0?'+':''}${fmt(mod)}`;}
-    amount.addEventListener('input',updateWindDisplayOnly);amount.addEventListener('change',updateWindDisplayOnly);
-    amount.addEventListener('keydown',e=>{if(e.key==='Backspace'||e.key==='Delete'){const d=digits();if(d){e.preventDefault();amount.value=formatDigits(d.slice(0,-1));updateWindDisplayOnly();}}});
-    event.addEventListener('change',()=>{selectedSign='';Object.values(buttons).forEach(b=>{b.style.background='#fff';b.style.color='#14202b';b.style.borderColor='#cfd7de';});amount.value='';amount.disabled=false;originalWind.value='';windAdjustment.value='–';});
-    function recalcBaseWithoutWind(){const saved=originalWind.value;originalWind.value='';try{if(typeof refreshResultScore==='function')refreshResultScore();}finally{originalWind.value=saved;}}
-    mark.addEventListener('input',recalcBaseWithoutWind);mark.addEventListener('change',recalcBaseWithoutWind);category.addEventListener('change',recalcBaseWithoutWind);placing.addEventListener('change',recalcBaseWithoutWind);
-    calculate.addEventListener('click',e=>{if(originalWind.closest('#windSection')?.style.display!=='none'){if(!selectedSign){e.preventDefault();e.stopImmediatePropagation();alert('Velg + for medvind, − for motvind eller NWI før du beregner.');buttons['+'].focus();return;}if(selectedSign!=='NWI'&&!digits()){e.preventDefault();e.stopImmediatePropagation();alert('Skriv vindstyrken. Du trenger ikke skrive komma.');amount.focus();}}},true);
-    calculate.addEventListener('click',()=>{setTimeout(()=>{try{if(typeof adjustedResultDetails!=='function')return;const details=adjustedResultDetails();if(!details)return;const adjusted=details.adjusted;resultScore.value=Number.isInteger(adjusted)?String(adjusted):String(adjusted).replace('.',',');resultScore.dispatchEvent(new Event('input',{bubbles:true}));resultScore.dispatchEvent(new Event('change',{bubbles:true}));}catch(err){console.error('Kunne ikke synkronisere justert score etter beregning',err);}},0);});updateWindDisplayOnly();
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
+'use strict';
+function init(){
+const originalWind=document.getElementById('wind'),calculate=document.getElementById('calculate'),resultScore=document.getElementById('resultScore'),windAdjustment=document.getElementById('windAdjustment'),event=document.getElementById('event'),category=document.getElementById('category'),placing=document.getElementById('placing'),mark=document.getElementById('mark');
+if(!originalWind||!calculate||!resultScore||!windAdjustment||!event||!category||!placing||!mark){setTimeout(init,100);return}if(document.getElementById('windControl'))return;originalWind.style.display='none';
+const wrap=document.createElement('div');wrap.id='windControl';wrap.style.cssText='display:grid;grid-template-columns:auto minmax(120px,1fr);gap:8px;margin-top:7px;align-items:stretch';const signWrap=document.createElement('div');signWrap.style.cssText='display:flex;gap:6px';let selectedSign='';const buttons={};
+[['+','+'],['-','−'],['NWI','NWI']].forEach(([v,l])=>{const b=document.createElement('button');b.type='button';b.textContent=l;b.style.cssText='min-width:54px;border:1px solid #cfd7de;border-radius:11px;background:#fff;color:#14202b;font-weight:800;font-size:16px;padding:0 12px;cursor:pointer';b.onclick=()=>{selectedSign=v;Object.entries(buttons).forEach(([k,x])=>{const a=k===v;x.style.background=a?'#0f766e':'#fff';x.style.color=a?'#fff':'#14202b';x.style.borderColor=a?'#0f766e':'#cfd7de'});if(v==='NWI'){amount.value='';amount.dataset.digits=''}amount.disabled=v==='NWI';sync()};buttons[v]=b;signWrap.appendChild(b)});
+const amount=document.createElement('input');amount.id='windAmount';amount.type='text';amount.inputMode='numeric';amount.autocomplete='off';amount.placeholder='f.eks. 2,4';amount.style.marginTop='0';amount.dataset.digits='';originalWind.parentNode.insertBefore(wrap,originalWind);wrap.append(signWrap,amount);
+function format(d){if(!d)return'';if(d.length===1)return d;if(d.length===2)return d[0]+','+d[1];return d.slice(0,-1)+','+d.slice(-1)}
+function value(){const d=amount.dataset.digits||'';if(!d)return null;return Number(d)/10}
+function raw(){if(selectedSign==='NWI')return'NWI';const n=value();if(!selectedSign||n===null)return'';return selectedSign+n.toFixed(1).replace('.',',')}
+function windMod(r){const s=String(r).replace(',','.');if(!s)return null;if(s==='NWI')return-30;const w=Number(s);if(!Number.isFinite(w))return null;if(w<0)return Math.abs(w)*6;if(w>2)return-w*6;return 0}
+function fmt(v){return Number.isInteger(v)?String(v):v.toFixed(1).replace('.',',')}
+function sync(){amount.value=format(amount.dataset.digits||'');originalWind.value=raw();const m=windMod(originalWind.value);windAdjustment.value=m===null?'–':`${m>0?'+':''}${fmt(m)}`}
+amount.addEventListener('beforeinput',e=>{if(e.inputType==='insertText'&&e.data&&/\D/.test(e.data))e.preventDefault()});
+amount.addEventListener('input',()=>{const incoming=amount.value.replace(/\D/g,'');amount.dataset.digits=incoming.slice(0,2);sync()});
+amount.addEventListener('keydown',e=>{if(e.key==='Backspace'||e.key==='Delete'){e.preventDefault();amount.dataset.digits=(amount.dataset.digits||'').slice(0,-1);sync()}});
+event.addEventListener('change',()=>{selectedSign='';Object.values(buttons).forEach(b=>{b.style.background='#fff';b.style.color='#14202b';b.style.borderColor='#cfd7de'});amount.dataset.digits='';amount.value='';amount.disabled=false;originalWind.value='';windAdjustment.value='–'});
+function recalcBase(){const saved=originalWind.value;originalWind.value='';try{if(typeof refreshResultScore==='function')refreshResultScore()}finally{originalWind.value=saved}}
+mark.addEventListener('input',recalcBase);mark.addEventListener('change',recalcBase);category.addEventListener('change',recalcBase);placing.addEventListener('change',recalcBase);
+calculate.addEventListener('click',e=>{if(originalWind.closest('#windSection')?.style.display!=='none'){if(!selectedSign){e.preventDefault();e.stopImmediatePropagation();alert('Velg + for medvind, − for motvind eller NWI før du beregner.');return}if(selectedSign!=='NWI'&&!amount.dataset.digits){e.preventDefault();e.stopImmediatePropagation();alert('Skriv vindstyrken. Du trenger ikke skrive komma.');amount.focus()}}},true);
+calculate.addEventListener('click',()=>setTimeout(()=>{try{if(typeof adjustedResultDetails!=='function')return;const d=adjustedResultDetails();if(!d)return;const a=d.adjusted;resultScore.value=Number.isInteger(a)?String(a):String(a).replace('.',',');resultScore.dispatchEvent(new Event('input',{bubbles:true}));resultScore.dispatchEvent(new Event('change',{bubbles:true}))}catch(err){console.error(err)}},0));sync();}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();
