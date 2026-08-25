@@ -44,6 +44,17 @@
 })();
 
 (function(){
+  function loadProfileUx(){
+    if(document.querySelector('script[data-profile-ux-v0165]'))return;
+    const s=document.createElement('script');
+    s.src='profile-ux-v0165.js?v=0165';
+    s.dataset.profileUxV0165='1';
+    document.head.appendChild(s);
+  }
+  setTimeout(loadProfileUx,0);
+})();
+
+(function(){
   const eventSelect=document.getElementById('event');
   const sex=document.getElementById('sex');
   if(!eventSelect||!sex)return;
