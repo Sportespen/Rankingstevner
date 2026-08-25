@@ -20,7 +20,7 @@ export async function onRequestGet(context){
   let name='';
 
   try{
-    const nr=await fetch(`https://worldathletics.nimarion.de/athletes/${id}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.9','Accept':'application/json'}});
+    const nr=await fetch(`https://worldathletics.nimarion.de/athletes/${id}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.21.0','Accept':'application/json'}});
     if(nr.ok){
       profile=await nr.json();
       name=`${profile?.firstname||profile?.firstName||''} ${profile?.lastname||profile?.lastName||''}`.trim();
@@ -42,11 +42,11 @@ export async function onRequestGet(context){
       for(const path of paths){
         const rankingUrl=`https://worldathletics.org/world-rankings/${slug}/${path}?page=${page}`;
         try{
-          const rr=await fetch(rankingUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.9','Accept':'text/html,application/xhtml+xml'}});
+          const rr=await fetch(rankingUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.21.0','Accept':'text/html,application/xhtml+xml'}});
           const html=await rr.text();
-          const found=findAthleteInHtml(html,name,knownRank);
+          const found=findAthleteInHtmlTable(html,name,knownRank);
           const publishedDate=findPublishedDate(html);
-          diagnostics.push({source:'ranking-page-direct',path,page,url:rankingUrl,status:rr.status,publishedDate,foundRank:found?.rank||null,foundScore:found?.score||null});
+          diagnostics.push({source:'ranking-page-direct',path,page,url:rankingUrl,status:rr.status,publishedDate,foundRank:found?.rank||null,foundScore:found?.score||null,parser:'exact-table-row'});
           if(rr.ok&&found&&validScore(found.score)){
             return json({ok:true,id:Number(id),event,name,rank:found.rank,score:found.score,source:'World Athletics published ranking table',sourceUrl:rankingUrl,sourceDate:publishedDate||null,verifiedPublished:true,eventGroup:rhit?.eventGroup||null,diagnostics});
           }
@@ -58,7 +58,7 @@ export async function onRequestGet(context){
         const path=sex==='W'?'m':'men';
         const rankingUrl=`https://worldathletics.org/world-rankings/${slug}/${path}?page=${page}`;
         const readerUrl=`https://r.jina.ai/${rankingUrl}`;
-        const rr=await fetch(readerUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.9','Accept':'text/plain'}});
+        const rr=await fetch(readerUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.21.0','Accept':'text/plain'}});
         const text=rr.ok?await rr.text():'';
         const found=findAthleteRow(text,name,knownRank);
         const publishedDate=findPublishedDate(text);
@@ -70,7 +70,7 @@ export async function onRequestGet(context){
     }
   }
 
-  // GraphQL brukes nå KUN som diagnostikk. Den får ikke lenger levere "Offisiell WA Ranking Score".
+  // GraphQL brukes KUN som diagnostikk.
   const query=`query OfficialAthleteRanking($id: Int) {
     getSingleCompetitor(id: $id) {
       basicData { familyName givenName }
@@ -84,7 +84,7 @@ export async function onRequestGet(context){
       const gr=await fetch(endpoint,{method:'POST',headers:{
         'content-type':'application/json','accept':'application/json','x-api-key':WA_API_KEY,
         'x-amz-user-agent':'aws-amplify/3.0.2','x-graphql-client-name':'worldathletics',
-        'user-agent':'Mozilla/5.0 Rankingstevner/0.20.9'
+        'user-agent':'Mozilla/5.0 Rankingstevner/0.21.0'
       },body:JSON.stringify({query,operationName:'OfficialAthleteRanking',variables})});
       const text=await gr.text();
       let payload=null;try{payload=JSON.parse(text);}catch(_){ }
@@ -102,6 +102,24 @@ function rankingSlug(code){return ({'100m':'100m','200m':'200m','400m':'400m','8
 function rankingEventMatches(eventGroup,code){const n=norm(eventGroup);const aliases={'100m':['100m'],'200m':['200m'],'400m':['400m'],'800m':['800m'],'1500m':['1500m'],'5000m':['5000m'],'10000m':['10000m'],'100mH':['100mh'],'110mH':['110mh'],'400mH':['400mh'],'3000mSC':['3000msc','3000msteeplechase'],HJ:['highjump'],PV:['polevault'],LJ:['longjump'],TJ:['triplejump'],SP:['shotput'],DT:['discusthrow'],HT:['hammerthrow'],JT:['javelinthrow'],Decathlon:['decathlon','combinedevents','combinedevent'],Heptathlon:['heptathlon','combinedevents','combinedevent']};return (aliases[code]||[]).some(a=>n===a||n.startsWith(a)||n.includes(a));}
 function norm(s){return String(s||'').toLowerCase().replace(/metres?|meters?/g,'m').replace(/women'?s|woman'?s|men'?s/g,'').replace(/short track/g,'sh').replace(/[^a-z0-9]+/g,'');}
 function normalizeName(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/Ø/g,'O').replace(/ø/g,'o').replace(/Æ/g,'AE').replace(/æ/g,'ae').replace(/Å/g,'A').replace(/å/g,'a').replace(/[‐‑‒–—-]/g,' ').replace(/[^a-zA-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim().toLowerCase();}
+function htmlText(s){return String(s||'').replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/&#39;/gi,"'").replace(/&quot;/gi,'"').replace(/\s+/g,' ').trim();}
+function findAthleteInHtmlTable(html,name,knownRank){
+  if(!html||!name)return null;
+  const wanted=normalizeName(name);
+  const rows=String(html).match(/<tr\b[\s\S]*?<\/tr>/gi)||[];
+  for(const row of rows){
+    const rowText=htmlText(row);
+    if(!normalizeName(rowText).includes(wanted))continue;
+    const cells=[...row.matchAll(/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(m=>htmlText(m[1])).filter(Boolean);
+    if(!cells.length)continue;
+    const rankCandidates=cells.flatMap(c=>[...c.matchAll(/\b(\d{1,4})\b/g)].map(m=>Number(m[1]))).filter(validRank);
+    const scoreCandidates=cells.flatMap(c=>[...c.matchAll(/\b(\d{3,4})\b/g)].map(m=>Number(m[1]))).filter(validScore);
+    const rank=validRank(knownRank)?rankCandidates.find(v=>Math.abs(v-knownRank)<=20):rankCandidates[0];
+    const score=scoreCandidates.find(v=>v!==rank);
+    if(validRank(rank)&&validScore(score))return {rank,score,cells};
+  }
+  return null;
+}
 function findAthleteRow(text,name,knownRank){
   if(!text||!name)return null;
   const wanted=normalizeName(name);
@@ -112,26 +130,13 @@ function findAthleteRow(text,name,knownRank){
     if(cols.length<5)continue;
     const rank=Number(String(cols[0]).replace(/\D/g,''));
     const score=Number(String(cols[4]).replace(/[^0-9]/g,''));
-    if(validRank(rank)&&validScore(score)&&(!validRank(knownRank)||Math.abs(rank-knownRank)<=15))return {rank,score};
+    if(validRank(rank)&&validScore(score)&&(!validRank(knownRank)||Math.abs(rank-knownRank)<=20))return {rank,score};
   }
   return null;
 }
-function findAthleteInHtml(html,name,knownRank){
-  if(!html||!name)return null;
-  const plain=String(html).replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/\s+/g,' ');
-  const wanted=normalizeName(name);
-  const nplain=normalizeName(plain);
-  const idx=nplain.indexOf(wanted);
-  if(idx<0)return null;
-  const raw=plain.slice(Math.max(0,idx-300),idx+400);
-  const nums=[...raw.matchAll(/\b(\d{1,4})\b/g)].map(m=>Number(m[1]));
-  const rank=validRank(knownRank)?nums.find(v=>validRank(v)&&Math.abs(v-knownRank)<=15):nums.find(v=>validRank(v));
-  const scores=nums.filter(v=>validScore(v));
-  return rank&&scores.length?{rank,score:scores[scores.length-1]}:null;
-}
 function findPublishedDate(text){
-  const s=String(text||'');
-  const m=s.match(/(?:ranking|rankings)[^\n]{0,120}?(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+20\d{2})/i)
+  const s=htmlText(text);
+  const m=s.match(/(?:As of|ranking|rankings)[^\n]{0,120}?(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+20\d{2})/i)
     ||s.match(/(\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+20\d{2})/i);
   return m?m[1]:null;
 }
