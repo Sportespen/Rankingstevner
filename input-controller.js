@@ -26,10 +26,10 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
 (() => {
   function loadFastAthleteSearch(){
-    if(document.querySelector('script[data-fast-athlete-search-v0177]')) return;
+    if(document.querySelector('script[data-fast-athlete-search-v0180]')) return;
     const s=document.createElement('script');
-    s.src='athlete-search-fast.js?v=0177';
-    s.dataset.fastAthleteSearchV0177='1';
+    s.src='athlete-search-fast.js?v=0180';
+    s.dataset.fastAthleteSearchV0180='1';
     document.head.appendChild(s);
   }
   setTimeout(loadFastAthleteSearch,0);
