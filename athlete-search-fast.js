@@ -1,4 +1,4 @@
-// Rankingstevner v0.17.4 – tidlig kandidatinnlasting for alle navn
+// Rankingstevner v0.17.5 – vedvarende førstegangssøk mens navnet skrives
 (() => {
   'use strict';
 
@@ -7,8 +7,8 @@
     const waInput=document.getElementById('waProfileId');
     const waButton=document.getElementById('loadWaProfile');
     if(!input||!waInput||!waButton){setTimeout(boot,80);return;}
-    if(input.dataset.fastAthleteSearch==='174') return;
-    input.dataset.fastAthleteSearch='174';
+    if(input.dataset.fastAthleteSearch==='175') return;
+    input.dataset.fastAthleteSearch='175';
 
     const host=input.parentElement;
     if(!host) return;
@@ -23,7 +23,7 @@
 
     const pool=new Map();
     const responseCache=new Map();
-    const prefixRequests=new Map();
+    const persistentRequests=new Map();
     let timer=null, requestNo=0, exactController=null, visible=[];
 
     function norm(s){
@@ -74,7 +74,7 @@
     async function fetchQuery(q,signal){
       const key=norm(q);
       if(responseCache.has(key)) return responseCache.get(key);
-      const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=174`,{cache:'no-store',signal});
+      const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=175`,{cache:'no-store',signal});
       const data=await res.json();
       const list=Array.isArray(data?.results)?data.results:[];
       responseCache.set(key,list);
@@ -82,11 +82,11 @@
       return list;
     }
 
-    function startPersistentPrefix(query){
+    function startPersistent(query){
       const key=norm(query);
-      if(!key||responseCache.has(key)||prefixRequests.has(key)) return;
-      const p=fetchQuery(query).catch(()=>[]).finally(()=>prefixRequests.delete(key));
-      prefixRequests.set(key,p);
+      if(!key||responseCache.has(key)||persistentRequests.has(key)) return;
+      const p=fetchQuery(query).catch(()=>[]).finally(()=>persistentRequests.delete(key));
+      persistentRequests.set(key,p);
       p.then(()=>{
         const current=input.value.trim();
         if(!current) return;
@@ -96,12 +96,19 @@
     }
 
     function preloadCandidates(q){
-      const raw=q.trim();
-      const parts=raw.split(/\s+/).filter(Boolean);
+      const parts=q.trim().split(/\s+/).filter(Boolean);
       const first=parts[0]||'';
       if(first.length<4) return;
-      startPersistentPrefix(first.slice(0,4));
-      if(parts.length>1) startPersistentPrefix(first);
+
+      // Viktig forskjell fra tidligere versjoner:
+      // HVER brukbare versjon av første navnedel får fullføre i bakgrunnen.
+      // Ingen av disse avbrytes når neste bokstav skrives.
+      // Dermed får f.eks. "mira", "miran", "mirand", "miranda" alle sjansen
+      // til å hente kandidater første gang brukeren søker.
+      startPersistent(first);
+
+      // I tillegg beholdes et kort, bredt prefikssøk som ekstra sikkerhetsnett.
+      if(first.length>4) startPersistent(first.slice(0,4));
     }
 
     async function remoteExact(q,myRequest){
@@ -126,11 +133,12 @@
       if(q.length<2){exactController?.abort();render([]);return;}
 
       preloadCandidates(q);
+
       const local=localMatches(q);
       if(local.length)render(local);else render([],'Søker…');
 
       const mine=requestNo;
-      timer=setTimeout(()=>remoteExact(q,mine),140);
+      timer=setTimeout(()=>remoteExact(q,mine),180);
     },true);
 
     document.addEventListener('click',e=>{if(e.target!==input&&!box.contains(e.target))box.style.display='none';});
