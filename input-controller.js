@@ -23,3 +23,15 @@ calculate.addEventListener('click',e=>{if(originalWind.closest('#windSection')?.
 calculate.addEventListener('click',()=>setTimeout(()=>{try{if(typeof adjustedResultDetails!=='function')return;const d=adjustedResultDetails();if(!d)return;const a=d.adjusted;resultScore.value=Number.isInteger(a)?String(a):String(a).replace('.',',');resultScore.dispatchEvent(new Event('input',{bubbles:true}));resultScore.dispatchEvent(new Event('change',{bubbles:true}))}catch(err){console.error(err)}},0));sync();}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();
+
+// Last inn det raske, generelle navnesøket etter at Trinn 3 har registrert sitt eldre søk.
+(() => {
+  function loadFastAthleteSearch(){
+    if(document.querySelector('script[data-fast-athlete-search-v0171]')) return;
+    const s=document.createElement('script');
+    s.src='athlete-search-fast.js?v=0171';
+    s.dataset.fastAthleteSearchV0171='1';
+    document.head.appendChild(s);
+  }
+  setTimeout(loadFastAthleteSearch,0);
+})();
