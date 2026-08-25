@@ -10,23 +10,24 @@ export async function onRequestGet(context){
   if(!event)return json({ok:false,error:'Mangler øvelse'},400);
 
   const diagnostics=[];
-  let profile=null,name='',knownRank=null;
+  let profile=null,name='',knownRank=null,athleteSlug='';
   try{
-    const r=await fetch(`https://worldathletics.nimarion.de/athletes/${id}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.22.0','Accept':'application/json'}});
+    const r=await fetch(`https://worldathletics.nimarion.de/athletes/${id}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.22.1','Accept':'application/json'}});
     if(r.ok){
       profile=await r.json();
       name=`${profile?.firstname||profile?.firstName||''} ${profile?.lastname||profile?.lastName||''}`.trim();
+      athleteSlug=String(profile?.urlSlug||profile?.slug||'').trim();
       const current=Array.isArray(profile?.currentWorldRankings)?profile.currentWorldRankings:[];
       const hit=current.find(x=>rankingEventMatches(x?.eventGroup,event));
       const p=Number(hit?.place); if(validRank(p))knownRank=p;
-      diagnostics.push({source:'nimarion-profile',status:r.status,name,knownRank,eventGroup:hit?.eventGroup||null});
+      diagnostics.push({source:'nimarion-profile',status:r.status,name,athleteSlug,knownRank,eventGroup:hit?.eventGroup||null});
     }else diagnostics.push({source:'nimarion-profile',status:r.status});
   }catch(e){diagnostics.push({source:'nimarion-profile',error:String(e?.message||e)});}
 
   const slug=rankingSlug(event);
   const gender=sex==='W'?'women':'men';
   if(slug&&name){
-    const official=await fetchOfficialRanking(slug,gender,name,knownRank,diagnostics);
+    const official=await fetchOfficialRanking(slug,gender,name,athleteSlug,knownRank,diagnostics);
     if(official){
       const calc=await fetchOfficialCalculation(official.row.id,diagnostics);
       const basis=Array.isArray(calc?.results)?calc.results.map(normalizeBasis).filter(Boolean):[];
@@ -52,37 +53,63 @@ export async function onRequestGet(context){
 
 async function trpc(proc,input){
   const q=encodeURIComponent(JSON.stringify({json:input}));
-  const r=await fetch(`${EA_TRPC}/${proc}?input=${q}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.22.0','Accept':'application/json'}});
+  const r=await fetch(`${EA_TRPC}/${proc}?input=${q}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.22.1','Accept':'application/json'}});
   const text=await r.text(); let body=null; try{body=JSON.parse(text);}catch(_){}
   if(!r.ok||body?.error)throw new Error(`${proc}: ${r.status} ${body?.error?.json?.message||text.slice(0,120)}`);
   return body?.result?.data?.json;
 }
 
-async function fetchOfficialRanking(slug,gender,name,knownRank,diagnostics){
-  const wanted=normalizeName(name);
-  const guessed=validRank(knownRank)?Math.max(1,Math.ceil(knownRank/100)):1;
-  const pagesToTry=[guessed,1,Math.max(1,guessed-1),guessed+1].filter((v,i,a)=>a.indexOf(v)===i);
-  let maxPages=null;
-  for(const page of pagesToTry){
+function athleteMatches(row,wantedName,wantedSlug){
+  const rowSlug=String(row?.athleteUrlSlug||'').trim();
+  if(wantedSlug&&rowSlug&&rowSlug===wantedSlug)return true;
+  const rn=normalizeName(row?.athlete),wn=normalizeName(wantedName);
+  return rn===wn || (rn&&wn&&(rn.includes(wn)||wn.includes(rn)));
+}
+
+async function fetchOfficialRanking(slug,gender,name,athleteSlug,knownRank,diagnostics){
+  let first=null;
+  try{
+    first=await trpc('worldAthletics.getRanking',{eventGroup:slug,gender,page:1});
+  }catch(e){diagnostics.push({source:'ea-ranking',slug,gender,page:1,error:String(e?.message||e)});return null;}
+
+  const firstRows=Array.isArray(first?.rankings)?first.rankings:[];
+  const maxPages=Math.max(1,Number(first?.pages)||1);
+  const pageSize=Math.max(1,firstRows.length||100);
+  let row=firstRows.find(r=>athleteMatches(r,name,athleteSlug));
+  diagnostics.push({source:'ea-ranking',slug,gender,page:1,count:firstRows.length,pages:maxPages,pageSize,knownRank,found:!!row});
+  if(row&&validScore(row.rankingScore))return {row,rankDate:first?.rankDate||null};
+
+  const targets=[];
+  if(validRank(knownRank)){
+    const byWorldRank=Math.max(1,Math.ceil(Number(knownRank)/pageSize));
+    for(const p of [byWorldRank,byWorldRank-1,byWorldRank+1,byWorldRank-2,byWorldRank+2]){
+      if(p>=2&&p<=maxPages&&!targets.includes(p))targets.push(p);
+    }
+  }
+
+  for(const page of targets){
     try{
       const data=await trpc('worldAthletics.getRanking',{eventGroup:slug,gender,page});
       const rows=Array.isArray(data?.rankings)?data.rankings:[];
-      maxPages=Number(data?.pages)||maxPages;
-      const row=rows.find(r=>normalizeName(r?.athlete)===wanted) || rows.find(r=>normalizeName(r?.athlete).includes(wanted)||wanted.includes(normalizeName(r?.athlete)));
-      diagnostics.push({source:'ea-ranking',slug,gender,page,count:rows.length,pages:maxPages,found:!!row});
-      if(row&&validScore(row.rankingScore))return {row,rankDate:data?.rankDate||null};
-    }catch(e){diagnostics.push({source:'ea-ranking',slug,gender,page,error:String(e?.message||e)});}
+      row=rows.find(r=>athleteMatches(r,name,athleteSlug));
+      diagnostics.push({source:'ea-ranking-targeted',slug,gender,page,count:rows.length,found:!!row});
+      if(row&&validScore(row.rankingScore))return {row,rankDate:data?.rankDate||first?.rankDate||null};
+    }catch(e){diagnostics.push({source:'ea-ranking-targeted',slug,gender,page,error:String(e?.message||e)});}
   }
-  if(maxPages&&maxPages<=20){
-    for(let page=2;page<=maxPages;page++){
-      if(pagesToTry.includes(page))continue;
-      try{
-        const data=await trpc('worldAthletics.getRanking',{eventGroup:slug,gender,page});
-        const rows=Array.isArray(data?.rankings)?data.rankings:[];
-        const row=rows.find(r=>normalizeName(r?.athlete)===wanted);
-        if(row&&validScore(row.rankingScore)){diagnostics.push({source:'ea-ranking-fullscan',page,found:true});return {row,rankDate:data?.rankDate||null};}
-      }catch(e){diagnostics.push({source:'ea-ranking-fullscan',page,error:String(e?.message||e)});break;}
-    }
+
+  // Fallback: scan the remaining pages. This is only used when the athlete's
+  // world rank and the gateway's page order differ (common in deep sprint lists).
+  for(let page=2;page<=maxPages;page++){
+    if(targets.includes(page))continue;
+    try{
+      const data=await trpc('worldAthletics.getRanking',{eventGroup:slug,gender,page});
+      const rows=Array.isArray(data?.rankings)?data.rankings:[];
+      row=rows.find(r=>athleteMatches(r,name,athleteSlug));
+      if(row&&validScore(row.rankingScore)){
+        diagnostics.push({source:'ea-ranking-fullscan',slug,gender,page,found:true});
+        return {row,rankDate:data?.rankDate||first?.rankDate||null};
+      }
+    }catch(e){diagnostics.push({source:'ea-ranking-fullscan',slug,gender,page,error:String(e?.message||e)});break;}
   }
   return null;
 }
@@ -115,8 +142,8 @@ function normalizeBasis(r){
   };
 }
 function num(v){const n=Number(v);return Number.isFinite(n)?n:null;}
-function rankingSlug(c){return ({'100m':'100m','200m':'200m','400m':'400m','800m':'800m','1500m':'1500m','5000m':'5000m','10000m':'10000m','100mH':'100m-hurdles','110mH':'110m-hurdles','400mH':'400m-hurdles','3000mSC':'3000m-steeplechase',HJ:'high-jump',PV:'pole-vault',LJ:'long-jump',TJ:'triple-jump',SP:'shot-put',DT:'discus-throw',HT:'hammer-throw',JT:'javelin-throw',Decathlon:'decathlon',Heptathlon:'heptathlon'})[c]||'';}
-function rankingEventMatches(g,c){const n=norm(g),a={'100m':['100m'],'200m':['200m'],'400m':['400m'],'800m':['800m'],'1500m':['1500m'],'5000m':['5000m'],'10000m':['10000m'],'100mH':['100mh'],'110mH':['110mh'],'400mH':['400mh'],'3000mSC':['3000msc','3000msteeplechase'],HJ:['highjump'],PV:['polevault'],LJ:['longjump'],TJ:['triplejump'],SP:['shotput'],DT:['discusthrow'],HT:['hammerthrow'],JT:['javelinthrow'],Decathlon:['decathlon','combinedevents','combinedevent'],Heptathlon:['heptathlon','combinedevents','combinedevent']};return (a[c]||[]).some(x=>n===x||n.startsWith(x)||n.includes(x));}
+function rankingSlug(c){return ({'100m':'100m','200m':'200m','400m':'400m','800m':'800m','1500m':'1500m','5000m':'5000m','10000m':'10000m','100mH':'100mh','110mH':'110mh','400mH':'400mh','3000mSC':'3000msc',HJ:'high-jump',PV:'pole-vault',LJ:'long-jump',TJ:'triple-jump',SP:'shot-put',DT:'discus-throw',HT:'hammer-throw',JT:'javelin-throw',Decathlon:'decathlon',Heptathlon:'heptathlon'})[c]||'';}
+function rankingEventMatches(g,c){const n=norm(g),a={'100m':['100m'],'200m':['200m'],'400m':['400m'],'800m':['800m'],'1500m':['1500m'],'5000m':['5000m'],'100mH':['100mh'],'110mH':['110mh'],'400mH':['400mh'],'3000mSC':['3000msc','3000msteeplechase'],HJ:['highjump'],PV:['polevault'],LJ:['longjump'],TJ:['triplejump'],SP:['shotput'],DT:['discusthrow'],HT:['hammerthrow'],JT:['javelinthrow'],Decathlon:['decathlon','combinedevents','combinedevent'],Heptathlon:['heptathlon','combinedevents','combinedevent']};return (a[c]||[]).some(x=>n===x||n.startsWith(x)||n.includes(x));}
 function norm(s){return String(s||'').toLowerCase().replace(/metres?|meters?/g,'m').replace(/women'?s|woman'?s|men'?s/g,'').replace(/short track/g,'sh').replace(/[^a-z0-9]+/g,'');}
 function normalizeName(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/Ø/g,'O').replace(/ø/g,'o').replace(/Æ/g,'AE').replace(/æ/g,'ae').replace(/Å/g,'A').replace(/å/g,'a').replace(/[‐‑‒–—-]/g,' ').replace(/[^a-zA-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim().toLowerCase();}
 function validScore(v){const n=Number(v);return Number.isFinite(n)&&n>=500&&n<=1800;}
