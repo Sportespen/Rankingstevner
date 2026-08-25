@@ -3,15 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rankingstevner – prototype v0.12.2</title>
-  <link rel="stylesheet" href="style.css?v=122" />
+  <title>Rankingstevner – prototype v0.12.3</title>
+  <link rel="stylesheet" href="style.css?v=123" />
   <style>
     #legacyEventMeta,#legacyScores{display:none!important}
     #trinn3Native{margin-top:24px;padding-top:24px;border-top:1px solid #d9e5e1}
     #safeResultEditor{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-height:62px}
     #resultEntryFallback{width:100%;min-height:56px;padding:0 14px;border:1px solid #c9d5dc;border-radius:12px;background:#fff;font-size:1.15rem;font-weight:700;box-sizing:border-box}
-    .scenario-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(180px,.45fr) minmax(180px,.45fr);gap:14px;margin-top:18px;align-items:end}
+    .scenario-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(220px,.9fr) minmax(220px,.9fr);gap:18px;margin-top:18px;align-items:end;width:100%}
     .scenario-result{min-width:0}
+    .scenario-grid>label{min-width:0;margin:0}
+    .scenario-grid select{width:100%}
     .score-strip{display:grid;grid-template-columns:repeat(3,minmax(170px,1fr));gap:14px;margin-top:18px;max-width:900px}
     .score-card{border:1px solid #cfe2dc;border-radius:12px;background:#f7fbfa;padding:14px 16px}
     .score-card.performance{border-color:#9fd0c3;background:#eaf7f3}
@@ -22,13 +24,13 @@
     .ranking-action{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:18px}
     .trinn3-heading{margin:8px 0 4px;font-size:1.35rem}
     .trinn3-help{margin:0;max-width:780px}
-    @media(max-width:900px){.scenario-grid{grid-template-columns:1fr}.score-strip{grid-template-columns:1fr}}
+    @media(max-width:760px){.scenario-grid{grid-template-columns:1fr}.score-strip{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
   <header class="topbar">
     <div class="brand"><div class="logo">R</div><div><h1>Rankingstevner</h1><p>Finn stevnet som faktisk kan forbedre rankingen din</p></div></div>
-    <span class="badge">Prototype v0.12.2</span>
+    <span class="badge">Prototype v0.12.3</span>
   </header>
 
   <main>
@@ -116,7 +118,7 @@
         <div id="bljComparison" style="display:none;margin-top:16px;padding:16px;border:1px solid #cfe2dc;border-radius:12px;background:#fff"></div>
         <div id="improvement" class="improvement"></div><p id="currentRankingLine" class="muted"></p><p id="replaceInfo" class="muted"></p><p id="ruleInfo" class="muted"></p>
       </div>
-      <div class="notice"><strong>v0.12.2:</strong> Resultatfeltet ligger nå fast i HTML og er synlig selv om den dynamiske resultatkomponenten ikke lastes.</div>
+      <div class="notice"><strong>v0.12.3:</strong> Resultat, stevnekategori og plassering står på samme linje på desktop.</div>
     </section>
 
     <section class="panel"><div class="section-head"><div><span class="eyebrow">STEVNEFINNER</span><h3>Aktuelle stevner i Europa</h3></div><span class="muted">Demodata</span></div><div class="filters"><select id="meetCategoryFilter"><option value="all">Alle kategorier</option><option value="GW">GW</option><option value="GL">GL</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option><option value="E">E</option></select><select id="countryFilter"><option value="all">Alle land</option><option value="AUT">Østerrike</option><option value="FRA">Frankrike</option><option value="NOR">Norge</option><option value="FIN">Finland</option></select></div><div id="meetList" class="meet-list"></div></section>
@@ -124,15 +126,15 @@
   </main>
 
   <footer>Prototype – World Athletics World Ranking Rules 2026. Result Score-data: World Athletics Scoring Tables 2025.</footer>
-  <script src="app.js?v=122"></script>
-  <script src="blj-debug.js?v=122"></script>
-  <script src="wind-validation.js?v=122"></script>
-  <script src="athlete-profile.js?v=122"></script>
-  <script src="target-score.js?v=122"></script>
-  <script src="result-field.js?v=122"></script>
-  <script src="trinn3.js?v=122"></script>
+  <script src="app.js?v=123"></script>
+  <script src="blj-debug.js?v=123"></script>
+  <script src="wind-validation.js?v=123"></script>
+  <script src="athlete-profile.js?v=123"></script>
+  <script src="target-score.js?v=123"></script>
+  <script src="result-field.js?v=123"></script>
+  <script src="trinn3.js?v=123"></script>
   <script>
-    (()=>{const badge=document.querySelector('.badge');if(badge)badge.textContent='Prototype v0.12.2';document.title='Rankingstevner – prototype v0.12.2';const profileInputs=[...document.querySelectorAll('#profileName')];profileInputs.slice(1).forEach(input=>input.closest('.existing')?.remove());const waBlocks=[...document.querySelectorAll('#waProfileBlock')];waBlocks.slice(1).forEach(block=>block.remove());})();
+    (()=>{const badge=document.querySelector('.badge');if(badge)badge.textContent='Prototype v0.12.3';document.title='Rankingstevner – prototype v0.12.3';const profileInputs=[...document.querySelectorAll('#profileName')];profileInputs.slice(1).forEach(input=>input.closest('.existing')?.remove());const waBlocks=[...document.querySelectorAll('#waProfileBlock')];waBlocks.slice(1).forEach(block=>block.remove());})();
   </script>
 </body>
 </html>
