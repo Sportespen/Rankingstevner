@@ -1,4 +1,4 @@
-// Rankingstevner Trinn 3 v0.12.2 – scorevisning og plassering. Resultatfeltet eies av result-field.js eller HTML-fallback.
+// Rankingstevner Trinn 3 v0.12.5 – live scorevisning synkronisert med WA-beregningen i app.js
 (() => {
   'use strict';
 
@@ -19,6 +19,7 @@
 
   function init(){
     const event=$('event'), category=$('category'), placing=$('placing'), resultScore=$('resultScore'), mark=$('mark');
+    const wind=$('wind'), bljMark=$('bljMark'), bljWind=$('bljWind'), combinedWindStatus=$('combinedWindStatus');
     const resultOut=$('resultScoreMirror'), placingOut=$('placingScorePreview'), performanceOut=$('performanceScorePreview');
     if(![event,category,placing,resultScore,mark,resultOut,placingOut,performanceOut].every(Boolean)){
       setTimeout(init,100); return;
@@ -27,8 +28,9 @@
     function placingArray(){ return placingTables[groupFor(event.value)]?.[category.value] || []; }
     function rebuildPlacing(){
       const arr=placingArray();
+      const old=Number(placing.value||1);
       placing.innerHTML=arr.map((_,i)=>`<option value="${i+1}">${i+1}. plass</option>`).join('');
-      if(arr.length) placing.value='1';
+      if(arr.length) placing.value=String(Math.min(Math.max(old,1),arr.length));
       update();
     }
     function placingScore(){
@@ -44,19 +46,31 @@
       placingOut.textContent=ps==null ? '–' : String(ps);
       performanceOut.textContent=valid && ps!=null ? String(Math.round(rs+ps)) : '–';
     }
-    function updateAfterMark(){ setTimeout(update,0); setTimeout(update,80); }
+    function updateAfterEngine(){
+      // app.js oppdaterer først det skjulte resultScore-feltet. Les deretter samme verdi her.
+      setTimeout(update,0);
+      setTimeout(update,25);
+      setTimeout(update,100);
+    }
 
-    event.addEventListener('change',rebuildPlacing);
-    category.addEventListener('change',rebuildPlacing);
+    event.addEventListener('change',()=>{ rebuildPlacing(); updateAfterEngine(); });
+    category.addEventListener('change',()=>{ rebuildPlacing(); updateAfterEngine(); });
     placing.addEventListener('change',update);
     resultScore.addEventListener('input',update);
     resultScore.addEventListener('change',update);
-    mark.addEventListener('input',updateAfterMark);
-    mark.addEventListener('change',updateAfterMark);
-    new MutationObserver(()=>{ if(event.options.length) rebuildPlacing(); }).observe(event,{childList:true});
+    mark.addEventListener('input',updateAfterEngine);
+    mark.addEventListener('change',updateAfterEngine);
+    [wind,bljMark,bljWind].filter(Boolean).forEach(el=>{
+      el.addEventListener('input',updateAfterEngine);
+      el.addEventListener('change',updateAfterEngine);
+    });
+    if(combinedWindStatus) combinedWindStatus.addEventListener('change',updateAfterEngine);
+
+    new MutationObserver(()=>{ if(event.options.length) { rebuildPlacing(); updateAfterEngine(); } }).observe(event,{childList:true});
 
     rebuildPlacing();
-    setTimeout(rebuildPlacing,400);
+    updateAfterEngine();
+    setTimeout(()=>{ rebuildPlacing(); updateAfterEngine(); },400);
   }
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true});
