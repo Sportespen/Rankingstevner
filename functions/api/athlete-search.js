@@ -1,71 +1,55 @@
 const LOCAL_ATHLETES = [
   {id:14989292,firstName:'Jonathan',lastName:'Hertwig-Ødegaard',country:'NOR',sex:'M',birthDate:null,disciplines:['Decathlon']},
-  {id:14834505,firstName:'Sander',lastName:'Skotheim',country:'NOR',sex:'M',birthDate:null,disciplines:['Decathlon']},
-  {id:14829726,firstName:'Miranda',lastName:'Lauvstad',country:'NOR',sex:'W',birthDate:'2003-11-22',disciplines:['Long Jump','Heptathlon']}
+  {id:14834505,firstName:'Sander',lastName:'Skotheim',country:'NOR',sex:'M',birthDate:null,disciplines:['Decathlon']}
 ];
 
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const q = (url.searchParams.get('q') || '').trim();
-  const sexFilter = String(url.searchParams.get('sex') || '').toUpperCase();
   if (q.length < 1) return json({ok:true,results:[]});
 
   const qNorm = normalize(q);
   const parts = q.split(/\s+/).filter(Boolean);
   const qTokens = parts.map(normalize).filter(Boolean);
-
   const merged = new Map();
+
+  // Lokale/cachede kjente utøvere er kun et tillegg. Hovedlogikken under er generell
+  // og skal fungere for alle WA-navn uten at de må hardkodes her.
   for (const a of LOCAL_ATHLETES) {
-    if (sexFilter && a.sex && a.sex !== sexFilter) continue;
     const score = matchScore(a,qNorm,qTokens);
     if (score > 0) merged.set(String(a.id), {...a,_score:score});
   }
 
-  // Sterke prefikstreff i den lokale hurtigindeksen returneres umiddelbart.
-  // Dette gjør at f.eks. «Mir», «Miranda L» og «Sander S» vises uten å vente
-  // på eksternt World Athletics-oppslag.
-  const localRanked = rankedResults(merged);
-  if (localRanked.length) {
-    const top = merged.get(String(localRanked[0].id));
-    if ((top?._score || 0) >= 9000) {
-      return json({ok:true,results:localRanked,source:'local-prefix'});
-    }
-  }
-
   try {
-    const primary = await searchWa(q, 900);
-    mergeAthletes(merged, primary, qNorm, qTokens, sexFilter);
-
-    if (primary.length || merged.size) {
-      return json({ok:true,results:rankedResults(merged),source:'primary'});
-    }
-
+    // Generell delnavn-logikk:
+    //  - alltid søk på teksten brukeren faktisk har skrevet
+    //  - ved flere ord søkes også fornavnet parallelt
+    // Dette gjør f.eks. "Miranda L" mulig uten å vente på hele etternavnet.
+    const queries = [q];
     if (parts.length > 1) {
       const first = parts[0];
       const last = parts[parts.length - 1];
-      const fallbacks = [...new Set([
-        last.length >= 2 ? last : '',
-        first,
-        `${last} ${first}`
-      ].map(s=>s.trim()).filter(Boolean))];
-
-      const settled = await Promise.allSettled(fallbacks.map(name=>searchWa(name, 700)));
-      for (const response of settled) {
-        if (response.status === 'fulfilled') mergeAthletes(merged, response.value, qNorm, qTokens, sexFilter);
-      }
+      if (first.length >= 2) queries.push(first);
+      // Et brukbart etternavnsprefiks er nyttig ved søk som "Ola Nor".
+      if (last.length >= 2) queries.push(last);
     }
 
-    return json({ok:true,results:rankedResults(merged),source:'fallback'});
+    const uniqueQueries = [...new Set(queries.map(s=>s.trim()).filter(Boolean))].slice(0,3);
+    const settled = await Promise.allSettled(uniqueQueries.map(name=>searchWa(name, 900)));
+    for (const response of settled) {
+      if (response.status === 'fulfilled') mergeAthletes(merged,response.value,qNorm,qTokens);
+    }
+
+    return json({ok:true,results:rankedResults(merged),source:'generic-partial'});
   } catch (e) {
-    return json({ok:true,results:rankedResults(merged),source:'local-fallback',warning:String(e?.message||e)});
+    return json({ok:true,results:rankedResults(merged),source:'fallback',warning:String(e?.message||e)});
   }
 }
 
-function mergeAthletes(merged, raws, qNorm, qTokens, sexFilter='') {
+function mergeAthletes(merged, raws, qNorm, qTokens) {
   for (const raw of raws || []) {
     const a = mapAthlete(raw);
     if (!a) continue;
-    if (sexFilter && a.sex && String(a.sex).toUpperCase() !== sexFilter) continue;
     const score = matchScore(a,qNorm,qTokens);
     if (score <= 0) continue;
     const key = String(a.id);
@@ -88,7 +72,7 @@ async function searchWa(name, timeoutMs=900) {
   try {
     const res = await fetch(endpoint, {
       signal: controller.signal,
-      headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.17.0','Accept':'application/json'}
+      headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.17.1','Accept':'application/json'}
     });
     const text = await res.text();
     let data = null;
@@ -108,17 +92,10 @@ function mapAthlete(a) {
     firstName: a.firstname ?? a.firstName ?? a.givenName ?? '',
     lastName: a.lastname ?? a.lastName ?? a.familyName ?? '',
     country: a.country ?? a.countryCode ?? '',
-    sex: normalizeSex(a.sex ?? a.gender ?? null),
+    sex: a.sex ?? a.gender ?? null,
     birthDate: a.birthDate ?? a.dateOfBirth ?? null,
     disciplines: Array.isArray(a.disciplines) ? a.disciplines : []
   };
-}
-
-function normalizeSex(v){
-  const s=String(v||'').toUpperCase();
-  if(s==='M'||s==='MALE'||s==='MEN') return 'M';
-  if(s==='W'||s==='F'||s==='FEMALE'||s==='WOMEN') return 'W';
-  return null;
 }
 
 function displayName(a) {
@@ -138,31 +115,41 @@ function normalize(s) {
     .replace(/\s+/g,' ');
 }
 
+function tokenMatches(nameToken, queryToken) {
+  if (!nameToken || !queryToken) return false;
+  return nameToken.startsWith(queryToken) || nameToken.includes(queryToken);
+}
+
 function matchScore(a,qNorm,qTokens) {
   const full = normalize(displayName(a));
   const first = normalize(a.firstName);
   const last = normalize(a.lastName);
+  const nameTokens = full.split(' ').filter(Boolean);
   if (!full) return 0;
 
   let score = 0;
   if (full === qNorm) score += 12000;
-  if (full.startsWith(qNorm)) score += 10000;
+  if (full.startsWith(qNorm)) score += 9500;
   else if (full.includes(qNorm)) score += 5000;
 
-  let allTokens = true;
-  for (const token of qTokens) {
+  // Alle skrevne ord må passe som prefiks/delstreng mot minst ett navn-token.
+  // Dermed rangeres "Miranda L" høyt mot "Miranda Lauvstad" selv om etternavnet er uferdig.
+  for (let i=0;i<qTokens.length;i++) {
+    const token=qTokens[i];
     if (!token) continue;
-    if (first.startsWith(token) || last.startsWith(token)) score += 1500;
-    else if (full.includes(token)) score += 500;
-    else allTokens = false;
+    const matched = nameTokens.some(n=>tokenMatches(n,token));
+    if (!matched) return 0;
+    score += i===0 ? 2200 : 3200;
   }
-  if (allTokens && qTokens.length > 1) score += 5000;
 
-  const lastQuery = qTokens[qTokens.length - 1];
-  if (qTokens.length > 1 && lastQuery) {
-    if (last.startsWith(lastQuery)) score += 8000 + Math.min(lastQuery.length, 8) * 350;
-    else if (last.includes(lastQuery)) score += 1500;
-    else return 0;
+  if (qTokens.length > 1) {
+    const firstQ=qTokens[0], lastQ=qTokens[qTokens.length-1];
+    if (first.startsWith(firstQ)) score += 3500;
+    if (last.startsWith(lastQ)) score += 6500 + Math.min(lastQ.length,8)*250;
+  } else if (qTokens.length===1) {
+    const t=qTokens[0];
+    if (first.startsWith(t)) score += 3000;
+    if (last.startsWith(t)) score += 2800;
   }
 
   return score;
