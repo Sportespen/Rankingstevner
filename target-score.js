@@ -12,10 +12,10 @@
 
 (function(){
   function loadBasis(){
-    if(document.querySelector('script[data-ranking-basis-v192]'))return;
+    if(document.querySelector('script[data-ranking-basis-v193]'))return;
     const s=document.createElement('script');
-    s.src='ranking-basis.js?v=192';
-    s.dataset.rankingBasisV192='1';
+    s.src='ranking-basis.js?v=193';
+    s.dataset.rankingBasisV193='1';
     document.head.appendChild(s);
   }
   setTimeout(loadBasis,0);
