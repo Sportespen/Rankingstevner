@@ -1,0 +1,1 @@
+Force Cloudflare Pages deployment for Rankingstevner v0.12.5. Calculation sync verified against World Athletics 2026 rules.
