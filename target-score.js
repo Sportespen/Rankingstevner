@@ -33,6 +33,17 @@
 })();
 
 (function(){
+  function loadCombinedFix(){
+    if(document.querySelector('script[data-combined-ranking-fix-v0162]'))return;
+    const s=document.createElement('script');
+    s.src='combined-ranking-fix.js?v=0162';
+    s.dataset.combinedRankingFixV0162='1';
+    document.head.appendChild(s);
+  }
+  setTimeout(loadCombinedFix,0);
+})();
+
+(function(){
   const eventSelect=document.getElementById('event');
   const sex=document.getElementById('sex');
   if(!eventSelect||!sex)return;
