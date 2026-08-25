@@ -1,4 +1,4 @@
-// Rankingstevner v0.19.5 – offisiell WA Ranking Score er fasit
+// Rankingstevner v0.19.6 – offisiell WA Ranking Score er fasit
 (function(){
   'use strict';
 
@@ -13,20 +13,19 @@
   let official=null;
   let loading=false;
 
+  function validScore(v){const n=Number(v);return Number.isFinite(n)&&n>0;}
+
   function patch(){
-    if(!official||!Number.isFinite(Number(official.score)))return;
+    if(!official||!validScore(official.score))return;
     const score=Number(official.score);
     const rank=Number(official.rank);
     const label=eventSelect.options[eventSelect.selectedIndex]?.textContent||eventSelect.value;
 
-    // Øverste linje bruker kun den offisielle WA-scoren.
     const first=waDetails.firstElementChild;
     if(first && !first.id){
-      first.innerHTML=`<strong>Rankinggrunnlag for ${label}:</strong><br>${Number.isFinite(rank)?`#${rank} · `:''}<strong>${score} Ranking Score</strong>`;
+      first.innerHTML=`<strong>Rankinggrunnlag for ${label}:</strong><br>${Number.isFinite(rank)&&rank>0?`#${rank} · `:''}<strong>${score} Ranking Score</strong>`;
     }
 
-    // Vår lokale rekonstruksjon kan fortsatt ligge i DOM for simulatoren,
-    // men den synlige Ranking Score skal alltid være WA-fasiten når den finnes.
     let auto=document.getElementById('autoRankingBasisAllEvents');
     if(!auto){
       auto=document.createElement('div');
@@ -52,7 +51,7 @@
     if(value)value.textContent=String(score);
     if(note)note.textContent='Hentet direkte fra World Athletics.';
 
-    window.__rankingstevnerOfficialRanking={event:eventSelect.value,score,rank:Number.isFinite(rank)?rank:null,source:'World Athletics'};
+    window.__rankingstevnerOfficialRanking={event:eventSelect.value,score,rank:Number.isFinite(rank)&&rank>0?rank:null,source:'World Athletics'};
   }
 
   async function load(force=false){
@@ -62,10 +61,10 @@
     if(!force&&key===currentKey&&official){patch();return;}
     loading=true;
     try{
-      const res=await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(id)}&event=${encodeURIComponent(eventSelect.value)}&sex=${encodeURIComponent(sex.value)}&v=195`,{cache:'no-store'});
+      const res=await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(id)}&event=${encodeURIComponent(eventSelect.value)}&sex=${encodeURIComponent(sex.value)}&v=196`,{cache:'no-store'});
       const data=await res.json();
       currentKey=key;
-      official=(data?.ok&&Number.isFinite(Number(data?.score)))?data:null;
+      official=(data?.ok&&validScore(data?.score))?data:null;
       if(official) patch();
     }catch(_){
       official=null;
@@ -83,9 +82,6 @@
     }).observe(waStatus,{childList:true,subtree:true,characterData:true});
   }
 
-  new MutationObserver(()=>{
-    if(official)setTimeout(patch,0);
-  }).observe(waDetails,{childList:true,subtree:true,characterData:true});
-
+  new MutationObserver(()=>{if(official)setTimeout(patch,0);}).observe(waDetails,{childList:true,subtree:true,characterData:true});
   setTimeout(()=>load(true),500);
 })();
