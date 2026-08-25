@@ -108,3 +108,14 @@
   if(details)new MutationObserver(removeDuplicateCombinedBox).observe(details,{childList:true,subtree:true});
   setTimeout(removeDuplicateCombinedBox,200);
 })();
+
+(function(){
+  function loadOfficialRanking(){
+    if(document.querySelector('script[data-official-ranking-v194]'))return;
+    const s=document.createElement('script');
+    s.src='official-ranking.js?v=194';
+    s.dataset.officialRankingV194='1';
+    document.head.appendChild(s);
+  }
+  setTimeout(loadOfficialRanking,0);
+})();
