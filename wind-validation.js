@@ -1,4 +1,4 @@
-// Rankingstevner v0.7.4 – WA-vindvalidering uten UI-/versjonsoverstyring
+// WA-vindvalidering – kjører kun i bakgrunnen, uten synlig UI-status
 (function () {
   function close(a, b) { return Math.abs(a - b) < 1e-9; }
 
@@ -20,11 +20,9 @@
       else console.error("WA vindtest feilet", { input, expected, actual });
     }
 
-    const status = document.getElementById("dataStatus");
-    if (!status) return;
-    status.textContent = passed === tests.length
-      ? `WA 2026 validert · ${passed}/${tests.length} vindtester bestått`
-      : `Vindvalidering feilet · ${passed}/${tests.length}`;
+    if (passed !== tests.length) {
+      console.error(`Vindvalidering feilet · ${passed}/${tests.length}`);
+    }
   }
 
   function boot() {
