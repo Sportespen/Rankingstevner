@@ -3,6 +3,10 @@ const LOCAL_ATHLETES = [
   {id:14834505,firstName:'Sander',lastName:'Skotheim',country:'NOR',sex:'M',birthDate:null,disciplines:['Decathlon']}
 ];
 
+let graphConfig = null;
+let graphConfigAt = 0;
+const GRAPH_CONFIG_TTL = 10 * 60 * 1000;
+
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const q = (url.searchParams.get('q') || '').trim();
@@ -13,36 +17,109 @@ export async function onRequestGet(context) {
   const qTokens = parts.map(normalize).filter(Boolean);
   const merged = new Map();
 
-  // Lokale/cachede kjente utøvere er kun et tillegg. Hovedlogikken under er generell
-  // og skal fungere for alle WA-navn uten at de må hardkodes her.
   for (const a of LOCAL_ATHLETES) {
     const score = matchScore(a,qNorm,qTokens);
     if (score > 0) merged.set(String(a.id), {...a,_score:score});
   }
 
-  try {
-    // Generell delnavn-logikk:
-    //  - alltid søk på teksten brukeren faktisk har skrevet
-    //  - ved flere ord søkes også fornavnet parallelt
-    // Dette gjør f.eks. "Miranda L" mulig uten å vente på hele etternavnet.
-    const queries = [q];
-    if (parts.length > 1) {
-      const first = parts[0];
-      const last = parts[parts.length - 1];
-      if (first.length >= 2) queries.push(first);
-      // Et brukbart etternavnsprefiks er nyttig ved søk som "Ola Nor".
-      if (last.length >= 2) queries.push(last);
-    }
+  // Søk både på det brukeren har skrevet og på første navnedel.
+  // Første navnedel gjør at "Miranda L" kan finne "Miranda Lauvstad"
+  // uten å vente på at hele etternavnet skrives.
+  const queries = [q];
+  if (parts.length > 1 && parts[0].length >= 2) queries.push(parts[0]);
+  const uniqueQueries = [...new Set(queries.map(s=>s.trim()).filter(Boolean))].slice(0,2);
 
-    const uniqueQueries = [...new Set(queries.map(s=>s.trim()).filter(Boolean))].slice(0,3);
-    const settled = await Promise.allSettled(uniqueQueries.map(name=>searchWa(name, 900)));
+  try {
+    const settled = await Promise.allSettled(uniqueQueries.map(name => searchWaFast(name)));
     for (const response of settled) {
       if (response.status === 'fulfilled') mergeAthletes(merged,response.value,qNorm,qTokens);
     }
-
-    return json({ok:true,results:rankedResults(merged),source:'generic-partial'});
+    return json({ok:true,results:rankedResults(merged),source:'wa-fast-prefix'});
   } catch (e) {
     return json({ok:true,results:rankedResults(merged),source:'fallback',warning:String(e?.message||e)});
+  }
+}
+
+async function searchWaFast(name) {
+  // Kjør offisiell WA GraphQL og eksisterende proxy parallelt.
+  // Første gyldige svar vinner. Dette fjerner avhengigheten av én treg tjeneste.
+  const attempts = [
+    searchWaGraphql(name, 1500),
+    searchWaProxy(name, name.trim().includes(' ') ? 1400 : 2400)
+  ];
+  try {
+    return await Promise.any(attempts);
+  } catch (_) {
+    return [];
+  }
+}
+
+async function getGraphConfig() {
+  if (graphConfig && Date.now() - graphConfigAt < GRAPH_CONFIG_TTL) return graphConfig;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1200);
+  try {
+    const [endpointRes,keyRes] = await Promise.all([
+      fetch('https://worldathletics.nimarion.de/graphql/endpoint',{signal:controller.signal,headers:{'Accept':'application/json'}}),
+      fetch('https://worldathletics.nimarion.de/graphql/api-key',{signal:controller.signal,headers:{'Accept':'application/json'}})
+    ]);
+    if (!endpointRes.ok || !keyRes.ok) throw new Error('Kunne ikke hente WA GraphQL-konfigurasjon');
+    const endpointData = await endpointRes.json();
+    const keyData = await keyRes.json();
+    const endpoint = endpointData?.endpoint || endpointData?.url || endpointData?.value || endpointData?.apiEndpoint;
+    const apiKey = keyData?.apiKey || keyData?.key || keyData?.value || keyData?.token;
+    if (!endpoint || !apiKey) throw new Error('Ugyldig WA GraphQL-konfigurasjon');
+    graphConfig = {endpoint,apiKey};
+    graphConfigAt = Date.now();
+    return graphConfig;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function searchWaGraphql(name, timeoutMs=1500) {
+  const cfg = await getGraphConfig();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(cfg.endpoint, {
+      method:'POST',
+      signal:controller.signal,
+      headers:{
+        'content-type':'application/json',
+        'accept':'application/json',
+        'x-api-key':cfg.apiKey
+      },
+      body:JSON.stringify({
+        query:'query searchCompetitors($name: String) { searchCompetitors(query: $name) { aaAthleteId familyName givenName birthDate disciplines gender country } }',
+        variables:{name}
+      })
+    });
+    if (!res.ok) throw new Error(`WA GraphQL feilet (${res.status})`);
+    const data = await res.json();
+    const list = data?.data?.searchCompetitors;
+    if (!Array.isArray(list)) throw new Error('WA GraphQL ga ikke søkeliste');
+    return list;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function searchWaProxy(name, timeoutMs=1800) {
+  const endpoint = `https://worldathletics.nimarion.de/athletes/search?name=${encodeURIComponent(name)}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(endpoint, {
+      signal: controller.signal,
+      headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.17.3','Accept':'application/json'}
+    });
+    const data = await res.json();
+    if (!res.ok || !Array.isArray(data)) throw new Error(`Navnesøk mot World Athletics feilet (${res.status})`);
+    return data;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -63,25 +140,6 @@ function rankedResults(merged) {
     .sort((a,b) => b._score - a._score || displayName(a).localeCompare(displayName(b),'no'))
     .slice(0,20)
     .map(({_score,...a}) => a);
-}
-
-async function searchWa(name, timeoutMs=900) {
-  const endpoint = `https://worldathletics.nimarion.de/athletes/search?name=${encodeURIComponent(name)}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(endpoint, {
-      signal: controller.signal,
-      headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.17.1','Accept':'application/json'}
-    });
-    const text = await res.text();
-    let data = null;
-    try { data = JSON.parse(text); } catch (_) {}
-    if (!res.ok || !Array.isArray(data)) throw new Error(`Navnesøk mot World Athletics feilet (${res.status})`);
-    return data;
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 function mapAthlete(a) {
@@ -132,8 +190,6 @@ function matchScore(a,qNorm,qTokens) {
   if (full.startsWith(qNorm)) score += 9500;
   else if (full.includes(qNorm)) score += 5000;
 
-  // Alle skrevne ord må passe som prefiks/delstreng mot minst ett navn-token.
-  // Dermed rangeres "Miranda L" høyt mot "Miranda Lauvstad" selv om etternavnet er uferdig.
   for (let i=0;i<qTokens.length;i++) {
     const token=qTokens[i];
     if (!token) continue;
