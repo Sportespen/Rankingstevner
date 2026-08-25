@@ -1,4 +1,4 @@
-// Rankingstevner Trinn 3 v0.14.7 – plassholdere utenfor dropdown + nullstill hele Ny prestasjon
+// Rankingstevner Trinn 3 v0.14.8 – skjul manuelt kjønnsvalg, bruk WA-profil
 (() => {
   'use strict';
 
@@ -17,6 +17,21 @@
     return 'standard';
   }
 
+  function compactEventChoice(){
+    const sex=$('sex');
+    const eventChoice=document.querySelector('.event-choice');
+    if(!sex||!eventChoice) return;
+    const sexLabel=sex.closest('label');
+    if(sexLabel) sexLabel.style.display='none';
+    const heading=eventChoice.querySelector('h4');
+    if(heading) heading.textContent='Velg øvelse';
+    const grid=eventChoice.querySelector('.grid');
+    if(grid){
+      grid.style.gridTemplateColumns='minmax(220px,320px)';
+      grid.style.maxWidth='320px';
+    }
+  }
+
   function init(){
     const event=$('event'), category=$('category'), placing=$('placing'), resultScore=$('resultScore'), mark=$('mark');
     const wind=$('wind'), bljMark=$('bljMark'), bljWind=$('bljWind'), combinedWindStatus=$('combinedWindStatus');
@@ -24,6 +39,8 @@
     if(![event,category,placing,resultScore,mark,resultOut,placingOut,performanceOut].every(Boolean)){
       setTimeout(init,100); return;
     }
+
+    compactEventChoice();
 
     const realCategoryOptions=[...category.options].filter(o=>o.value!=='').map(o=>`<option value="${o.value}">${o.textContent}</option>`).join('');
     category.innerHTML='<option value="" disabled hidden>f.eks. A</option>'+realCategoryOptions;
@@ -73,30 +90,23 @@
       strip.appendChild(btn);
 
       btn.addEventListener('click',()=>{
-        // Behold valgt kjønn/øvelse, men nullstill absolutt alt under «Ny prestasjon».
-        // Et change-event på samme øvelse bruker eksisterende motor til å nullstille også intern vindstatus.
         event.dispatchEvent(new Event('change',{bubbles:true}));
-
         setTimeout(()=>{
           category.value='';
           rebuildPlacing(true);
-
           const visibleResult=$('resultDigits')||$('resultEntryFallback');
           if(visibleResult) visibleResult.value='';
           mark.value='';
           resultScore.value='';
-
           if(wind) wind.value='';
           if(bljMark) bljMark.value='';
           if(bljWind) bljWind.value='';
           if(combinedWindStatus) combinedWindStatus.value='normal';
           const windAdj=$('windAdjustment');
           if(windAdj) windAdj.value='–';
-
           resultOut.textContent='–';
           placingOut.textContent='–';
           performanceOut.textContent='–';
-
           const resultBox=$('resultBox');
           if(resultBox) resultBox.classList.add('hidden');
           ['resultScoreOut','placingScoreOut','performanceScoreOut','newRankingOut'].forEach(id=>{const el=$(id);if(el)el.textContent='–';});
@@ -123,7 +133,7 @@
     rebuildPlacing(true);
     installResetButton();
     updateAfterEngine();
-    setTimeout(()=>{ category.value=''; rebuildPlacing(true); installResetButton(); updateAfterEngine(); },400);
+    setTimeout(()=>{ compactEventChoice(); category.value=''; rebuildPlacing(true); installResetButton(); updateAfterEngine(); },400);
   }
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true});
