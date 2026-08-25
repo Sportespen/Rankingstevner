@@ -1,14 +1,17 @@
-// Rankingstevner v0.17.7 – tidlig kandidatinnlasting via både fornavn og etternavnsprefiks
+// Rankingstevner v0.18.0 – vedvarende lokal utøvercache + serverlært prefikscache
 (() => {
   'use strict';
+
+  const STORAGE_KEY='rankingstevner-athletes-v180';
+  const STORAGE_LIMIT=500;
 
   function boot(){
     const input=document.getElementById('profileName');
     const waInput=document.getElementById('waProfileId');
     const waButton=document.getElementById('loadWaProfile');
     if(!input||!waInput||!waButton){setTimeout(boot,80);return;}
-    if(input.dataset.fastAthleteSearch==='177') return;
-    input.dataset.fastAthleteSearch='177';
+    if(input.dataset.fastAthleteSearch==='180') return;
+    input.dataset.fastAthleteSearch='180';
 
     const host=input.parentElement;
     if(!host) return;
@@ -23,32 +26,39 @@
 
     const pool=new Map();
     const responseCache=new Map();
-    const persistentRequests=new Map();
-    let timer=null, requestNo=0, exactController=null, visible=[];
+    let timer=null, requestNo=0, controller=null, visible=[];
 
-    function norm(s){
-      return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ø/g,'o').replace(/æ/g,'ae').replace(/å/g,'a').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
-    }
+    function norm(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ø/g,'o').replace(/æ/g,'ae').replace(/å/g,'a').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');}
     function fullName(a){return `${a.firstName||''} ${a.lastName||''}`.trim();}
     function matches(a,q){
       const qt=norm(q).split(' ').filter(Boolean), nt=norm(fullName(a)).split(' ').filter(Boolean);
-      if(!qt.length||!nt.length) return false;
-      return qt.every(t=>nt.some(n=>n.startsWith(t)||n.includes(t)));
+      return qt.length>0 && qt.every(t=>nt.some(n=>n.startsWith(t)||n.includes(t)));
     }
     function rank(a,q){
-      const nq=norm(q), name=norm(fullName(a));
+      const nq=norm(q), name=norm(fullName(a)), qt=nq.split(' ').filter(Boolean), first=norm(a.firstName), last=norm(a.lastName);
       let s=0;
       if(name===nq)s+=12000;
       if(name.startsWith(nq))s+=9000;
-      const qt=nq.split(' ').filter(Boolean), first=norm(a.firstName), last=norm(a.lastName);
       if(qt[0]&&first.startsWith(qt[0]))s+=3500;
       if(qt.length>1&&last.startsWith(qt.at(-1)))s+=6000+qt.at(-1).length*200;
       return s;
     }
-    function localMatches(q){
-      return [...pool.values()].filter(a=>matches(a,q)).sort((a,b)=>rank(b,q)-rank(a,q)||fullName(a).localeCompare(fullName(b),'no')).slice(0,12);
+    function localMatches(q){return [...pool.values()].filter(a=>matches(a,q)).sort((a,b)=>rank(b,q)-rank(a,q)||fullName(a).localeCompare(fullName(b),'no')).slice(0,12);}
+
+    function loadStored(){
+      try{
+        const list=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+        if(Array.isArray(list)) for(const a of list) if(a?.id) pool.set(String(a.id),a);
+      }catch(_){ }
     }
-    function addToPool(list){for(const a of list||[])if(a?.id)pool.set(String(a.id),a);}
+    function saveStored(){
+      try{localStorage.setItem(STORAGE_KEY,JSON.stringify([...pool.values()].slice(-STORAGE_LIMIT)));}catch(_){ }
+    }
+    function addToPool(list){
+      let changed=false;
+      for(const a of list||[]) if(a?.id){pool.set(String(a.id),a);changed=true;}
+      if(changed) saveStored();
+    }
 
     function select(a){
       input.value=fullName(a);
@@ -71,62 +81,32 @@
       box.style.display='block';
     }
 
-    async function fetchQuery(q,signal){
+    async function fetchQuery(q,myRequest){
       const key=norm(q);
       if(responseCache.has(key)) return responseCache.get(key);
-      const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=177`,{cache:'no-store',signal});
-      const data=await res.json();
-      const list=Array.isArray(data?.results)?data.results:[];
-      responseCache.set(key,list);
-      addToPool(list);
-      return list;
-    }
-
-    function startPersistent(query){
-      const key=norm(query);
-      if(!key||responseCache.has(key)||persistentRequests.has(key)) return;
-      const p=fetchQuery(query).catch(()=>[]).finally(()=>persistentRequests.delete(key));
-      persistentRequests.set(key,p);
-      p.then(()=>{
-        const current=input.value.trim();
-        if(!current) return;
-        const local=localMatches(current);
-        if(local.length) render(local);
-      });
-    }
-
-    function preloadCandidates(q){
-      const parts=q.trim().split(/\s+/).filter(Boolean);
-      const first=parts[0]||'';
-      const last=parts.length>1 ? parts[parts.length-1] : '';
-
-      // Første navnedel: hent bred kandidatgruppe tidlig.
-      if(first.length>=4){
-        startPersistent(first.slice(0,4));
-        startPersistent(first);
-      }
-
-      // Ny strategi: så snart brukeren begynner på etternavnet, søkes selve
-      // etternavnsprefikset uavhengig av fornavnet. WA-søket er langt bedre på
-      // dette enn på et uferdig fullt navn. Treffene legges i lokal pool og
-      // filtreres deretter mot HELE teksten brukeren har skrevet.
-      if(last && last!==first){
-        if(last.length>=2) startPersistent(last);
-        if(last.length>=3) startPersistent(last.slice(0,3));
-        if(last.length>=4) startPersistent(last.slice(0,4));
-      }
-    }
-
-    async function remoteExact(q,myRequest){
-      exactController?.abort();
-      exactController=new AbortController();
+      controller?.abort();
+      controller=new AbortController();
       try{
-        await fetchQuery(q,exactController.signal);
-        if(myRequest!==requestNo||input.value.trim()!==q)return;
-        const ranked=localMatches(q);
-        render(ranked,ranked.length?'':'Ingen utøvere funnet.');
+        const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=180`,{cache:'no-store',signal:controller.signal});
+        const data=await res.json();
+        if(myRequest!==requestNo||input.value.trim()!==q)return [];
+        const list=Array.isArray(data?.results)?data.results:[];
+        responseCache.set(key,list);
+        addToPool(list);
+        return list;
       }catch(err){
-        if(err?.name==='AbortError')return;
+        if(err?.name==='AbortError')return [];
+        throw err;
+      }
+    }
+
+    async function runSearch(q,myRequest){
+      try{
+        const list=await fetchQuery(q,myRequest);
+        if(myRequest!==requestNo||input.value.trim()!==q)return;
+        const local=localMatches(q);
+        render(local,local.length?'':'Ingen utøvere funnet.');
+      }catch(_){
         if(myRequest===requestNo&&!localMatches(q).length)render([],'Søket bruker litt tid.');
       }
     }
@@ -136,17 +116,18 @@
       clearTimeout(timer);
       const q=input.value.trim();
       requestNo++;
-      if(q.length<2){exactController?.abort();render([]);return;}
+      if(q.length<2){controller?.abort();render([]);return;}
 
-      preloadCandidates(q);
       const local=localMatches(q);
       if(local.length)render(local);else render([],'Søker…');
 
       const mine=requestNo;
-      timer=setTimeout(()=>remoteExact(q,mine),220);
+      // Ett kontrollert søk per kort pause. Serveren håndterer nå prefikscache og læring.
+      timer=setTimeout(()=>runSearch(q,mine),110);
     },true);
 
     document.addEventListener('click',e=>{if(e.target!==input&&!box.contains(e.target))box.style.display='none';});
+    loadStored();
   }
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
