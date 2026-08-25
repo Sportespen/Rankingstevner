@@ -1,5 +1,6 @@
 const LOCAL_ATHLETES = [
-  {id:14989292,firstName:'Jonathan',lastName:'Hertwig-Ødegaard',country:'NOR',sex:'M',birthDate:null,disciplines:['Decathlon']}
+  {id:14989292,firstName:'Jonathan',lastName:'Hertwig-Ødegaard',country:'NOR',sex:'M',birthDate:null,disciplines:['Decathlon']},
+  {id:14834505,firstName:'Sander',lastName:'Skotheim',country:'NOR',sex:'M',birthDate:null,disciplines:['Decathlon']}
 ];
 
 export async function onRequestGet(context) {
@@ -17,57 +18,72 @@ export async function onRequestGet(context) {
     if (score > 0) merged.set(String(a.id), {...a,_score:score});
   }
 
+  // Eksakte/lokale treff skal komme umiddelbart, uten å vente på ekstern WA-søk.
+  const localRanked = rankedResults(merged);
+  if (localRanked.length && normalize(displayName(localRanked[0])) === qNorm) {
+    return json({ok:true,results:localRanked,source:'local-exact'});
+  }
+
   try {
-    const queries = [q];
+    // Første og viktigste søk: akkurat teksten brukeren har skrevet.
+    // Tidligere ble 3–5 eksterne søk kjørt samtidig for hvert tastetrykk, som gjorde søket tregt.
+    const primary = await searchWa(q, 1050);
+    mergeAthletes(merged, primary, qNorm, qTokens);
+
+    // Hvis hovedsøket gir treff, returnerer vi med en gang.
+    // Alternative navnevarianter brukes bare som fallback dersom hovedsøket ikke ga treff.
+    if (primary.length || merged.size) {
+      return json({ok:true,results:rankedResults(merged),source:'primary'});
+    }
+
     if (parts.length > 1) {
       const first = parts[0];
       const last = parts[parts.length - 1];
-      queries.push(first);
-      if (last.length >= 2) {
-        queries.push(last);
-        queries.push(`${last} ${first}`);
-        queries.push(`${first} ${last}`);
+      const fallbacks = [...new Set([
+        last.length >= 2 ? last : '',
+        first,
+        `${last} ${first}`
+      ].map(s=>s.trim()).filter(Boolean))];
+
+      const settled = await Promise.allSettled(fallbacks.map(name=>searchWa(name, 800)));
+      for (const response of settled) {
+        if (response.status === 'fulfilled') mergeAthletes(merged, response.value, qNorm, qTokens);
       }
     }
 
-    const uniqueQueries = [...new Set(queries.map(s=>s.trim()).filter(Boolean))];
-    const settled = await Promise.allSettled(uniqueQueries.map(searchWa));
-    for (const response of settled) {
-      if (response.status !== 'fulfilled') continue;
-      for (const raw of response.value) {
-        const a = mapAthlete(raw);
-        if (!a) continue;
-        const score = matchScore(a,qNorm,qTokens);
-        if (score <= 0) continue;
-        const key = String(a.id);
-        const existing = merged.get(key);
-        if (!existing || score > existing._score) merged.set(key,{...a,_score:score});
-      }
-    }
-
-    const results = [...merged.values()]
-      .sort((a,b) => b._score - a._score || displayName(a).localeCompare(displayName(b),'no'))
-      .slice(0,20)
-      .map(({_score,...a}) => a);
-
-    return json({ok:true,results,source:'merged'});
+    return json({ok:true,results:rankedResults(merged),source:'fallback'});
   } catch (e) {
-    const results = [...merged.values()]
-      .sort((a,b) => b._score - a._score || displayName(a).localeCompare(displayName(b),'no'))
-      .slice(0,20)
-      .map(({_score,...a}) => a);
-    return json({ok:true,results,source:'local-fallback',warning:String(e?.message||e)});
+    return json({ok:true,results:rankedResults(merged),source:'local-fallback',warning:String(e?.message||e)});
   }
 }
 
-async function searchWa(name) {
+function mergeAthletes(merged, raws, qNorm, qTokens) {
+  for (const raw of raws || []) {
+    const a = mapAthlete(raw);
+    if (!a) continue;
+    const score = matchScore(a,qNorm,qTokens);
+    if (score <= 0) continue;
+    const key = String(a.id);
+    const existing = merged.get(key);
+    if (!existing || score > existing._score) merged.set(key,{...a,_score:score});
+  }
+}
+
+function rankedResults(merged) {
+  return [...merged.values()]
+    .sort((a,b) => b._score - a._score || displayName(a).localeCompare(displayName(b),'no'))
+    .slice(0,20)
+    .map(({_score,...a}) => a);
+}
+
+async function searchWa(name, timeoutMs=1050) {
   const endpoint = `https://worldathletics.nimarion.de/athletes/search?name=${encodeURIComponent(name)}`;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 1800);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(endpoint, {
       signal: controller.signal,
-      headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.9.0','Accept':'application/json'}
+      headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.16.4','Accept':'application/json'}
     });
     const text = await res.text();
     let data = null;
@@ -143,6 +159,9 @@ function matchScore(a,qNorm,qTokens) {
 function json(body,status=200){
   return new Response(JSON.stringify(body),{
     status,
-    headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store'}
+    headers:{
+      'content-type':'application/json; charset=utf-8',
+      'cache-control':'public, max-age=60, s-maxage=300, stale-while-revalidate=600'
+    }
   });
 }
