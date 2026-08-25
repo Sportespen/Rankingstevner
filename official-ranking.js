@@ -1,4 +1,4 @@
-// Rankingstevner v0.19.6 – offisiell WA Ranking Score er fasit
+// Rankingstevner v0.19.7 – stabil offisiell WA Ranking Score
 (function(){
   'use strict';
 
@@ -35,7 +35,7 @@
 
     let left=auto.querySelector('.ranking-basis-left');
     if(!left){left=document.createElement('div');left.className='ranking-basis-left';auto.appendChild(left);}
-    left.innerHTML=`<strong>Offisielt rankinggrunnlag for ${label}:</strong><br><span class="muted">Nåværende Ranking Score og plassering er hentet direkte fra World Athletics. Lokal beregning brukes bare når en ny prestasjon simuleres.</span>`;
+    left.innerHTML=`<strong>Offisielt rankinggrunnlag for ${label}:</strong><br><span class="muted">Nåværende Ranking Score og plassering er hentet fra World Athletics. Lokal beregning brukes bare når en ny prestasjon simuleres.</span>`;
 
     let card=auto.querySelector('.ranking-score-card');
     if(!card){
@@ -49,7 +49,7 @@
     const note=card.querySelector('.ranking-score-note');
     if(cardLabel)cardLabel.textContent='OFFISIELL WA RANKING SCORE';
     if(value)value.textContent=String(score);
-    if(note)note.textContent='Hentet direkte fra World Athletics.';
+    if(note)note.textContent='Hentet fra World Athletics.';
 
     window.__rankingstevnerOfficialRanking={event:eventSelect.value,score,rank:Number.isFinite(rank)&&rank>0?rank:null,source:'World Athletics'};
   }
@@ -61,11 +61,17 @@
     if(!force&&key===currentKey&&official){patch();return;}
     loading=true;
     try{
-      const res=await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(id)}&event=${encodeURIComponent(eventSelect.value)}&sex=${encodeURIComponent(sex.value)}&v=196`,{cache:'no-store'});
+      const res=await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(id)}&event=${encodeURIComponent(eventSelect.value)}&sex=${encodeURIComponent(sex.value)}&v=197`,{cache:'no-store'});
       const data=await res.json();
       currentKey=key;
       official=(data?.ok&&validScore(data?.score))?data:null;
-      if(official) patch();
+      if(official){
+        patch();
+        // Ranking-basis kan bli ferdig noen millisekunder senere. To kontrollerte repatcher
+        // vinner den racen uten MutationObserver-loop og uten hopping.
+        setTimeout(patch,300);
+        setTimeout(patch,800);
+      }
     }catch(_){
       official=null;
     }finally{loading=false;}
@@ -82,6 +88,7 @@
     }).observe(waStatus,{childList:true,subtree:true,characterData:true});
   }
 
-  new MutationObserver(()=>{if(official)setTimeout(patch,0);}).observe(waDetails,{childList:true,subtree:true,characterData:true});
+  // Viktig: vi observerer IKKE waDetails. Den gamle observeren reagerte på sine egne
+  // DOM-endringer og skapte en kontinuerlig render-loop som fikk scorekortet til å hoppe.
   setTimeout(()=>load(true),500);
 })();
