@@ -22,32 +22,44 @@ export async function onRequestGet(context) {
     if (score > 0) merged.set(String(a.id), {...a,_score:score});
   }
 
-  // Søk både på det brukeren har skrevet og på første navnedel.
-  // Første navnedel gjør at "Miranda L" kan finne "Miranda Lauvstad"
-  // uten å vente på at hele etternavnet skrives.
-  const queries = [q];
-  if (parts.length > 1 && parts[0].length >= 2) queries.push(parts[0]);
-  const uniqueQueries = [...new Set(queries.map(s=>s.trim()).filter(Boolean))].slice(0,2);
-
   try {
-    const settled = await Promise.allSettled(uniqueQueries.map(name => searchWaFast(name)));
-    for (const response of settled) {
-      if (response.status === 'fulfilled') mergeAthletes(merged,response.value,qNorm,qTokens);
+    // Når flere navnedeler er skrevet, søk først bare på første del.
+    // Det gir en bred kandidatgruppe tidlig og lar vår lokale matching bruke
+    // det uferdige etternavnet uten å vente på et nytt WA-søk for hver bokstav.
+    const primaryQuery = parts.length > 1 && parts[0].length >= 2 ? parts[0] : q;
+    const primary = await searchWaFast(primaryQuery);
+    mergeAthletes(merged,primary,qNorm,qTokens);
+
+    let ranked = rankedResults(merged);
+    if (ranked.length) return json({ok:true,results:ranked,source:'wa-prefix-first'});
+
+    // Fallback dersom første navnedel var for vanlig eller ikke ga riktig kandidat.
+    if (normalize(primaryQuery) !== qNorm) {
+      const exact = await searchWaFast(q);
+      mergeAthletes(merged,exact,qNorm,qTokens);
+      ranked = rankedResults(merged);
     }
-    return json({ok:true,results:rankedResults(merged),source:'wa-fast-prefix'});
+
+    return json({ok:true,results:ranked,source:'wa-prefix-fallback'});
   } catch (e) {
     return json({ok:true,results:rankedResults(merged),source:'fallback',warning:String(e?.message||e)});
   }
 }
 
 async function searchWaFast(name) {
-  // Kjør offisiell WA GraphQL og eksisterende proxy parallelt.
-  // Første gyldige svar vinner. Dette fjerner avhengigheten av én treg tjeneste.
+  const nonEmpty = p => p.then(list => {
+    if (!Array.isArray(list) || !list.length) throw new Error('Tomt WA-svar');
+    return list;
+  });
+
   const attempts = [
-    searchWaGraphql(name, 1500),
-    searchWaProxy(name, name.trim().includes(' ') ? 1400 : 2400)
+    nonEmpty(searchWaGraphql(name, 1700)),
+    nonEmpty(searchWaProxy(name, name.trim().includes(' ') ? 1500 : 2600))
   ];
+
   try {
+    // Første IKKE-TOMME svar vinner. Et raskt tomt svar får ikke lenger
+    // lov til å skjule et treff som kommer millisekunder senere fra den andre kilden.
     return await Promise.any(attempts);
   } catch (_) {
     return [];
@@ -58,7 +70,7 @@ async function getGraphConfig() {
   if (graphConfig && Date.now() - graphConfigAt < GRAPH_CONFIG_TTL) return graphConfig;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 1200);
+  const timeout = setTimeout(() => controller.abort(), 1400);
   try {
     const [endpointRes,keyRes] = await Promise.all([
       fetch('https://worldathletics.nimarion.de/graphql/endpoint',{signal:controller.signal,headers:{'Accept':'application/json'}}),
@@ -78,7 +90,7 @@ async function getGraphConfig() {
   }
 }
 
-async function searchWaGraphql(name, timeoutMs=1500) {
+async function searchWaGraphql(name, timeoutMs=1700) {
   const cfg = await getGraphConfig();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
