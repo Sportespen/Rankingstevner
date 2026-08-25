@@ -17,7 +17,7 @@ export async function onRequestGet(context){
 
   try{
     const athleteRes=await fetch(`https://worldathletics.nimarion.de/athletes/${id}`,{
-      headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.19.6','Accept':'application/json'}
+      headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.19.7','Accept':'application/json'}
     });
     const athlete=athleteRes.ok?await athleteRes.json():null;
     if(!athlete) return json({ok:false,error:'Kunne ikke hente WA-profil'},502);
@@ -30,28 +30,42 @@ export async function onRequestGet(context){
 
     const page=Math.max(1,Math.ceil(rank/100));
     const sexPath=sex==='W'?'women':'men';
-    const rankingUrl=`https://worldathletics.org/world-rankings/${slug}/${sexPath}?page=${page}`;
-    const readerUrl=`https://r.jina.ai/https://worldathletics.org/world-rankings/${slug}/${sexPath}?page=${page}`;
 
-    let text='';
-    let readerStatus=null;
-    let directStatus=null;
-    try{
-      const rr=await fetch(readerUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.19.6','Accept':'text/plain'}});
-      readerStatus=rr.status;
-      if(rr.ok) text=await rr.text();
-    }catch(_){ }
+    // World Athletics' ferskeste standardvisning bruker /null. /women og /men kan ligge
+    // en rankingpublisering bak. Derfor prøver vi /null først, deretter kjønnsstien som fallback.
+    const variants=[
+      `https://worldathletics.org/world-rankings/${slug}/null?page=${page}`,
+      `https://worldathletics.org/world-rankings/${slug}/${sexPath}?page=${page}`
+    ];
 
-    if(!text){
+    let score=null;
+    let usedUrl=null;
+    const diagnostics=[];
+
+    for(const rankingUrl of variants){
+      let text='';
+      let readerStatus=null;
+      let directStatus=null;
+      const u=new URL(rankingUrl);
+      const readerUrl=`https://r.jina.ai/https://worldathletics.org${u.pathname}${u.search}`;
       try{
-        const direct=await fetch(rankingUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.19.6','Accept':'text/html,application/xhtml+xml'}});
-        directStatus=direct.status;
-        if(direct.ok) text=htmlToLines(await direct.text());
+        const rr=await fetch(readerUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.19.7','Accept':'text/plain'}});
+        readerStatus=rr.status;
+        if(rr.ok) text=await rr.text();
       }catch(_){ }
+      if(!text){
+        try{
+          const direct=await fetch(rankingUrl,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.19.7','Accept':'text/html,application/xhtml+xml'}});
+          directStatus=direct.status;
+          if(direct.ok) text=htmlToLines(await direct.text());
+        }catch(_){ }
+      }
+      const parsed=findScore(text,name,rank);
+      diagnostics.push({rankingUrl,readerStatus,directStatus,textLength:text.length,parsed});
+      if(Number.isFinite(parsed)&&parsed>0){score=parsed;usedUrl=rankingUrl;break;}
     }
 
-    const score=findScore(text,name,rank);
-    return json({ok:true,id:Number(id),event,name,rank,score,source:'World Athletics',rankingUrl,diagnostics:{readerStatus,directStatus,page,textLength:text.length}});
+    return json({ok:true,id:Number(id),event,name,rank,score,source:'World Athletics',rankingUrl:usedUrl,diagnostics});
   }catch(e){
     return json({ok:false,error:'Kunne ikke hente offisiell WA Ranking Score',detail:String(e?.message||e)},502);
   }
@@ -67,45 +81,32 @@ function rankingEventMatches(eventGroup,code){
 }
 function norm(s){return String(s||'').toLowerCase().replace(/metres?|meters?/g,'m').replace(/women'?s|woman'?s|men'?s/g,'').replace(/short track/g,'sh').replace(/[^a-z0-9]+/g,'');}
 function normalizeName(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/Ø/g,'O').replace(/ø/g,'o').replace(/Æ/g,'AE').replace(/æ/g,'ae').replace(/Å/g,'A').replace(/å/g,'a').replace(/[‐‑‒–—-]/g,' ').replace(/[^a-zA-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim().toLowerCase();}
-function scoreCandidates(fragment,knownRank){
-  return [...String(fragment||'').matchAll(/\b(\d{3,4})\b/g)]
-    .map(m=>Number(m[1]))
-    .filter(v=>v>=500&&v<=1800&&v!==knownRank&&!(v>=1900&&v<=2100));
-}
 function findScore(text,name,knownRank){
   if(!text||!name)return null;
   const wanted=normalizeName(name);
   const lines=String(text).split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
 
-  // Normal WA/Jina tabell: hele utøverraden på én linje.
+  // Markdown-tabellen fra WA/Jina: Place | Competitor | DOB | Country | Score | Event List.
+  // Les kolonnene eksplisitt i stedet for å gjette blant alle tall rundt navnet.
+  for(const line of lines){
+    if(!line.includes('|')||!normalizeName(line).includes(wanted)) continue;
+    const cols=line.split('|').map(s=>s.trim()).filter((s,i,a)=>!(i===0&&s==='')&&!(i===a.length-1&&s===''));
+    if(cols.length<5) continue;
+    const rowRank=Number(String(cols[0]).replace(/\D/g,''));
+    if(Number.isFinite(knownRank)&&knownRank>0&&rowRank!==knownRank) continue;
+    if(!normalizeName(cols[1]).includes(wanted)) continue;
+    const score=Number(String(cols[4]).replace(/[^0-9]/g,''));
+    if(Number.isFinite(score)&&score>=500&&score<=1800) return score;
+  }
+
+  // Fallback: finn linjen med korrekt rank + navn og ta siste plausible score på samme linje.
   for(const line of lines){
     if(!normalizeName(line).includes(wanted)) continue;
-    const scores=scoreCandidates(line,knownRank);
+    const rankMatch=line.match(/^\s*(\d{1,4})\b/);
+    if(rankMatch&&Number(rankMatch[1])!==knownRank) continue;
+    const nums=[...line.matchAll(/\b(\d{3,4})\b/g)].map(m=>Number(m[1]));
+    const scores=nums.filter(v=>v>=500&&v<=1800);
     if(scores.length) return scores[scores.length-1];
-  }
-
-  // Jina kan dele en tabellrad over flere linjer. Finn navnelinjen og les et lite
-  // vindu rundt den. Fødselsår filtreres eksplisitt bort; rank < 500 faller bort.
-  for(let i=0;i<lines.length;i++){
-    if(!normalizeName(lines[i]).includes(wanted)) continue;
-    const block=lines.slice(Math.max(0,i-3),Math.min(lines.length,i+7)).join(' | ');
-    const scores=scoreCandidates(block,knownRank);
-    if(scores.length) return scores[0];
-  }
-
-  // Siste fallback mot rå tekst når Markdown/formatering gjør linjedelingen ubrukelig.
-  const parts=wanted.split(' ').filter(Boolean);
-  if(parts.length){
-    const raw=String(text);
-    const lower=normalizeName(raw);
-    const idx=lower.indexOf(wanted);
-    if(idx>=0){
-      // Normalisering endrer lengder noe, så bruk et romslig utdrag av råteksten.
-      const rough=Math.max(0,Math.min(raw.length,idx));
-      const window=raw.slice(Math.max(0,rough-400),Math.min(raw.length,rough+1200));
-      const scores=scoreCandidates(window,knownRank);
-      if(scores.length) return scores[0];
-    }
   }
   return null;
 }
