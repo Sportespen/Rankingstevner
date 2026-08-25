@@ -1,4 +1,4 @@
-// Rankingstevner v0.17.5 – vedvarende førstegangssøk mens navnet skrives
+// Rankingstevner v0.17.7 – tidlig kandidatinnlasting via både fornavn og etternavnsprefiks
 (() => {
   'use strict';
 
@@ -7,8 +7,8 @@
     const waInput=document.getElementById('waProfileId');
     const waButton=document.getElementById('loadWaProfile');
     if(!input||!waInput||!waButton){setTimeout(boot,80);return;}
-    if(input.dataset.fastAthleteSearch==='175') return;
-    input.dataset.fastAthleteSearch='175';
+    if(input.dataset.fastAthleteSearch==='177') return;
+    input.dataset.fastAthleteSearch='177';
 
     const host=input.parentElement;
     if(!host) return;
@@ -74,7 +74,7 @@
     async function fetchQuery(q,signal){
       const key=norm(q);
       if(responseCache.has(key)) return responseCache.get(key);
-      const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=175`,{cache:'no-store',signal});
+      const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=177`,{cache:'no-store',signal});
       const data=await res.json();
       const list=Array.isArray(data?.results)?data.results:[];
       responseCache.set(key,list);
@@ -98,17 +98,23 @@
     function preloadCandidates(q){
       const parts=q.trim().split(/\s+/).filter(Boolean);
       const first=parts[0]||'';
-      if(first.length<4) return;
+      const last=parts.length>1 ? parts[parts.length-1] : '';
 
-      // Viktig forskjell fra tidligere versjoner:
-      // HVER brukbare versjon av første navnedel får fullføre i bakgrunnen.
-      // Ingen av disse avbrytes når neste bokstav skrives.
-      // Dermed får f.eks. "mira", "miran", "mirand", "miranda" alle sjansen
-      // til å hente kandidater første gang brukeren søker.
-      startPersistent(first);
+      // Første navnedel: hent bred kandidatgruppe tidlig.
+      if(first.length>=4){
+        startPersistent(first.slice(0,4));
+        startPersistent(first);
+      }
 
-      // I tillegg beholdes et kort, bredt prefikssøk som ekstra sikkerhetsnett.
-      if(first.length>4) startPersistent(first.slice(0,4));
+      // Ny strategi: så snart brukeren begynner på etternavnet, søkes selve
+      // etternavnsprefikset uavhengig av fornavnet. WA-søket er langt bedre på
+      // dette enn på et uferdig fullt navn. Treffene legges i lokal pool og
+      // filtreres deretter mot HELE teksten brukeren har skrevet.
+      if(last && last!==first){
+        if(last.length>=2) startPersistent(last);
+        if(last.length>=3) startPersistent(last.slice(0,3));
+        if(last.length>=4) startPersistent(last.slice(0,4));
+      }
     }
 
     async function remoteExact(q,myRequest){
@@ -133,12 +139,11 @@
       if(q.length<2){exactController?.abort();render([]);return;}
 
       preloadCandidates(q);
-
       const local=localMatches(q);
       if(local.length)render(local);else render([],'Søker…');
 
       const mine=requestNo;
-      timer=setTimeout(()=>remoteExact(q,mine),180);
+      timer=setTimeout(()=>remoteExact(q,mine),220);
     },true);
 
     document.addEventListener('click',e=>{if(e.target!==input&&!box.contains(e.target))box.style.display='none';});
