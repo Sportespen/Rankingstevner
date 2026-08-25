@@ -66,6 +66,17 @@
 })();
 
 (function(){
+  function loadRankingBasisReset(){
+    if(document.querySelector('script[data-ranking-basis-reset-v0168]'))return;
+    const s=document.createElement('script');
+    s.src='ranking-basis-reset-v0168.js?v=0168';
+    s.dataset.rankingBasisResetV0168='1';
+    document.head.appendChild(s);
+  }
+  setTimeout(loadRankingBasisReset,0);
+})();
+
+(function(){
   const eventSelect=document.getElementById('event');
   const sex=document.getElementById('sex');
   if(!eventSelect||!sex)return;
