@@ -1,4 +1,4 @@
-// Rankingstevner v0.18.2 – fornavn først, etternavn snevrer inn, hele navnet rangerer
+// Rankingstevner v0.18.3 – fornavn først, etternavn snevrer inn og vises umiddelbart
 (() => {
   'use strict';
 
@@ -7,8 +7,8 @@
     const waInput=document.getElementById('waProfileId');
     const waButton=document.getElementById('loadWaProfile');
     if(!input||!waInput||!waButton){setTimeout(boot,80);return;}
-    if(input.dataset.fastAthleteSearch==='182') return;
-    input.dataset.fastAthleteSearch='182';
+    if(input.dataset.fastAthleteSearch==='183') return;
+    input.dataset.fastAthleteSearch='183';
 
     const host=input.parentElement;
     if(!host) return;
@@ -70,7 +70,7 @@
       if(!key||key.length<2) return Promise.resolve([]);
       if(cache.has(key)) return Promise.resolve(cache.get(key));
       if(inflight.has(key)) return inflight.get(key);
-      const p=fetch(`/api/athlete-search?q=${encodeURIComponent(term)}&v=182`,{cache:'no-store'})
+      const p=fetch(`/api/athlete-search?q=${encodeURIComponent(term)}&v=183`,{cache:'no-store'})
         .then(r=>r.json())
         .then(data=>{
           const list=Array.isArray(data?.results)?data.results:[];
@@ -84,36 +84,44 @@
       return p;
     }
 
+    function refreshCurrent(){
+      const current=input.value.trim();
+      if(!current) return;
+      const found=localMatches(current);
+      if(found.length) render(found);
+    }
+
+    function launch(term){
+      return fetchTerm(term).then(()=>refreshCurrent());
+    }
+
     async function searchNow(q){
       const parts=q.trim().split(/\s+/).filter(Boolean);
       const first=parts[0]||'';
       const last=parts.length>1?parts.at(-1):'';
-      const terms=[];
-
-      // Naturlig brukerflyt: fornavnet starter søket.
-      if(first.length>=3) terms.push(first);
-      // Hele teksten søker alltid når vi har minst tre tegn.
-      if(q.length>=3) terms.push(q);
-      // Når etternavnet begynner, brukes det parallelt til å snevre inn.
-      if(last && last!==first && last.length>=2) terms.push(last);
-
-      const unique=[...new Set(terms.map(t=>t.trim()).filter(Boolean))];
-      if(!unique.length){render([]);return;}
+      const tasks=[];
 
       const immediate=localMatches(q);
       if(immediate.length) render(immediate); else render([],'Søker…');
 
-      // Viktig: ingen forespørsel avbrytes når neste bokstav skrives.
-      // Alle kandidater legges i poolen, og gjeldende tekst filtrerer resultatet lokalt.
-      await Promise.allSettled(unique.map(fetchTerm));
-      if(input.value.trim()!==q) {
-        const current=input.value.trim();
-        const currentMatches=localMatches(current);
-        if(currentMatches.length) render(currentMatches);
-        return;
+      // Viktig: når etternavnet er påbegynt prioriteres dette søket først,
+      // fordi WA gir tidlige treff der. Hvert svar vises med én gang – vi venter
+      // ikke lenger på at fornavn/fullt-navn-søk også skal bli ferdige.
+      if(last && last!==first && last.length>=2) tasks.push(launch(last));
+
+      // Brukeren søker fortsatt naturlig fornavn først.
+      if(first.length>=3) tasks.push(launch(first));
+
+      // Hele teksten brukes som ekstra presisering/fallback.
+      if(q.length>=3) tasks.push(launch(q));
+
+      if(!tasks.length){render([]);return;}
+      await Promise.allSettled(tasks);
+
+      if(input.value.trim()===q){
+        const found=localMatches(q);
+        render(found,found.length?'':'Ingen utøvere funnet.');
       }
-      const found=localMatches(q);
-      render(found,found.length?'':'Ingen utøvere funnet.');
     }
 
     input.addEventListener('input',ev=>{
@@ -123,7 +131,7 @@
       if(q.length<2){render([]);return;}
       const local=localMatches(q);
       if(local.length) render(local); else render([],'Søker…');
-      timer=setTimeout(()=>searchNow(q),70);
+      timer=setTimeout(()=>searchNow(q),60);
     },true);
 
     document.addEventListener('click',e=>{if(e.target!==input&&!box.contains(e.target))box.style.display='none';});
