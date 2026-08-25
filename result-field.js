@@ -1,4 +1,4 @@
-// Rankingstevner v0.14.2 – numerisk resultatfelt + vindjustering først ved Beregn
+// Rankingstevner v0.16.9 – numerisk resultatfelt + tydelig eksempeltekst
 (() => {
   'use strict';
 
@@ -27,7 +27,7 @@
   }
 
   function placeholderFor(code) {
-    if (combined.has(code)) return '8200';
+    if (combined.has(code)) return 'f.eks. 8200';
     if (technical.has(code)) return code === 'HJ' || code === 'PV' ? '215 → 2,15' : '785 → 7,85';
     if (longRace.has(code)) return code === '800m' ? '14520 → 1:45,20' : '132456 → 13:24,56';
     return '1032 → 10,32';
@@ -115,7 +115,7 @@
     if ($('windVisible')) return;
     const visibleWind = originalWind.cloneNode(true); visibleWind.id = 'windVisible'; originalWind.style.display = 'none'; originalWind.parentNode.insertBefore(visibleWind, originalWind);
     function parseWindLocal(raw) { const s=String(raw).trim().toUpperCase().replace(',','.'); if(!s)return null; if(s==='NWI')return'NWI'; const v=Number(s); return Number.isFinite(v)?v:null; }
-    function windModLocal(raw) { const w=parseWindLocal(raw); if(w===null)return null; if(w==='NWI')return-30; if(w<0)return Math.abs(w)*6; if(w>2)return-w*6; return 0; }
+    function windModLocal(raw) { const w=parseWindLocal(raw); if(w===null)return null;if(w==='NWI')return-30;if(w<0)return Math.abs(w)*6;if(w>2)return-w*6;return 0; }
     function fmt(v){return Number.isInteger(v)?String(v):v.toFixed(1).replace('.',',');}
     function updateWindDisplayOnly(){originalWind.value=visibleWind.value;const mod=windModLocal(visibleWind.value);windAdjustment.value=mod===null?'–':`${mod>0?'+':''}${fmt(mod)}`;}
     function recalcBaseWithoutWind(){const savedWind=originalWind.value;originalWind.value='';try{if(typeof refreshResultScore==='function')refreshResultScore();}finally{originalWind.value=savedWind;}}
