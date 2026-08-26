@@ -5,7 +5,7 @@ export async function onRequestGet(context) {
   if (!id) return json({ok:false,error:'Ugyldig World Athletics-ID'},400);
 
   const now = new Date();
-  const years = [now.getUTCFullYear(), now.getUTCFullYear()-1, now.getUTCFullYear()-2];
+  const years = [now.getUTCFullYear(), now.getUTCFullYear()-1, now.getUTCFullYear()-2, now.getUTCFullYear()-3];
   const attempts = [];
   const results = [];
   const combined = [];
@@ -14,7 +14,7 @@ export async function onRequestGet(context) {
     const endpoint = `https://worldathletics.nimarion.de/athletes/${id}/results?year=${year}`;
     try {
       const res = await fetch(endpoint, {
-        headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.19.1','Accept':'application/json'}
+        headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.1','Accept':'application/json'}
       });
       const text = await res.text();
       let data = null;
@@ -37,6 +37,7 @@ export async function onRequestGet(context) {
           date:r.date ?? null,
           legal:r.legal !== false,
           wind:r.wind ?? null,
+          records:r.records ?? r.record ?? null,
           source:'athlete-results'
         };
         results.push(item);
@@ -47,11 +48,42 @@ export async function onRequestGet(context) {
     }
   }
 
+  // WA Combined Events 2026: 18-måneders rankingperiode, med særregler for
+  // siste OL/VM og siste Area Senior Outdoor Championships innenfor 3 hele kalenderår.
+  const cutoff18 = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth()-18, now.getUTCDate(), 0,0,0));
+  const threeYearStart = new Date(Date.UTC(now.getUTCFullYear()-3,0,1,0,0,0));
+
+  function parseDate(v){
+    if(!v) return null;
+    const d = new Date(v);
+    return Number.isFinite(d.getTime()) ? d : null;
+  }
+  function isOwChampionship(name){
+    const s=String(name||'').toLowerCase();
+    return /olympic games|world athletics championships/.test(s);
+  }
+  function isAreaSeniorOutdoor(name){
+    const s=String(name||'').toLowerCase();
+    return /european athletics championships|african championships|asian athletics championships|nacac championships|south american championships|oceania area championships/.test(s);
+  }
+
+  const combinedWithDates = combined.map((r,i)=>({...r,_i:i,_date:parseDate(r.date)}));
+  const newestOw = combinedWithDates
+    .filter(r=>r._date && r._date>=threeYearStart && isOwChampionship(r.competition))
+    .sort((a,b)=>b._date-a._date)[0] || null;
+
+  const eligibleCombined = combinedWithDates.filter(r=>{
+    if(!r._date) return false;
+    if(r._date >= cutoff18) return true;
+    if(newestOw && r._i===newestOw._i) return true;
+    if(r._date>=threeYearStart && isAreaSeniorOutdoor(r.competition)) return true;
+    return false;
+  }).map(({_i,_date,...r})=>r);
+
   // WA sin vanlige utøver-resultatliste viser ofte bare totalsummen fra mangekamp.
-  // Hent derfor konkurranseresultatene for mangekampene og ta med deløvelsene
-  // (800 m, kule, spyd osv.) for den samme utøveren.
+  // Hent derfor konkurranseresultatene for de mangekampene som faktisk er eligible.
   const competitionMap = new Map();
-  for (const c of combined) {
+  for (const c of eligibleCombined) {
     const cid = Number(c.competitionId);
     if (Number.isFinite(cid) && cid > 0 && !competitionMap.has(cid)) competitionMap.set(cid,c);
   }
@@ -60,7 +92,7 @@ export async function onRequestGet(context) {
   for (const [competitionId, parent] of [...competitionMap.entries()].slice(0,12)) {
     try {
       const res = await fetch(`https://worldathletics.nimarion.de/competitions/${competitionId}/results`, {
-        headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.19.1','Accept':'application/json'}
+        headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.1','Accept':'application/json'}
       });
       const text = await res.text();
       let data = null;
@@ -88,6 +120,7 @@ export async function onRequestGet(context) {
               date:r.date ?? race?.date ?? parent.date ?? null,
               legal:true,
               wind:r.wind ?? null,
+              records:r.records ?? r.record ?? null,
               source:'combined-event-subevent'
             };
             if (item.mark != null) results.push(item);
@@ -108,7 +141,22 @@ export async function onRequestGet(context) {
     return true;
   });
 
-  return json({ok:true,id:Number(id),attempts,enrichedAttempts,results:deduped,combined});
+  return json({
+    ok:true,
+    id:Number(id),
+    attempts,
+    enrichedAttempts,
+    results:deduped,
+    combined:eligibleCombined,
+    rankingPeriod:{
+      type:'combined-events-2026',
+      months:18,
+      cutoff:cutoff18.toISOString().slice(0,10),
+      championshipExceptionStart:threeYearStart.toISOString().slice(0,10),
+      newestOwCompetition:newestOw?.competition ?? null,
+      newestOwDate:newestOw?.date ?? null
+    }
+  });
 }
 
 function json(body,status=200){
