@@ -1,4 +1,4 @@
-// Rankingstevner v0.22.4 – robust Result Score for tikamp og sjukamp
+// Rankingstevner v0.22.5 – robust Result Score + korrekt forhåndsvisning for tikamp og sjukamp
 (() => {
   'use strict';
 
@@ -15,8 +15,6 @@
     F:[10,6,3]
   };
 
-  // Verifiserte WA-eksempler brukt som fallback dersom den eksterne tabellen
-  // ikke inneholder combined events. Første verdi er prestasjonspoeng, andre Result Score.
   const decathlonAnchors = [
     [7606,1065],[7615,1067],[7729,1084],[7739,1086],[7745,1087],[7754,1088],
     [8001,1126],[8002,1127],[8188,1155],[8200,1157],[8402,1189],[8413,1190],
@@ -60,11 +58,8 @@
       for(const [pts,tableMark] of evt.data){
         if(Number(tableMark)===markValue) return Number(pts);
       }
-      // Tabellen er mark->poeng. Finn nærmeste to markverdier og interpoler.
       const rows=evt.data.map(([pts,m])=>[Number(m),Number(pts)]).filter(([m,p])=>Number.isFinite(m)&&Number.isFinite(p)).sort((a,b)=>a[0]-b[0]);
       if(rows.length<2) return null;
-      if(markValue<=rows[0][0]) return interpolateAnchors(markValue,rows);
-      if(markValue>=rows[rows.length-1][0]) return interpolateAnchors(markValue,rows);
       return interpolateAnchors(markValue,rows);
     }catch(_){ return null; }
   }
@@ -95,8 +90,8 @@
     let originalLookup=null;
     try{ originalLookup=lookupScoreFor; }catch(_){ }
 
-    if(originalLookup && !window.__combinedLookupPatched224){
-      window.__combinedLookupPatched224=true;
+    if(originalLookup && !window.__combinedLookupPatched225){
+      window.__combinedLookupPatched225=true;
       window.lookupScoreFor=function(code,raw){
         if(code==='Decathlon'||code==='Heptathlon') return combinedScore(code,raw);
         return originalLookup(code,raw);
@@ -118,11 +113,18 @@
       performanceOut.textContent=Number.isFinite(rs)&&ps!=null?String(rs+ps):'–';
     }
 
-    ['input','change'].forEach(type=>mark.addEventListener(type,()=>setTimeout(sync,0)));
-    category.addEventListener('change',()=>setTimeout(sync,0));
-    placing.addEventListener('change',()=>setTimeout(sync,0));
-    event.addEventListener('change',()=>setTimeout(sync,50));
-    setTimeout(sync,250);
+    function syncLate(){
+      setTimeout(sync,0);
+      setTimeout(sync,40);
+      setTimeout(sync,160);
+      setTimeout(sync,320);
+    }
+
+    ['input','change'].forEach(type=>mark.addEventListener(type,syncLate));
+    category.addEventListener('change',syncLate);
+    placing.addEventListener('change',syncLate);
+    event.addEventListener('change',syncLate);
+    setTimeout(syncLate,250);
   }
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',install,{once:true});
