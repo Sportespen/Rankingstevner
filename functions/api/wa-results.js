@@ -10,11 +10,13 @@ export async function onRequestGet(context) {
   const results = [];
   const combined = [];
 
+  const normalizeRecords = value => Array.isArray(value) ? value.map(String) : (value == null ? [] : [String(value)]);
+
   for (const year of years) {
     const endpoint = `https://worldathletics.nimarion.de/athletes/${id}/results?year=${year}`;
     try {
       const res = await fetch(endpoint, {
-        headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.1','Accept':'application/json'}
+        headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.2','Accept':'application/json'}
       });
       const text = await res.text();
       let data = null;
@@ -37,7 +39,7 @@ export async function onRequestGet(context) {
           date:r.date ?? null,
           legal:r.legal !== false,
           wind:r.wind ?? null,
-          records:r.records ?? r.record ?? null,
+          records:normalizeRecords(r.records ?? r.record),
           source:'athlete-results'
         };
         results.push(item);
@@ -48,8 +50,6 @@ export async function onRequestGet(context) {
     }
   }
 
-  // WA Combined Events 2026: 18-måneders rankingperiode, med særregler for
-  // siste OL/VM og siste Area Senior Outdoor Championships innenfor 3 hele kalenderår.
   const cutoff18 = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth()-18, now.getUTCDate(), 0,0,0));
   const threeYearStart = new Date(Date.UTC(now.getUTCFullYear()-3,0,1,0,0,0));
 
@@ -66,6 +66,27 @@ export async function onRequestGet(context) {
     const s=String(name||'').toLowerCase();
     return /european athletics championships|african championships|asian athletics championships|nacac championships|south american championships|oceania area championships/.test(s);
   }
+  function combinedType(discipline){
+    const d=String(discipline||'').toLowerCase();
+    if(d.includes('heptathlon short track') || d.includes('pentathlon short track')) return 'similar';
+    if(d==='decathlon' || d==='heptathlon' || d.includes('decathlon ') || (d.includes('heptathlon')&&!d.includes('short track'))) return 'main';
+    return null;
+  }
+  function wrStatus(records){
+    const recs=normalizeRecords(records).map(x=>x.toUpperCase().replace(/\s+/g,''));
+    if(recs.some(x=>x.includes('=WR') || x.includes('EWR') || x.includes('WR='))) return 'equal';
+    if(recs.some(x=>/(^|[^A-Z])WR([^A-Z]|$)/.test(x) || x==='WR')) return 'new';
+    return null;
+  }
+  function wrBonusFor(result){
+    const date=parseDate(result.date);
+    if(!date || date<cutoff18) return 0;
+    const type=combinedType(result.discipline);
+    const status=wrStatus(result.records);
+    if(!type || !status) return 0;
+    if(type==='main') return status==='new'?20:10;
+    return status==='new'?10:5;
+  }
 
   const combinedWithDates = combined.map((r,i)=>({...r,_i:i,_date:parseDate(r.date)}));
   const newestOw = combinedWithDates
@@ -80,8 +101,12 @@ export async function onRequestGet(context) {
     return false;
   }).map(({_i,_date,...r})=>r);
 
-  // WA sin vanlige utøver-resultatliste viser ofte bare totalsummen fra mangekamp.
-  // Hent derfor konkurranseresultatene for de mangekampene som faktisk er eligible.
+  const worldRecordPerformances = combined
+    .map(r=>({result:r,status:wrStatus(r.records),bonus:wrBonusFor(r)}))
+    .filter(x=>x.bonus>0)
+    .map(x=>({discipline:x.result.discipline,mark:x.result.mark,date:x.result.date,records:x.result.records,status:x.status,bonus:x.bonus}));
+  const worldRecordBonus = worldRecordPerformances.reduce((sum,x)=>sum+x.bonus,0);
+
   const competitionMap = new Map();
   for (const c of eligibleCombined) {
     const cid = Number(c.competitionId);
@@ -92,7 +117,7 @@ export async function onRequestGet(context) {
   for (const [competitionId, parent] of [...competitionMap.entries()].slice(0,12)) {
     try {
       const res = await fetch(`https://worldathletics.nimarion.de/competitions/${competitionId}/results`, {
-        headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.1','Accept':'application/json'}
+        headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.2','Accept':'application/json'}
       });
       const text = await res.text();
       let data = null;
@@ -120,7 +145,7 @@ export async function onRequestGet(context) {
               date:r.date ?? race?.date ?? parent.date ?? null,
               legal:true,
               wind:r.wind ?? null,
-              records:r.records ?? r.record ?? null,
+              records:normalizeRecords(r.records ?? r.record),
               source:'combined-event-subevent'
             };
             if (item.mark != null) results.push(item);
@@ -132,7 +157,6 @@ export async function onRequestGet(context) {
     }
   }
 
-  // Fjern dubletter som kan komme både fra utøverlisten og konkurransedetaljene.
   const seen = new Set();
   const deduped = results.filter(r => {
     const key = [r.competitionId||'',r.date||'',String(r.discipline||'').toLowerCase(),r.mark||'',r.place||''].join('|');
@@ -148,6 +172,8 @@ export async function onRequestGet(context) {
     enrichedAttempts,
     results:deduped,
     combined:eligibleCombined,
+    worldRecordBonus,
+    worldRecordPerformances,
     rankingPeriod:{
       type:'combined-events-2026',
       months:18,
