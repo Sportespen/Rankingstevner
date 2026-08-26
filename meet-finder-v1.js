@@ -1,109 +1,29 @@
-// Stevnefinner v5.1 – future-only, automatic calendar feed through 2027.
+// Stevnefinner v5.2 – future-only, automatic calendar feed through 2027.
 (() => {
 'use strict';
-
 const ROAD='https://worldathletics.org/news/press-releases/qualification-system-world-athletics-championships-beijing-27';
 const WA_CALENDAR='https://worldathletics.org/competition/calendar-results';
 const MAX_DATE=new Date('2027-12-31T23:59:59');
-let allMeets=[];
-let loading=false;
-let loadError='';
-let loadedAt=null;
-
+let allMeets=[];let loading=false;let loadError='';let loadedAt=null;
 const $=id=>document.getElementById(id);
 const eventCode=()=>$('event')?.value||'';
 const eventLabel=()=>$('event')?.selectedOptions?.[0]?.textContent||'valgt øvelse';
-
 function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();}
 function disciplineBlob(m){return (Array.isArray(m?.disciplines)?m.disciplines:[]).map(d=>norm(typeof d==='string'?d:JSON.stringify(d))).join(' | ');}
 function hasAny(s,items){return items.some(x=>s.includes(norm(x)));}
-
-function eventMatches(m,code){
-  const s=disciplineBlob(m); if(!s)return false;
-  switch(code){
-    case '100m': return hasAny(s,['100 m','100m','100 metres','100 meters'])&&!s.includes('hurd');
-    case '200m': return hasAny(s,['200 m','200m','200 metres','200 meters'])&&!s.includes('hurd');
-    case '400m': return hasAny(s,['400 m','400m','400 metres','400 meters'])&&!s.includes('hurd');
-    case '800m': return hasAny(s,['800 m','800m','800 metres','800 meters']);
-    case '1500m': return hasAny(s,['1500 m','1500m','1500 metres','1500 meters']);
-    case '5000m': return hasAny(s,['5000 m','5000m','5000 metres','5000 meters']);
-    case '10000m': return hasAny(s,['10000 m','10000m','10 000 m','10000 metres','10000 meters']);
-    case '100mH': return (hasAny(s,['100 m hurdles','100m hurdles','100 metres hurdles','100 meter hurdles'])||/100 ?m.*hurd/.test(s));
-    case '110mH': return (hasAny(s,['110 m hurdles','110m hurdles','110 metres hurdles','110 meter hurdles'])||/110 ?m.*hurd/.test(s));
-    case '400mH': return (hasAny(s,['400 m hurdles','400m hurdles','400 metres hurdles','400 meter hurdles'])||/400 ?m.*hurd/.test(s));
-    case '3000mSC': return hasAny(s,['3000 m steeplechase','3000m steeplechase','3000 metres steeplechase','3000 meter steeplechase']);
-    case 'HJ': return hasAny(s,['high jump']);
-    case 'PV': return hasAny(s,['pole vault']);
-    case 'LJ': return hasAny(s,['long jump']);
-    case 'TJ': return hasAny(s,['triple jump']);
-    case 'SP': return hasAny(s,['shot put']);
-    case 'DT': return hasAny(s,['discus throw','discus']);
-    case 'HT': return hasAny(s,['hammer throw','hammer']);
-    case 'JT': return hasAny(s,['javelin throw','javelin']);
-    // WA calendar often labels future decathlon/heptathlon meets only as "Combined Events"
-    // until the detailed event programme is published. Treat those as relevant candidates
-    // instead of incorrectly returning zero future meets.
-    case 'Decathlon': return hasAny(s,['decathlon','combined events']);
-    case 'Heptathlon': return hasAny(s,['heptathlon','combined events']);
-    default:return false;
-  }
-}
-
+function eventMatches(m,code){const s=disciplineBlob(m);if(!s)return false;switch(code){case'100m':return hasAny(s,['100 m','100m','100 metres','100 meters'])&&!s.includes('hurd');case'200m':return hasAny(s,['200 m','200m','200 metres','200 meters'])&&!s.includes('hurd');case'400m':return hasAny(s,['400 m','400m','400 metres','400 meters'])&&!s.includes('hurd');case'800m':return hasAny(s,['800 m','800m','800 metres','800 meters']);case'1500m':return hasAny(s,['1500 m','1500m']);case'5000m':return hasAny(s,['5000 m','5000m']);case'10000m':return hasAny(s,['10000 m','10000m','10 000 m']);case'100mH':return hasAny(s,['100 m hurdles','100m hurdles'])||/100 ?m.*hurd/.test(s);case'110mH':return hasAny(s,['110 m hurdles','110m hurdles'])||/110 ?m.*hurd/.test(s);case'400mH':return hasAny(s,['400 m hurdles','400m hurdles'])||/400 ?m.*hurd/.test(s);case'3000mSC':return hasAny(s,['3000 m steeplechase','3000m steeplechase']);case'HJ':return hasAny(s,['high jump']);case'PV':return hasAny(s,['pole vault']);case'LJ':return hasAny(s,['long jump']);case'TJ':return hasAny(s,['triple jump']);case'SP':return hasAny(s,['shot put']);case'DT':return hasAny(s,['discus throw','discus']);case'HT':return hasAny(s,['hammer throw','hammer']);case'JT':return hasAny(s,['javelin throw','javelin']);case'Decathlon':return hasAny(s,['decathlon','combined events']);case'Heptathlon':return hasAny(s,['heptathlon','combined events']);default:return false;}}
 function parseDate(v){if(!v)return null;const d=new Date(v);return Number.isNaN(d.getTime())?null:d;}
-function isFutureThrough2027(m){
-  const today=new Date();today.setHours(0,0,0,0);
-  const end=parseDate(m.end)||parseDate(m.start);
-  const start=parseDate(m.start)||end;
-  return !!(end&&start&&end>=today&&start<=MAX_DATE);
-}
-
-const EUROPE=['albania','andorra','armenia','austria','belarus','belgium','bosnia','bulgaria','croatia','cyprus','czech','denmark','estonia','finland','france','georgia','germany','gibraltar','greece','hungary','iceland','ireland','italy','kosovo','latvia','liechtenstein','lithuania','luxembourg','malta','moldova','monaco','montenegro','netherlands','north macedonia','norway','poland','portugal','romania','san marino','serbia','slovakia','slovenia','spain','sweden','switzerland','turkey','turkiye','ukraine','united kingdom','england','scotland','wales','northern ireland','osterrike','østerrike','belgia','danmark','estland','finland','frankrike','tyskland','hellas','irland','italia','latvia','litauen','nederland','norge','polen','portugal','romania','serbia','slovakia','slovenia','spania','sverige','sveits','tsjekkia','ungarn'];
-function isEurope(m){
-  const s=norm([m.location,m.competitionGroup,m.competitionSubgroup].filter(Boolean).join(' '));
-  return EUROPE.some(c=>s.includes(norm(c)));
-}
-
-function futureMatches(){
-  const c=eventCode();
-  return allMeets.filter(m=>isFutureThrough2027(m)&&eventMatches(m,c)&&isEurope(m)).sort((a,b)=>(parseDate(a.start)?.getTime()||0)-(parseDate(b.start)?.getTime()||0));
-}
+function isFutureThrough2027(m){const today=new Date();today.setHours(0,0,0,0);const end=parseDate(m.end)||parseDate(m.start);const start=parseDate(m.start)||end;return!!(end&&start&&end>=today&&start<=MAX_DATE);}
+const EUROPE=['albania','andorra','armenia','austria','belarus','belgium','bosnia','bulgaria','croatia','cyprus','czech','denmark','estonia','finland','france','georgia','germany','gibraltar','greece','hungary','iceland','ireland','italy','kosovo','latvia','liechtenstein','lithuania','luxembourg','malta','moldova','monaco','montenegro','netherlands','north macedonia','norway','poland','portugal','romania','san marino','serbia','slovakia','slovenia','spain','sweden','switzerland','turkey','turkiye','ukraine','united kingdom','england','scotland','wales','northern ireland','aut','bel','bih','bul','cro','cyp','cze','den','est','fin','fra','geo','ger','gbr','gre','hun','irl','isl','ita','kos','lat','ltu','lux','mda','mkd','mne','ned','nor','pol','por','rou','srb','slo','svk','esp','swe','sui','tur','ukr'];
+function isEurope(m){const s=norm([m.location,m.competitionGroup,m.competitionSubgroup].filter(Boolean).join(' '));return EUROPE.some(c=>s.split(' ').includes(norm(c))||s.includes(norm(c)));}
+function futureMatches(){const c=eventCode();return allMeets.filter(m=>isFutureThrough2027(m)&&eventMatches(m,c)&&isEurope(m)).sort((a,b)=>(parseDate(a.start)?.getTime()||0)-(parseDate(b.start)?.getTime()||0));}
 function formatDateValue(v){const d=parseDate(v);return d?new Intl.DateTimeFormat('nb-NO',{day:'numeric',month:'short',year:'numeric'}).format(d):'';}
 function dateText(m){const a=formatDateValue(m.start),b=formatDateValue(m.end);return a&&b&&a!==b?`${a} – ${b}`:(a||b||'Dato ikke publisert');}
 function esc(v){return String(v??'').replace(/[&<>\"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]));}
-function mapUrl(m){return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.location||m.name||'')}`;}
+function mapUrl(m){return`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.location||m.name||'')}`;}
 function waUrl(m){return m.id?`https://worldathletics.org/competition/calendar-results/results/${encodeURIComponent(m.id)}`:WA_CALENDAR;}
 function stamp(){return loadedAt?new Intl.DateTimeFormat('nb-NO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(loadedAt):'';}
-
-function render(){
-  const host=$('meetList');if(!host)return;
-  const matches=futureMatches();
-  const combinedNote=['Decathlon','Heptathlon'].includes(eventCode())?' For fremtidige mangekampstevner bruker WA ofte samlebetegnelsen «Combined Events» før detaljprogrammet er publisert.':'';
-  const summary=`<div class="finder-summary"><div><span class="eyebrow">FREMTIDIGE WA-STEVNER</span><h4>${esc(eventLabel())}</h4><p class="muted">Oppdateres automatisk fra kalenderkilden. Vi viser publiserte stevner fra i dag til 31.12.2027 som matcher valgt øvelse eller relevant øvelsesgruppe.${combinedNote}${loadedAt?` Sist oppdatert ${stamp()}.`:''}</p></div><div class="finder-count">${loading?'…':matches.length}<small>${loading?'henter':'aktuelle stevner'}</small></div></div>`;
-  if(loading&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Henter fremtidige stevner…</strong><p class="muted">Listen fylles fra kalenderkilden automatisk.</p></div>`;return;}
-  if(loadError&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Kunne ikke hente stevnekalenderen akkurat nå.</strong><p class="muted">${esc(loadError)}</p><a class="buttonlike" href="${WA_CALENDAR}" target="_blank" rel="noopener">Åpne World Athletics-kalender</a></div>`;return;}
-  if(!matches.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Ingen publiserte fremtidige stevner for ${esc(eventLabel())} i datakilden akkurat nå.</strong><p class="muted">Listen fylles automatisk når nye stevner og øvelsesprogrammer publiseres.</p></div>`;return;}
-  host.innerHTML=summary+matches.map(m=>`<article class="meet-card meet-card-v1"><div class="meet-top"><div><h4>${esc(m.name||'Stevne')}</h4><div class="meta">${esc(m.location||'Sted ikke publisert')}</div></div><span class="cat">${esc(m.rankingCategory||'WA')}</span></div><div class="meet-facts"><div><span>Dato</span><strong>${esc(dateText(m))}</strong></div><div><span>Øvelse</span><strong>${esc(eventLabel())}</strong></div><div><span>Kontakt</span><strong>Ikke publisert i datakilden ennå</strong></div><div><span>Premiepenger</span><strong>Ikke publisert i datakilden ennå</strong></div></div><div class="meet-insight"><span>Historisk nivå</span><strong>Historisk nivå kobles inn fra tidligere utgaver av dette stevnet.</strong><small>Dette brukes som bakgrunn for å vurdere om stevnet passer utøverens nivå.</small></div><div class="meet-insight road"><span>Road to Beijing 2027</span><strong>VM-kvalifisering via direktekrav og World Ranking.</strong><small>Personlig sammenligning mot siste kvalifiseringsplass kobles inn i neste steg.</small></div><div class="card-actions"><a class="buttonlike" href="${mapUrl(m)}" target="_blank" rel="noopener">Vis i kart</a><a class="buttonlike" href="${waUrl(m)}" target="_blank" rel="noopener">World Athletics</a><a class="buttonlike" href="${ROAD}" target="_blank" rel="noopener">Beijing 2027</a></div></article>`).join('');
-}
-
-async function load(){
-  if(loading)return;loading=true;loadError='';render();
-  try{
-    const res=await fetch('/api/meet-search?v=51',{cache:'no-store'});
-    const data=await res.json();
-    if(!res.ok||!data?.ok)throw new Error(data?.error||`Kalenderkilde svarte ${res.status}`);
-    allMeets=Array.isArray(data.results)?data.results:[];
-    loadedAt=new Date();
-  }catch(e){loadError=String(e?.message||e);}finally{loading=false;render();}
-}
-
-function install(){
-  const panel=$('meetList')?.closest('.panel');
-  if(panel){const h=panel.querySelector('h3');if(h)h.textContent='Finn aktuelle rankingstevner';const status=panel.querySelector('.section-head>.muted');if(status)status.textContent='World Athletics-kalender';}
-  $('meetCategoryFilter')?.closest('.filters')?.setAttribute('style','display:none');
-  $('event')?.addEventListener('change',()=>setTimeout(render,0));
-  $('sex')?.addEventListener('change',()=>setTimeout(render,0));
-  load();
-  setInterval(load,15*60*1000);
-}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
+function render(){const host=$('meetList');if(!host)return;const matches=futureMatches();const combinedNote=['Decathlon','Heptathlon'].includes(eventCode())?' For fremtidige mangekampstevner brukes også WA-betegnelsen «Combined Events» når detaljprogrammet ikke er publisert.':'';const summary=`<div class="finder-summary"><div><span class="eyebrow">FREMTIDIGE WA-STEVNER</span><h4>${esc(eventLabel())}</h4><p class="muted">Publiserte stevner fra i dag til 31.12.2027.${combinedNote}${loadedAt?` Sist oppdatert ${stamp()}.`:''}</p></div><div class="finder-count">${loading?'…':matches.length}<small>${loading?'henter':'aktuelle stevner'}</small></div></div>`;if(loading&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Henter fremtidige stevner…</strong></div>`;return;}if(loadError&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Kunne ikke hente stevnekalenderen.</strong><p class="muted">${esc(loadError)}</p></div>`;return;}if(!matches.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Ingen treff ennå.</strong><p class="muted">Det betyr at kalenderkilden ikke har gitt oss et sikkert treff for valgt øvelse. Dette skal ikke tolkes som at det ikke finnes stevner.</p></div>`;return;}host.innerHTML=summary+matches.map(m=>`<article class="meet-card meet-card-v1"><div class="meet-top"><div><h4>${esc(m.name||'Stevne')}</h4><div class="meta">${esc(m.location||'Sted ikke publisert')}</div></div><span class="cat">${esc(m.rankingCategory||'WA')}</span></div><div class="meet-facts"><div><span>Dato</span><strong>${esc(dateText(m))}</strong></div><div><span>Øvelse</span><strong>${esc(eventLabel())}</strong></div><div><span>Kontakt</span><strong>Hentes i neste steg</strong></div><div><span>Premiepenger</span><strong>Hentes i neste steg</strong></div></div><div class="meet-insight"><span>Historisk nivå</span><strong>Historiske resultater kobles inn fra tidligere utgaver.</strong></div><div class="meet-insight road"><span>Road to Beijing 2027</span><strong>Personlig sammenligning kobles inn.</strong></div><div class="card-actions"><a class="buttonlike" href="${mapUrl(m)}" target="_blank" rel="noopener">Vis i kart</a><a class="buttonlike" href="${waUrl(m)}" target="_blank" rel="noopener">World Athletics</a><a class="buttonlike" href="${ROAD}" target="_blank" rel="noopener">Beijing 2027</a></div></article>`).join('');}
+async function load(){if(loading)return;loading=true;loadError='';render();try{const params=new URLSearchParams({v:'52',event:eventCode(),startDate:new Date().toISOString().slice(0,10),endDate:'2027-12-31'});const res=await fetch(`/api/meet-search?${params}`,{cache:'no-store'});const data=await res.json();if(!res.ok||!data?.ok)throw new Error(data?.error||`Kalenderkilde svarte ${res.status}`);allMeets=Array.isArray(data.results)?data.results:[];loadedAt=new Date();}catch(e){loadError=String(e?.message||e);}finally{loading=false;render();}}
+function install(){const panel=$('meetList')?.closest('.panel');if(panel){const h=panel.querySelector('h3');if(h)h.textContent='Finn aktuelle rankingstevner';const status=panel.querySelector('.section-head>.muted');if(status)status.textContent='World Athletics-kalender';}$('meetCategoryFilter')?.closest('.filters')?.setAttribute('style','display:none');$('event')?.addEventListener('change',()=>setTimeout(load,0));$('sex')?.addEventListener('change',()=>setTimeout(load,0));load();setInterval(load,15*60*1000);}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
 })();
