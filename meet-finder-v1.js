@@ -1,30 +1,105 @@
-// Stevnefinner v4 – verified WA data for combined events and men's 100m.
+// Stevnefinner v5 – future-only, automatic WA calendar feed through 2027.
 (() => {
 'use strict';
-const eventLabel=()=>document.getElementById('event')?.selectedOptions?.[0]?.textContent||'valgt øvelse';
-const sex=()=>document.getElementById('sex')?.value||'M';
-const code=()=>document.getElementById('event')?.value||'';
-const road='https://worldathletics.org/news/press-releases/qualification-system-world-athletics-championships-beijing-27';
-const tour='https://worldathletics.org/competitions/world-athletics-combined-events-tour';
-const combined=[
-{name:'39th Multistars',place:'Centro Gabre Gabric, Brescia, Italia',cat:'B',date:'25–26. april 2026',events:['Decathlon','Heptathlon'],history:'WA-resultatliste tilgjengelig.',results:'https://worldathletics.org/competitions/world-athletics-combined-events-tour/calendar-results/7234839/result',map:'https://www.google.com/maps/search/?api=1&query=Centro+Gabre+Gabric+Brescia+Italy'},
-{name:'Hypomeeting',place:'Mösle-Stadium, Götzis, Østerrike',cat:'GL',date:'30–31. mai 2026',events:['Decathlon','Heptathlon'],history:'Et av årets sterkeste mangekampfelt.',results:'https://worldathletics.org/news/preview/neugebauer-decathlon-heptathlon-hypo-meeting-gotzis-2026',map:'https://www.google.com/maps/search/?api=1&query=Mosle+Stadium+Gotzis+Austria'},
-{name:'XV Meeting Arona Pruebas Combinadas',place:'Antonio Domínguez Stadium, Arona, Spania',cat:'WA Tour',date:'6–7. juni 2026',events:['Decathlon','Heptathlon'],history:'Verifisert i WA Combined Events Tour.',results:tour,map:'https://www.google.com/maps/search/?api=1&query=Antonio+Dominguez+Stadium+Arona+Spain'},
-{name:'Stadtwerke Ratingen Mehrkampf-Meeting',place:'Stadionring, Ratingen, Tyskland',cat:'A',date:'27–28. juni 2026',events:['Decathlon','Heptathlon'],history:'WA-resultatoversikt tilgjengelig.',results:'https://worldathletics.org/competitions/world-athletics-combined-events-tour/calendar-results/7230559/summary',map:'https://www.google.com/maps/search/?api=1&query=Stadionring+Ratingen+Germany'},
-{name:'5th Wiesław Czapiewski Memorial',place:'Stadion Miejski, Nakło nad Notecią, Polen',cat:'A',date:'11–12. juli 2026',events:['Decathlon','Heptathlon'],history:'WA Combined Events – A.',results:'https://worldathletics.org/competition/calendar-results/results/7236891',map:'https://www.google.com/maps/search/?api=1&query=Stadion+Miejski+Naklo+nad+Notecia+Poland'},
-{name:'Décastar',place:'Stade Pierre Paul Bernard, Talence, Frankrike',cat:'GL',date:'18–19. september 2026',events:['Decathlon','Heptathlon'],history:'WA Combined Events Tour.',results:tour,map:'https://www.google.com/maps/search/?api=1&query=Stade+Pierre+Paul+Bernard+Talence+France'}];
-const men100=[
-{name:'International Pegaso Meeting',place:'Stadio Luigi Ridolfi, Firenze, Italia',cat:'WA CT',date:'9. mai 2026',history:'2026 finale: 1. 10.04 · 3. 10.28 · 5. 10.38.',results:'https://worldathletics.org/competitions/world-athletics-continental-tour/calendar-results/7234843/result',map:'https://www.google.com/maps/search/?api=1&query=Stadio+Luigi+Ridolfi+Firenze+Italy'},
-{name:'Meeting International de Forbach',place:'Stade Omnisports Schlossberg, Forbach, Frankrike',cat:'WA CT',date:'31. mai 2026',history:'2026 finale: 1. 10.02w · 3. 10.22 · 5. 10.36.',results:'https://worldathletics.org/competitions/world-athletics-continental-tour/calendar-results/7234907/result',map:'https://www.google.com/maps/search/?api=1&query=Stade+Omnisports+Schlossberg+Forbach+France'},
-{name:'65th Ostrava Golden Spike',place:'Městský Stadion, Ostrava, Tsjekkia',cat:'WA CT',date:'16. juni 2026',history:'2026 finale: 1. 9.94 · 3. 10.13 · 5. 10.20 · 8. 10.47.',results:'https://worldathletics.org/competitions/world-athletics-continental-tour/calendar-results/7231415/result',map:'https://www.google.com/maps/search/?api=1&query=Mestsky+Stadion+Ostrava+Czechia'},
-{name:'Meeting International de Montreuil',place:'Stade Jean Delbert, Montreuil, Frankrike',cat:'WA CT',date:'17. juni 2026',history:'2026 finale: 1. 10.18 · 3. 10.19 · 5. 10.38 · 8. 10.52.',results:'https://worldathletics.org/competitions/world-athletics-continental-tour/calendar-results/7235105/result',map:'https://www.google.com/maps/search/?api=1&query=Stade+Jean+Delbert+Montreuil+France'},
-{name:'Meeting Internacional Ciudad de Málaga',place:'Estadio Ciudad de Málaga, Málaga, Spania',cat:'WA CT',date:'18. juni 2026',history:'2026 finale: 1. 10.08 · 3. 10.35 · 5. 10.39.',results:'https://worldathletics.org/competitions/world-athletics-continental-tour/calendar-results/7234117/result',map:'https://www.google.com/maps/search/?api=1&query=Estadio+Ciudad+de+Malaga+Spain'},
-{name:'Meeting Stanislas Nancy',place:'Stade Raymond Petit, Tomblaine, Frankrike',cat:'WA CT',date:'3. juli 2026',history:'2026 finale: 1. 10.10 · 3. 10.16 · 5. 10.25 · 8. 10.47.',results:'https://worldathletics.org/competitions/world-athletics-continental-tour/calendar-results/7235104/result',map:'https://www.google.com/maps/search/?api=1&query=Stade+Raymond+Petit+Tomblaine+France'},
-{name:'Meeting Lignano',place:'Stadio G. Teghil, Lignano Sabbiadoro, Italia',cat:'WA CT',date:'8. juli 2026',history:'2026 finale: 1. 10.12 · 3. 10.19 · 4. 10.31.',results:'https://worldathletics.org/competitions/world-athletics-continental-tour/calendar-results/7235535/result',map:'https://www.google.com/maps/search/?api=1&query=Stadio+Teghil+Lignano+Sabbiadoro+Italy'},
-{name:'Morton Games',place:'Morton Stadium, Dublin, Irland',cat:'WA CT',date:'10. juli 2026',history:'2026 finale: 1. 10.06 · 3. 10.19 · 5. 10.27 · 8. 10.41.',results:'https://worldathletics.org/competitions/world-athletics-continental-tour/calendar-results/7233919/result',map:'https://www.google.com/maps/search/?api=1&query=Morton+Stadium+Dublin+Ireland'},
-{name:'Meeting of Braga',place:'Estádio 1º de Maio, Braga, Portugal',cat:'WA CT',date:'11. juli 2026',history:'2026 finale: 1. 10.13 · 3. 10.48 · 5. 10.52 · 8. 10.62.',results:'https://worldathletics.org/competitions/world-athletics-continental-tour/calendar-results/7235310/result',map:'https://www.google.com/maps/search/?api=1&query=Estadio+1+de+Maio+Braga+Portugal'}];
-function getMatches(){if(code()==='Decathlon'||code()==='Heptathlon')return combined.filter(m=>m.events.includes(code()));if(sex()==='M'&&code()==='100m')return men100;return [];}
-function render(){const host=document.getElementById('meetList');if(!host)return;const matches=getMatches();const intro=`<div class="finder-summary"><div><span class="eyebrow">WORLD ATHLETICS-DATA</span><h4>${eventLabel()}</h4><p class="muted">Bare stevner der valgt øvelse er verifisert i World Athletics-resultater vises.</p></div><div class="finder-count">${matches.length}<small>verifiserte stevner</small></div></div>`;if(!matches.length){host.innerHTML=intro+`<div class="finder-empty"><strong>Stevnedata for ${eventLabel()} bygges nå.</strong><p class="muted">Et stevne vises ikke før vi har verifisert at akkurat denne øvelsen står på programmet.</p></div>`;return;}host.innerHTML=intro+matches.map(m=>`<article class="meet-card meet-card-v1"><div class="meet-top"><div><h4>${m.name}</h4><div class="meta">${m.place}</div></div><span class="cat">${m.cat}</span></div><div class="meet-facts"><div><span>Dato</span><strong>${m.date}</strong></div><div><span>Øvelse</span><strong>${eventLabel()}</strong></div><div><span>Kontakt</span><strong>Ikke verifisert ennå</strong></div><div><span>Premiepenger</span><strong>Ikke verifisert ennå</strong></div></div><div class="meet-insight"><span>Nivå i 2026</span><strong>${m.history}</strong><small>Resultatene er hentet fra World Athletics.</small></div><div class="meet-insight road"><span>Road to Beijing 2027</span><strong>VM-kvalifisering via direktekrav og World Ranking.</strong></div><div class="card-actions"><a class="buttonlike" href="${m.map}" target="_blank" rel="noopener">Vis i kart</a><a class="buttonlike" href="${m.results}" target="_blank" rel="noopener">WA-resultater</a><a class="buttonlike" href="${road}" target="_blank" rel="noopener">Beijing 2027</a></div></article>`).join('');}
-function install(){const panel=document.getElementById('meetList')?.closest('.panel');if(panel){panel.querySelector('h3').textContent='Finn aktuelle rankingstevner';const status=panel.querySelector('.section-head>.muted');if(status)status.textContent='Verifisert mot World Athletics';}document.getElementById('meetCategoryFilter')?.closest('.filters')?.setAttribute('style','display:none');document.getElementById('event')?.addEventListener('change',()=>setTimeout(render,0));document.getElementById('sex')?.addEventListener('change',()=>setTimeout(render,0));render();}
+
+const ROAD='https://worldathletics.org/news/press-releases/qualification-system-world-athletics-championships-beijing-27';
+const WA_CALENDAR='https://worldathletics.org/competition/calendar-results';
+const MAX_DATE=new Date('2027-12-31T23:59:59');
+let allMeets=[];
+let loading=false;
+let loadError='';
+let loadedAt=null;
+
+const $=id=>document.getElementById(id);
+const eventCode=()=>$('event')?.value||'';
+const eventLabel=()=>$('event')?.selectedOptions?.[0]?.textContent||'valgt øvelse';
+
+function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();}
+function disciplineBlob(m){return (Array.isArray(m?.disciplines)?m.disciplines:[]).map(d=>norm(typeof d==='string'?d:JSON.stringify(d))).join(' | ');}
+function hasAny(s,items){return items.some(x=>s.includes(norm(x)));}
+
+function eventMatches(m,code){
+  const s=disciplineBlob(m); if(!s)return false;
+  switch(code){
+    case '100m': return hasAny(s,['100 m','100m','100 metres','100 meters'])&&!s.includes('hurd');
+    case '200m': return hasAny(s,['200 m','200m','200 metres','200 meters'])&&!s.includes('hurd');
+    case '400m': return hasAny(s,['400 m','400m','400 metres','400 meters'])&&!s.includes('hurd');
+    case '800m': return hasAny(s,['800 m','800m','800 metres','800 meters']);
+    case '1500m': return hasAny(s,['1500 m','1500m','1500 metres','1500 meters']);
+    case '5000m': return hasAny(s,['5000 m','5000m','5000 metres','5000 meters']);
+    case '10000m': return hasAny(s,['10000 m','10000m','10 000 m','10000 metres','10000 meters']);
+    case '100mH': return (hasAny(s,['100 m hurdles','100m hurdles','100 metres hurdles','100 meter hurdles'])||/100 ?m.*hurd/.test(s));
+    case '110mH': return (hasAny(s,['110 m hurdles','110m hurdles','110 metres hurdles','110 meter hurdles'])||/110 ?m.*hurd/.test(s));
+    case '400mH': return (hasAny(s,['400 m hurdles','400m hurdles','400 metres hurdles','400 meter hurdles'])||/400 ?m.*hurd/.test(s));
+    case '3000mSC': return hasAny(s,['3000 m steeplechase','3000m steeplechase','3000 metres steeplechase','3000 meter steeplechase']);
+    case 'HJ': return hasAny(s,['high jump']);
+    case 'PV': return hasAny(s,['pole vault']);
+    case 'LJ': return hasAny(s,['long jump']);
+    case 'TJ': return hasAny(s,['triple jump']);
+    case 'SP': return hasAny(s,['shot put']);
+    case 'DT': return hasAny(s,['discus throw','discus']);
+    case 'HT': return hasAny(s,['hammer throw','hammer']);
+    case 'JT': return hasAny(s,['javelin throw','javelin']);
+    case 'Decathlon': return hasAny(s,['decathlon']);
+    case 'Heptathlon': return hasAny(s,['heptathlon']);
+    default:return false;
+  }
+}
+
+function parseDate(v){if(!v)return null;const d=new Date(v);return Number.isNaN(d.getTime())?null:d;}
+function isFutureThrough2027(m){
+  const today=new Date();today.setHours(0,0,0,0);
+  const end=parseDate(m.end)||parseDate(m.start);
+  const start=parseDate(m.start)||end;
+  return !!(end&&start&&end>=today&&start<=MAX_DATE);
+}
+
+const EUROPE=['albania','andorra','armenia','austria','belarus','belgium','bosnia','bulgaria','croatia','cyprus','czech','denmark','estonia','finland','france','georgia','germany','gibraltar','greece','hungary','iceland','ireland','italy','kosovo','latvia','liechtenstein','lithuania','luxembourg','malta','moldova','monaco','montenegro','netherlands','north macedonia','norway','poland','portugal','romania','san marino','serbia','slovakia','slovenia','spain','sweden','switzerland','turkey','turkiye','ukraine','united kingdom','england','scotland','wales','northern ireland','osterrike','østerrike','belgia','danmark','estland','finland','frankrike','tyskland','hellas','irland','italia','latvia','litauen','nederland','norge','polen','portugal','romania','serbia','slovakia','slovenia','spania','sverige','sveits','tsjekkia','ungarn'];
+function isEurope(m){
+  const s=norm([m.location,m.competitionGroup,m.competitionSubgroup].filter(Boolean).join(' '));
+  return EUROPE.some(c=>s.includes(norm(c)));
+}
+
+function futureMatches(){
+  const c=eventCode();
+  return allMeets.filter(m=>isFutureThrough2027(m)&&eventMatches(m,c)&&isEurope(m)).sort((a,b)=>(parseDate(a.start)?.getTime()||0)-(parseDate(b.start)?.getTime()||0));
+}
+function formatDateValue(v){const d=parseDate(v);return d?new Intl.DateTimeFormat('nb-NO',{day:'numeric',month:'short',year:'numeric'}).format(d):'';}
+function dateText(m){const a=formatDateValue(m.start),b=formatDateValue(m.end);return a&&b&&a!==b?`${a} – ${b}`:(a||b||'Dato ikke publisert');}
+function esc(v){return String(v??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));}
+function mapUrl(m){return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.location||m.name||'')}`;}
+function waUrl(m){return m.id?`https://worldathletics.org/competition/calendar-results/results/${encodeURIComponent(m.id)}`:WA_CALENDAR;}
+function stamp(){return loadedAt?new Intl.DateTimeFormat('nb-NO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(loadedAt):'';}
+
+function render(){
+  const host=$('meetList');if(!host)return;
+  const matches=futureMatches();
+  const summary=`<div class="finder-summary"><div><span class="eyebrow">FREMTIDIGE WA-STEVNER</span><h4>${esc(eventLabel())}</h4><p class="muted">Oppdateres automatisk fra WA-kalenderen. Vi viser bare publiserte stevner fra i dag til 31.12.2027 der valgt øvelse er oppført.${loadedAt?` Sist oppdatert ${stamp()}.`:''}</p></div><div class="finder-count">${loading?'…':matches.length}<small>${loading?'henter':'aktuelle stevner'}</small></div></div>`;
+  if(loading&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Henter fremtidige stevner…</strong><p class="muted">Listen fylles fra kalenderkilden automatisk.</p></div>`;return;}
+  if(loadError&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Kunne ikke hente stevnekalenderen akkurat nå.</strong><p class="muted">${esc(loadError)}</p><a class="buttonlike" href="${WA_CALENDAR}" target="_blank" rel="noopener">Åpne World Athletics-kalender</a></div>`;return;}
+  if(!matches.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Ingen publiserte fremtidige stevner for ${esc(eventLabel())} i datakilden akkurat nå.</strong><p class="muted">Listen fylles automatisk når nye stevner og øvelsesprogrammer publiseres.</p></div>`;return;}
+  host.innerHTML=summary+matches.map(m=>`<article class="meet-card meet-card-v1"><div class="meet-top"><div><h4>${esc(m.name||'Stevne')}</h4><div class="meta">${esc(m.location||'Sted ikke publisert')}</div></div><span class="cat">${esc(m.rankingCategory||'WA')}</span></div><div class="meet-facts"><div><span>Dato</span><strong>${esc(dateText(m))}</strong></div><div><span>Øvelse</span><strong>${esc(eventLabel())}</strong></div><div><span>Kontakt</span><strong>Ikke publisert i datakilden ennå</strong></div><div><span>Premiepenger</span><strong>Ikke publisert i datakilden ennå</strong></div></div><div class="meet-insight"><span>Historisk nivå</span><strong>Historisk nivå kobles inn fra tidligere utgaver av dette stevnet.</strong><small>Dette brukes som bakgrunn for å vurdere om stevnet passer utøverens nivå.</small></div><div class="meet-insight road"><span>Road to Beijing 2027</span><strong>VM-kvalifisering via direktekrav og World Ranking.</strong><small>Personlig sammenligning mot siste kvalifiseringsplass kobles inn i neste steg.</small></div><div class="card-actions"><a class="buttonlike" href="${mapUrl(m)}" target="_blank" rel="noopener">Vis i kart</a><a class="buttonlike" href="${waUrl(m)}" target="_blank" rel="noopener">World Athletics</a><a class="buttonlike" href="${ROAD}" target="_blank" rel="noopener">Beijing 2027</a></div></article>`).join('');
+}
+
+async function load(){
+  if(loading)return;loading=true;loadError='';render();
+  try{
+    const res=await fetch('/api/meet-search?v=5',{cache:'no-store'});
+    const data=await res.json();
+    if(!res.ok||!data?.ok)throw new Error(data?.error||`Kalenderkilde svarte ${res.status}`);
+    allMeets=Array.isArray(data.results)?data.results:[];
+    loadedAt=new Date();
+  }catch(e){loadError=String(e?.message||e);}finally{loading=false;render();}
+}
+
+function install(){
+  const panel=$('meetList')?.closest('.panel');
+  if(panel){const h=panel.querySelector('h3');if(h)h.textContent='Finn aktuelle rankingstevner';const status=panel.querySelector('.section-head>.muted');if(status)status.textContent='Oppdateres automatisk';}
+  $('meetCategoryFilter')?.closest('.filters')?.setAttribute('style','display:none');
+  $('event')?.addEventListener('change',()=>setTimeout(render,0));
+  $('sex')?.addEventListener('change',()=>setTimeout(render,0));
+  load();
+  setInterval(load,15*60*1000);
+}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
 })();
