@@ -1,4 +1,4 @@
-// Rankingstevner v0.22.6 – combined events: vindtrekk vises og brukes eksplisitt i forhåndsvisningen
+// Rankingstevner v0.22.7 – combined events: verifiserte WA-scoreankre + vindtrekk
 (() => {
   'use strict';
 
@@ -22,10 +22,13 @@
     [8703,1235],[8784,1248],[8804,1251],[8909,1268]
   ];
 
+  // WA-verifiserte result-scorepunkter. Viktig: disse er grunnscore uten -24 vindtrekk.
   const heptathlonAnchors = [
     [5651,1007],[5657,1008],[5663,1009],[5671,1011],[5685,1013],[5686,1014],[5694,1015],
     [5975,1070],[5983,1072],[5989,1073],[5995,1074],[6000,1075],[6003,1075],[6010,1077],
-    [6017,1078],[6023,1079],[6024,1080],[6050,1085]
+    [6017,1078],[6023,1079],[6024,1080],[6050,1085],
+    [6412,1156],[6423,1158],[6472,1168],[6497,1173],[6498,1173],[6500,1173],[6501,1174],[6502,1174],
+    [6526,1178],[6527,1179],[6581,1190],[6714,1217],[6808,1234],[7032,1279],[7291,1331]
   ];
 
   function parseCombinedMark(raw){
@@ -86,13 +89,11 @@
     const combinedWindStatus=document.getElementById('combinedWindStatus');
     if(!event||!category||!placing||!mark||!resultScore||!resultOut||!placingOut||!performanceOut){setTimeout(install,100);return;}
 
-    try{ if(typeof placingTables!=='undefined') placingTables.combined=combinedPlacing2026; }catch(_){ }
-
     let originalLookup=null;
     try{ originalLookup=lookupScoreFor; }catch(_){ }
 
-    if(originalLookup && !window.__combinedLookupPatched226){
-      window.__combinedLookupPatched226=true;
+    if(originalLookup && !window.__combinedLookupPatched227){
+      window.__combinedLookupPatched227=true;
       window.lookupScoreFor=function(code,raw){
         if(code==='Decathlon'||code==='Heptathlon') return combinedScore(code,raw);
         return originalLookup(code,raw);
@@ -110,24 +111,16 @@
       const mod=combinedWindStatus && combinedWindStatus.value!=='normal' ? -24 : 0;
       const adjusted=Number.isFinite(base) ? base+mod : null;
       const ps=placingScore();
-
       resultScore.value=Number.isFinite(adjusted)?String(adjusted):'';
       resultOut.textContent=Number.isFinite(adjusted)?String(adjusted):'–';
       placingOut.textContent=ps==null?'–':String(ps);
       performanceOut.textContent=Number.isFinite(adjusted)&&ps!=null?String(adjusted+ps):'–';
-
       const label=resultOut.parentElement?.querySelector('span');
       if(label) label.textContent=mod===0?'Result Score':'Justert Result Score';
       resultOut.title=mod===0?'':'Grunnscore '+base+' − 24 vindpoeng';
     }
 
-    function syncLate(){
-      setTimeout(sync,0);
-      setTimeout(sync,40);
-      setTimeout(sync,160);
-      setTimeout(sync,320);
-    }
-
+    function syncLate(){setTimeout(sync,0);setTimeout(sync,40);setTimeout(sync,160);setTimeout(sync,320);}
     ['input','change'].forEach(type=>mark.addEventListener(type,syncLate));
     category.addEventListener('change',syncLate);
     placing.addEventListener('change',syncLate);
