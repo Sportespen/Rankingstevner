@@ -1,4 +1,4 @@
-// Stevnefinner v5 – future-only, automatic WA calendar feed through 2027.
+// Stevnefinner v5.1 – future-only, automatic calendar feed through 2027.
 (() => {
 'use strict';
 
@@ -40,8 +40,11 @@ function eventMatches(m,code){
     case 'DT': return hasAny(s,['discus throw','discus']);
     case 'HT': return hasAny(s,['hammer throw','hammer']);
     case 'JT': return hasAny(s,['javelin throw','javelin']);
-    case 'Decathlon': return hasAny(s,['decathlon']);
-    case 'Heptathlon': return hasAny(s,['heptathlon']);
+    // WA calendar often labels future decathlon/heptathlon meets only as "Combined Events"
+    // until the detailed event programme is published. Treat those as relevant candidates
+    // instead of incorrectly returning zero future meets.
+    case 'Decathlon': return hasAny(s,['decathlon','combined events']);
+    case 'Heptathlon': return hasAny(s,['heptathlon','combined events']);
     default:return false;
   }
 }
@@ -66,7 +69,7 @@ function futureMatches(){
 }
 function formatDateValue(v){const d=parseDate(v);return d?new Intl.DateTimeFormat('nb-NO',{day:'numeric',month:'short',year:'numeric'}).format(d):'';}
 function dateText(m){const a=formatDateValue(m.start),b=formatDateValue(m.end);return a&&b&&a!==b?`${a} – ${b}`:(a||b||'Dato ikke publisert');}
-function esc(v){return String(v??'').replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));}
+function esc(v){return String(v??'').replace(/[&<>\"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]));}
 function mapUrl(m){return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.location||m.name||'')}`;}
 function waUrl(m){return m.id?`https://worldathletics.org/competition/calendar-results/results/${encodeURIComponent(m.id)}`:WA_CALENDAR;}
 function stamp(){return loadedAt?new Intl.DateTimeFormat('nb-NO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(loadedAt):'';}
@@ -74,7 +77,8 @@ function stamp(){return loadedAt?new Intl.DateTimeFormat('nb-NO',{day:'2-digit',
 function render(){
   const host=$('meetList');if(!host)return;
   const matches=futureMatches();
-  const summary=`<div class="finder-summary"><div><span class="eyebrow">FREMTIDIGE WA-STEVNER</span><h4>${esc(eventLabel())}</h4><p class="muted">Oppdateres automatisk fra WA-kalenderen. Vi viser bare publiserte stevner fra i dag til 31.12.2027 der valgt øvelse er oppført.${loadedAt?` Sist oppdatert ${stamp()}.`:''}</p></div><div class="finder-count">${loading?'…':matches.length}<small>${loading?'henter':'aktuelle stevner'}</small></div></div>`;
+  const combinedNote=['Decathlon','Heptathlon'].includes(eventCode())?' For fremtidige mangekampstevner bruker WA ofte samlebetegnelsen «Combined Events» før detaljprogrammet er publisert.':'';
+  const summary=`<div class="finder-summary"><div><span class="eyebrow">FREMTIDIGE WA-STEVNER</span><h4>${esc(eventLabel())}</h4><p class="muted">Oppdateres automatisk fra kalenderkilden. Vi viser publiserte stevner fra i dag til 31.12.2027 som matcher valgt øvelse eller relevant øvelsesgruppe.${combinedNote}${loadedAt?` Sist oppdatert ${stamp()}.`:''}</p></div><div class="finder-count">${loading?'…':matches.length}<small>${loading?'henter':'aktuelle stevner'}</small></div></div>`;
   if(loading&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Henter fremtidige stevner…</strong><p class="muted">Listen fylles fra kalenderkilden automatisk.</p></div>`;return;}
   if(loadError&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Kunne ikke hente stevnekalenderen akkurat nå.</strong><p class="muted">${esc(loadError)}</p><a class="buttonlike" href="${WA_CALENDAR}" target="_blank" rel="noopener">Åpne World Athletics-kalender</a></div>`;return;}
   if(!matches.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Ingen publiserte fremtidige stevner for ${esc(eventLabel())} i datakilden akkurat nå.</strong><p class="muted">Listen fylles automatisk når nye stevner og øvelsesprogrammer publiseres.</p></div>`;return;}
@@ -84,7 +88,7 @@ function render(){
 async function load(){
   if(loading)return;loading=true;loadError='';render();
   try{
-    const res=await fetch('/api/meet-search?v=5',{cache:'no-store'});
+    const res=await fetch('/api/meet-search?v=51',{cache:'no-store'});
     const data=await res.json();
     if(!res.ok||!data?.ok)throw new Error(data?.error||`Kalenderkilde svarte ${res.status}`);
     allMeets=Array.isArray(data.results)?data.results:[];
@@ -94,7 +98,7 @@ async function load(){
 
 function install(){
   const panel=$('meetList')?.closest('.panel');
-  if(panel){const h=panel.querySelector('h3');if(h)h.textContent='Finn aktuelle rankingstevner';const status=panel.querySelector('.section-head>.muted');if(status)status.textContent='Oppdateres automatisk';}
+  if(panel){const h=panel.querySelector('h3');if(h)h.textContent='Finn aktuelle rankingstevner';const status=panel.querySelector('.section-head>.muted');if(status)status.textContent='World Athletics-kalender';}
   $('meetCategoryFilter')?.closest('.filters')?.setAttribute('style','display:none');
   $('event')?.addEventListener('change',()=>setTimeout(render,0));
   $('sex')?.addEventListener('change',()=>setTimeout(render,0));
