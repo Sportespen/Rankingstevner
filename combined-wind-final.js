@@ -1,8 +1,17 @@
-// Final override for combined-event wind adjustment.
+// Final override for combined-event wind adjustment and placing score consistency.
 (() => {
   'use strict';
 
   const originalAdjusted = typeof adjustedResultDetails === 'function' ? adjustedResultDetails : null;
+  const combinedPlacing2026={OW:[280,250,225,205,185,170,155,145,95,85,75,65,60,55,50,46],DF:[175,150,135,120,105,95,85,75,50,40,35,30],GW:[140,120,105,90,80,70,60,50,35,30,24,18],GL:[110,90,75,65,55,50,45,40,30,25,20,15],A:[80,70,60,50,45,40,35,30],B:[60,50,45,40,35,30,25,20],C:[45,38,32,26,22,19,17,15],D:[30,22,18,16,14,12,11,10],E:[20,14,10,8,7,6],F:[10,6,3]};
+
+  // Critical: the calculate handler in app.js reads placingTables[activeGroup].
+  // Patch that actual table, not only the preview.
+  try {
+    if (typeof placingTables !== 'undefined' && placingTables.combined) {
+      Object.keys(combinedPlacing2026).forEach(k => { placingTables.combined[k] = combinedPlacing2026[k].slice(); });
+    }
+  } catch(_) {}
 
   try {
     adjustedResultDetails = function(){
@@ -31,9 +40,8 @@
     const status = document.getElementById('combinedWindStatus');
     if(!category || !placing || !resultScore || !rsOut || !psOut || !perfOut) return;
 
-    const placingTables2026={OW:[280,250,225,205,185,170,155,145,95,85,75,65,60,55,50,46],DF:[175,150,135,120,105,95,85,75,50,40,35,30],GW:[140,120,105,90,80,70,60,50,35,30,24,18],GL:[110,90,75,65,55,50,45,40,30,25,20,15],A:[80,70,60,50,45,40,35,30],B:[60,50,45,40,35,30,25,20],C:[45,38,32,26,22,19,17,15],D:[30,22,18,16,14,12,11,10],E:[20,14,10,8,7,6],F:[10,6,3]};
     const d = typeof adjustedResultDetails === 'function' ? adjustedResultDetails() : null;
-    const ps = placingTables2026[category.value]?.[Number(placing.value)-1] ?? null;
+    const ps = combinedPlacing2026[category.value]?.[Number(placing.value)-1] ?? null;
     const rs = d && Number.isFinite(Number(d.adjusted)) ? Number(d.adjusted) : null;
 
     resultScore.value = rs == null ? '' : String(rs);
