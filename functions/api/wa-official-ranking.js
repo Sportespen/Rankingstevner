@@ -6,6 +6,8 @@ export async function onRequestGet(context){
   const id=raw.match(/(\d{7,9})/)?.[1];
   const event=(url.searchParams.get('event')||'').trim();
   const sex=(url.searchParams.get('sex')||'').trim().toUpperCase();
+  const newScoreRaw=url.searchParams.get('newScore');
+  const newScore=newScoreRaw!=null&&newScoreRaw!==''?Number(newScoreRaw):null;
   if(!id)return json({ok:false,error:'Ugyldig World Athletics-ID'},400);
   if(!event)return json({ok:false,error:'Mangler øvelse'},400);
 
@@ -26,6 +28,12 @@ export async function onRequestGet(context){
 
   const slug=rankingSlug(event);
   const gender=sex==='W'?'women':'men';
+
+  let estimatedNewRank=null;
+  if(slug&&name&&validScore(newScore)){
+    estimatedNewRank=await estimateNewRankPosition(slug,gender,newScore,name,athleteSlug,knownRank,diagnostics);
+  }
+
   if(slug&&name){
     const official=await fetchOfficialRanking(slug,gender,name,athleteSlug,knownRank,diagnostics);
     if(official){
@@ -43,12 +51,74 @@ export async function onRequestGet(context){
         averagePerformanceScore:Number(calc?.averagePerformanceScore)||null,
         calculationId:Number(official.row.id)||null,
         basis,
+        estimatedNewRank,
         diagnostics
       });
     }
   }
 
-  return json({ok:true,id:Number(id),event,name,rank:knownRank,score:null,verifiedPublished:false,basisVerified:false,basis:[],diagnostics});
+  return json({ok:true,id:Number(id),event,name,rank:knownRank,score:null,verifiedPublished:false,basisVerified:false,basis:[],estimatedNewRank,diagnostics});
+}
+
+// A single simulated result won't jump an athlete across the whole ranking list, so start
+// looking near their current position (like fetchOfficialRanking's byWorldRank guess) and
+// walk outward page by page until the page whose score range straddles newScore is found.
+// Pages are strictly descending in score, so every page walked past is fully "better than
+// newScore" without needing to fetch it - only the crossover page's exact rows matter.
+async function estimateNewRankPosition(slug,gender,newScore,name,athleteSlug,knownRank,diagnostics){
+  let first;
+  try{ first=await trpc('worldAthletics.getRanking',{eventGroup:slug,gender,page:1}); }
+  catch(e){ diagnostics.push({source:'ea-ranking-estimate',page:1,error:String(e?.message||e)}); return null; }
+  const rows1=Array.isArray(first?.rankings)?first.rankings:[];
+  if(!rows1.length)return null;
+  const pageSize=rows1.length;
+  const maxPages=Math.max(1,Number(first?.pages)||1);
+  const isAthlete=r=>athleteMatches(r,name,athleteSlug);
+
+  const pages={1:rows1};
+  async function getPage(p){
+    if(p<1||p>maxPages)return null;
+    if(pages[p])return pages[p];
+    try{
+      const d=await trpc('worldAthletics.getRanking',{eventGroup:slug,gender,page:p});
+      const rows=Array.isArray(d?.rankings)?d.rankings:[];
+      pages[p]=rows;
+      return rows;
+    }catch(e){diagnostics.push({source:'ea-ranking-estimate',page:p,error:String(e?.message||e)});return null;}
+  }
+
+  const seed=validRank(knownRank)?Math.max(1,Math.ceil(knownRank/pageSize)):1;
+  const visited=new Set();
+  const budget=12;
+  let fetches=0,crossoverPage=null;
+
+  outer:
+  for(let radius=0;radius<=maxPages&&fetches<budget;radius++){
+    const candidates=radius===0?[seed]:[seed-radius,seed+radius];
+    for(const p of candidates){
+      if(p<1||p>maxPages||visited.has(p))continue;
+      visited.add(p);fetches++;
+      const rows=await getPage(p);
+      if(!rows||!rows.length)continue;
+      const top=Number(rows[0]?.rankingScore),bottom=Number(rows[rows.length-1]?.rankingScore);
+      if(!Number.isFinite(top)||!Number.isFinite(bottom))continue;
+      if((newScore<=top&&newScore>=bottom)||(p===1&&newScore>top)||(p===maxPages&&newScore<bottom)){crossoverPage=p;break outer;}
+    }
+  }
+
+  if(!crossoverPage){
+    diagnostics.push({source:'ea-ranking-estimate',seed,fetches,found:false});
+    return null;
+  }
+
+  const rows=pages[crossoverPage]||[];
+  const betterOnPage=rows.filter(r=>!isAthlete(r)&&Number(r.rankingScore)>newScore).length;
+  let position=(crossoverPage-1)*pageSize+betterOnPage+1;
+  for(let p=1;p<crossoverPage;p++){
+    if(pages[p]&&pages[p].some(isAthlete))position-=1;
+  }
+  diagnostics.push({source:'ea-ranking-estimate',seed,crossoverPage,betterOnPage,fetches,position});
+  return position;
 }
 
 async function trpc(proc,input){
