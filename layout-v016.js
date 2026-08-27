@@ -74,10 +74,19 @@
       if(combinedWindSection.style.display!=='none'){
         rankingAction.style.marginTop='0';
         rankingAction.style.gridColumn='span 3';
+        // Stack button-then-caption, matching the Vindstatus select-then-<small> column next
+        // to it, so "Resultatet sammenlignes …" lines up beside "WA trekker 24 poeng …"
+        // instead of trailing the button on the same line.
+        rankingAction.style.flexDirection='column';
+        rankingAction.style.alignItems='flex-start';
+        rankingAction.style.gap='5px';
         combinedWindSection.appendChild(rankingAction);
       }else{
         rankingAction.style.marginTop='18px';
         rankingAction.style.gridColumn='';
+        rankingAction.style.flexDirection='';
+        rankingAction.style.alignItems='';
+        rankingAction.style.gap='';
         homeParent.insertBefore(rankingAction,homeNext);
       }
     }
