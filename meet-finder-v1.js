@@ -200,10 +200,14 @@ async function loadMeetDetails(id,insightHost){
     const contacts=Array.isArray(x.contactPersons)?x.contactPersons:[];
     const contactText=contacts.length?contacts.map(c=>esc([c.name,c.role,c.email,c.phone].filter(Boolean).join(' · '))).join('<br>'):'Ingen kontaktperson oppgitt i WA.';
     const prizes=x.prizeMoney&&Object.keys(x.prizeMoney).length?esc(JSON.stringify(x.prizeMoney)):'Ikke oppgitt';
+    // WA's organiser payload sometimes gives a path relative to worldathletics.org
+    // (e.g. "/competition/.../results/123") rather than a full URL. Rendered as-is that
+    // resolves against *our* page instead and silently links back into this app.
+    const abs=u=>{if(!u)return'';try{return new URL(u,'https://worldathletics.org/').href;}catch(_){return'';}};
     const links=[
-      x.websiteUrl?`<a href="${esc(x.websiteUrl)}" target="_blank" rel="noopener">Stevnets nettside</a>`:'',
-      x.resultsUrl?`<a href="${esc(x.resultsUrl)}" target="_blank" rel="noopener">Resultater</a>`:'',
-      x.liveStreamUrl?`<a href="${esc(x.liveStreamUrl)}" target="_blank" rel="noopener">Livestream</a>`:'',
+      abs(x.websiteUrl)?`<a href="${esc(abs(x.websiteUrl))}" target="_blank" rel="noopener">Stevnets nettside</a>`:'',
+      abs(x.resultsUrl)?`<a href="${esc(abs(x.resultsUrl))}" target="_blank" rel="noopener">Resultater</a>`:'',
+      abs(x.liveStreamUrl)?`<a href="${esc(abs(x.liveStreamUrl))}" target="_blank" rel="noopener">Livestream</a>`:'',
     ].filter(Boolean).join(' · ');
     const linksHtml=links?`<div style="margin-top:4px">${links}</div>`:'';
     const infoHtml=x.additionalInfo?`<div style="margin-top:4px">${esc(x.additionalInfo)}</div>`:'';
