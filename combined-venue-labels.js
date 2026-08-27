@@ -7,14 +7,16 @@
   function setBox(card,label,value){
     const box=[...card.querySelectorAll('.meet-facts>div')].find(x=>x.querySelector('span')?.textContent.trim()===label);
     const strong=box?.querySelector('strong');
-    if(strong) strong.textContent=value;
+    if(strong && strong.textContent!==value) strong.textContent=value;
   }
 
   function relabelEventOption(){
     const event=document.getElementById('event');
     if(!event) return;
     [...event.options].forEach(opt=>{
-      if(opt.value==='Decathlon'||opt.value==='Heptathlon') opt.textContent='Mangekamp';
+      if((opt.value==='Decathlon'||opt.value==='Heptathlon') && opt.textContent!=='Mangekamp'){
+        opt.textContent='Mangekamp';
+      }
     });
   }
 
@@ -27,11 +29,10 @@
     const code=event.value;
     if(code!=='Decathlon'&&code!=='Heptathlon') return;
 
-    // World Athletics ranks outdoor and indoor combined events in the same combined-events ranking group.
     host.querySelectorAll('.meet-card-v1').forEach(card=>setBox(card,'Øvelse','Mangekamp'));
 
     const summary=host.querySelector('.finder-summary h4');
-    if(summary) summary.textContent='Mangekamp';
+    if(summary && summary.textContent!=='Mangekamp') summary.textContent='Mangekamp';
   }
 
   function queue(){
