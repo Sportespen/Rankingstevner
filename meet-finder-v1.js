@@ -248,17 +248,25 @@ async function loadMeetDetails(id,insightHost){
     // WA's own competition page (which always exists once we have an id) when the organiser
     // payload's own field is missing or fails validation.
     const fallbackUrl=waUrl({id});
-    const linkHtml=(label,u,fallback)=>{
+    // Returns {anchor, note} instead of a ready HTML string - a trailing note (e.g. "(only fin
+    // and swe athletes)") used to sit inline right after its link, and once it wrapped to its
+    // own line it left the following " · Label" separator orphaned at the start of a line.
+    // Anchors now join into one clean row and every note renders on its own line below instead.
+    const linkParts=(label,u,fallback)=>{
       const r=abs(u)||(fallback?{href:fallback,note:''}:null);
-      return r?`<a href="${esc(r.href)}" target="_blank" rel="noopener">${label}</a>${r.note?` <span class="muted">${esc(r.note)}</span>`:''}`:'';
+      return r?{anchor:`<a href="${esc(r.href)}" target="_blank" rel="noopener">${label}</a>`,note:r.note}:null;
     };
-    const links=[
-      linkHtml('Stevnets nettside',x.websiteUrl,fallbackUrl),
-      linkHtml('Resultater',x.resultsUrl,fallbackUrl),
-      `<a href="${esc(fallbackUrl)}" target="_blank" rel="noopener">${esc(prizeLabel)}</a>`,
-      linkHtml('Livestream',x.liveStreamUrl), // no fallback - only shown when WA actually has one
-    ].filter(Boolean).join(' · ');
-    const linksHtml=links?`<div style="margin-top:4px">${links}</div>`:'';
+    const items=[
+      linkParts('Stevnets nettside',x.websiteUrl,fallbackUrl),
+      linkParts('Resultater',x.resultsUrl,fallbackUrl),
+      {anchor:`<a href="${esc(fallbackUrl)}" target="_blank" rel="noopener">${esc(prizeLabel)}</a>`,note:''},
+      linkParts('Livestream',x.liveStreamUrl), // no fallback - only shown when WA actually has one
+    ].filter(Boolean);
+    // Each "· anchor" pair is kept in one nowrap span so a line break can never strand the
+    // bullet alone at the start of the next line.
+    const linkRow=items.map((it,i)=>i===0?it.anchor:`<span style="white-space:nowrap">· ${it.anchor}</span>`).join(' ');
+    const notesHtml=items.filter(it=>it.note).map(it=>`<div class="muted" style="margin-top:2px">${esc(it.note)}</div>`).join('');
+    const linksHtml=items.length?`<div style="margin-top:4px">${linkRow}</div>${notesHtml}`:'';
     const infoHtml=x.additionalInfo?`<div style="margin-top:4px">${esc(x.additionalInfo)}</div>`:'';
     if(insightHost)insightHost.innerHTML=`<span>Kontakt og premier</span><strong>${contactText}</strong>${linksHtml}${infoHtml}`;
     // Confirmed via WA's /organiser payload: it carries contact/prize/link info only, no
