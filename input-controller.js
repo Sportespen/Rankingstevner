@@ -35,16 +35,9 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   setTimeout(loadFastAthleteSearch,0);
 })();
 
-(() => {
-  function loadStevnefinner(){
-    if(document.querySelector('script[data-stevnefinner-v0190]')) return;
-    const s=document.createElement('script');
-    s.src='stevnefinner.js?v=0190';
-    s.dataset.stevnefinnerV0190='1';
-    document.head.appendChild(s);
-  }
-  setTimeout(loadStevnefinner,0);
-})();
+// Legacy stevnefinner.js (v0.19) used to be loaded here alongside meet-finder-v1.js,
+// which fought over the same #meetList/section-head DOM. Its only feature meet-finder-v1.js
+// lacked (contact/prize lookup) has been ported into meet-finder-v1.js; the file is removed.
 
 (() => {
   function loadRankingEventMatchFix(){
