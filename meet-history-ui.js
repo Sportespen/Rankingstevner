@@ -25,10 +25,18 @@ function loadDedupe(){
   s.dataset.meetDedupe='1';
   document.head.appendChild(s);
 }
+function loadCombinedVenueLabels(){
+  if(document.querySelector('script[data-combined-venue-labels]'))return;
+  const s=document.createElement('script');
+  s.src='combined-venue-labels.js?v=1';
+  s.dataset.combinedVenueLabels='1';
+  document.head.appendChild(s);
+}
 const observer=new MutationObserver(()=>requestAnimationFrame(apply));
 document.addEventListener('DOMContentLoaded',()=>{
   const host=document.getElementById('meetList');if(host)observer.observe(host,{childList:true,subtree:true});
   apply();
   loadDedupe();
+  loadCombinedVenueLabels();
 });
 })();
