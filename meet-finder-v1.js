@@ -98,7 +98,13 @@ async function loadMeetDetails(id,insightHost,mapLink){
     // Organiser data sometimes has the actual stadium/venue name, which is far more useful
     // in a map link than the calendar's city-level location text.
     const venueName=[x.venue,x.stadium,x.venueName,x.address,x.location?.venue,x.location?.name].find(v=>typeof v==='string'&&v.trim());
-    if(mapLink&&venueName)mapLink.href=`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueName)}`;
+    if(mapLink&&venueName){
+      mapLink.href=`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueName)}`;
+    }else if(insightHost){
+      // TEMPORARY: none of the guessed field names matched, so surface the raw payload to
+      // find the real one instead of silently falling back to the city. Remove once confirmed.
+      insightHost.insertAdjacentHTML('beforeend',`<div style="margin-top:6px;font-size:11px;color:#9aa5ac">Fant ikke stadionfelt. Rådata fra WA: ${esc(JSON.stringify(x))}</div>`);
+    }
   }catch(e){
     if(insightHost)insightHost.innerHTML=`<span>Kontakt og premier</span><strong class="muted">${esc(e.message)}</strong>`;
   }
