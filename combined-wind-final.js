@@ -23,11 +23,11 @@
   'use strict';
   function relabel(){
     const event=document.getElementById('event');
-    if(event){[...event.options].forEach(o=>{if(o.value==='Decathlon'||o.value==='Heptathlon')o.textContent='Mangekamp';});}
+    if(event){[...event.options].forEach(o=>{if((o.value==='Decathlon'||o.value==='Heptathlon')&&o.textContent!=='Mangekamp')o.textContent='Mangekamp';});}
     const host=document.getElementById('meetList');
     if(!host||!event||(event.value!=='Decathlon'&&event.value!=='Heptathlon'))return;
-    host.querySelectorAll('.meet-facts > div').forEach(box=>{const span=box.querySelector('span'),strong=box.querySelector('strong');if(span&&strong&&span.textContent.trim()==='Øvelse')strong.textContent='Mangekamp';});
-    host.querySelectorAll('.finder-summary h4').forEach(h=>h.textContent='Mangekamp');
+    host.querySelectorAll('.meet-facts > div').forEach(box=>{const span=box.querySelector('span'),strong=box.querySelector('strong');if(span&&strong&&span.textContent.trim()==='Øvelse'&&strong.textContent!=='Mangekamp')strong.textContent='Mangekamp';});
+    host.querySelectorAll('.finder-summary h4').forEach(h=>{if(h.textContent!=='Mangekamp')h.textContent='Mangekamp';});
   }
   document.addEventListener('DOMContentLoaded',()=>{
     const event=document.getElementById('event'),host=document.getElementById('meetList');
