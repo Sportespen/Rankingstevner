@@ -18,39 +18,24 @@
     const eventSelect=document.getElementById('event');
     const profileBox=document.querySelector('.existing');
     const eventChoice=document.querySelector('.event-choice');
-    if(!sex||!eventSelect||!profileBox||!eventChoice){setTimeout(applyLayout,100);return;}
-    if(document.getElementById('sexChoiceBeforeAthlete')) return;
+    const profileCompact=document.querySelector('.profile-compact');
+    if(!sex||!eventSelect||!profileBox||!eventChoice||!profileCompact){setTimeout(applyLayout,100);return;}
+    if(sex.dataset.profileRowApplied) return;
+    sex.dataset.profileRowApplied='1';
 
     const sexLabel=sex.closest('label');
     if(!sexLabel) return;
 
-    // Keep exactly one label per section: the eyebrow. A single-field section doesn't need
-    // its own field label repeating (near enough) the same word, so that text is hidden and
-    // moved to aria-label for accessibility instead of shown twice.
-    hideRedundantLabelText(sexLabel,'Kjønn');
-
-    if(!document.getElementById('sexAndProfileRowStyle')){
+    // Kjønn is an athlete-profile field just like Navn/WA-ID, so it joins their row and
+    // gets a matching visible "Kjønn" label - putting it in its own boxed section made its
+    // select float above the Navn/WA-ID inputs instead of sitting level with them.
+    if(!document.getElementById('profileCompactWithSexStyle')){
       const style=document.createElement('style');
-      style.id='sexAndProfileRowStyle';
-      style.textContent='#sexAndProfileRow{display:grid;grid-template-columns:190px minmax(0,1fr);gap:20px;align-items:start}@media(max-width:600px){#sexAndProfileRow{grid-template-columns:1fr;gap:14px}}';
+      style.id='profileCompactWithSexStyle';
+      style.textContent='.profile-compact{grid-template-columns:120px minmax(0,1.2fr) minmax(0,1fr) auto}@media(max-width:760px){.profile-compact{grid-template-columns:1fr!important}}';
       document.head.appendChild(style);
     }
-
-    const sexSection=document.createElement('div');
-    sexSection.id='sexChoiceBeforeAthlete';
-    sexSection.innerHTML='<span class="eyebrow">VELG KJØNN</span><div style="margin-top:9px"></div>';
-    sexSection.querySelector('div').appendChild(sexLabel);
-
-    const row=document.createElement('div');
-    row.id='sexAndProfileRow';
-    profileBox.parentNode.insertBefore(row,profileBox);
-    row.append(sexSection,profileBox);
-    // profileBox's own top border/spacing was meant for a full-width section below the
-    // hero; now that it sits beside VELG KJØNN in a row, that border would just draw a
-    // stray line under one column.
-    profileBox.style.borderTop='none';
-    profileBox.style.paddingTop='0';
-    profileBox.style.marginTop='0';
+    profileCompact.insertBefore(sexLabel,profileCompact.firstChild);
 
     // Drop the h4 entirely instead of renaming it to "Velg øvelse" - identical text to the
     // "VELG ØVELSE" eyebrow right above it.
