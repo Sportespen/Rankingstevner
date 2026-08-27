@@ -266,7 +266,11 @@ async function loadMeetDetails(id,insightHost){
     ].filter(Boolean);
     // Each "· anchor" pair is kept in one nowrap span so a line break can never strand the
     // bullet alone at the start of the next line.
-    const linkRow=items.map((it,i)=>i===0?it.anchor:`<span style="white-space:nowrap">· ${it.anchor}</span>`).join(' ');
+    // Explicit font-size on every item, not just the "· "-prefixed ones: the ambient
+    // .meet-insight span{font-size:11px} rule (meant for the small label spans elsewhere in
+    // this box) was leaking into the nowrap wrapper spans below, shrinking every link except
+    // the unwrapped first one and making them look mismatched.
+    const linkRow=items.map((it,i)=>`<span style="white-space:nowrap;font-size:13px">${i===0?'':'· '}${it.anchor}</span>`).join(' ');
     const notesHtml=items.filter(it=>it.note).map(it=>`<div class="muted" style="margin-top:2px">${esc(it.note)}</div>`).join('');
     const linksHtml=items.length?`<div style="margin-top:4px">${linkRow}</div>${notesHtml}`:'';
     const infoHtml=x.additionalInfo?`<div style="margin-top:4px">${esc(x.additionalInfo)}</div>`:'';
