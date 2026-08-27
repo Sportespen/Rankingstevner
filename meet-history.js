@@ -26,6 +26,39 @@ const HISTORY = [
     source: 'https://worldathletics.org/competition/calendar-results/results/7196994?eventId=10229536'
   },
   {
+    match: /hypomeeting|gotzis|götzis/i,
+    event: 'Decathlon',
+    sex: 'M',
+    year: 2026,
+    winner: 'Simon Ehammer',
+    winnerMark: 8778,
+    top3: [8778,8730,8528],
+    top8: [8778,8730,8528,8497,8428,8413,8400,8357],
+    source: 'https://worldathletics.org/competition/calendar-results/results/7232824?eventId=10229629&gender=M'
+  },
+  {
+    match: /hypomeeting|gotzis|götzis/i,
+    event: 'Heptathlon',
+    sex: 'W',
+    year: 2026,
+    winner: 'Annik Kälin',
+    winnerMark: 6726,
+    top3: [6726,6705,6627],
+    top8: [6726,6705,6627,6449,6413,6381,6350,6328],
+    source: 'https://worldathletics.org/competition/calendar-results/results/7232824?eventId=10229536'
+  },
+  {
+    match: /arona|pruebas combinadas/i,
+    event: 'Decathlon',
+    sex: 'M',
+    year: 2025,
+    winner: 'Antoine Ferranti',
+    winnerMark: 8221,
+    top3: [8221,7972,7889],
+    top8: [8221,7972,7889,7826,7804,7722,7501,7453],
+    source: 'https://worldathletics.org/competition/calendar-results/results/7216692?day=2'
+  },
+  {
     match: /german combined events championships|german championships/i,
     event: 'Decathlon',
     sex: 'M',
