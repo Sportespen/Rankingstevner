@@ -78,14 +78,14 @@
     const official=window.__rankingstevnerOfficialRanking;
     const sameOfficial=official&&official.event===eventSelect.value&&Number(official.score)>0;
     const old=document.getElementById('autoRankingBasisAllEvents');if(old)old.remove();
+    // official-ranking.js already renders the full Ranking Score card and basis table straight
+    // from WA data once a verified ranking is found - showing the locally reconstructed version
+    // too would just duplicate the same box right above it.
+    if(sameOfficial){waDetails.style.display='none';return;}
     const box=document.createElement('div');box.id='autoRankingBasisAllEvents';
     const label=eventSelect.options[eventSelect.selectedIndex]?.textContent||eventSelect.value;
     let leftHtml='';
-    if(sameOfficial){
-      const rows=basis.selected.length?basis.selected.map(rowHtml).join('<br><br>'):'<span class="muted">Fant ikke nok resultatdetaljer til å rekonstruere grunnlaget.</span>';
-      const calc=basis.complete&&Number.isFinite(basis.rankingScore)?`<div class="basis-note">Rekonstruert snitt fra disse resultatene: <strong>${basis.rankingScore}</strong>. Offisiell WA Ranking Score er <strong>${Number(official.score)}</strong> og er fasit.</div>`:'';
-      leftHtml=`<strong>Rankinggrunnlag for ${label}:</strong><br>${rows}${calc}<div class="basis-note">Resultatene er hentet fra WA-resultatdata og koblet mot WA-tabellene for Result Score og Placing Score. Den publiserte WA Ranking Score overstyrer alltid denne rekonstruksjonen.</div>`;
-    }else if(!basis.selected.length){
+    if(!basis.selected.length){
       leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br><span class="muted">Ingen gyldige WA-resultater funnet innenfor gjeldende rankingperiode.</span>`;
     }else{
       const rows=basis.selected.map(rowHtml).join('<br><br>');
@@ -93,8 +93,7 @@
       leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br>${rows}${status}`;
     }
     let rightHtml='';
-    if(sameOfficial){rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">OFFISIELL WA RANKING SCORE</div><div class="ranking-score-value">${Number(official.score)}</div><div class="ranking-score-note">Verifisert mot World Athletics.</div></div>`;}
-    else if(basis.complete){rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">BEREGNET RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div><div class="ranking-score-note">Midlertidig beregning. Ingen offisiell WA Ranking Score funnet.</div></div>`;}
+    if(basis.complete){rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">BEREGNET RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div><div class="ranking-score-note">Midlertidig beregning. Ingen offisiell WA Ranking Score funnet.</div></div>`;}
     box.innerHTML=`<div class="ranking-basis-left">${leftHtml}</div>${rightHtml}`;waDetails.appendChild(box);waDetails.style.display='block';
   }
   function refresh(){if(!allResults.length){window.__rankingstevnerReconstructedBasis={event:eventSelect.value,selected:[],needed:req[group(eventSelect.value)],complete:false,rankingScore:null};window.dispatchEvent(new CustomEvent('rankingbasisupdated'));return;}const b=basisFor(eventSelect.value);fillScores(b);setTimeout(()=>renderBasis(b),180);}

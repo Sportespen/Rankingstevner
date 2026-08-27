@@ -1,6 +1,6 @@
 // Shared helpers only. Trinn 3 UI/logikk ligger nå kun i trinn3.js.
 (function(){function loadSearch(){if(document.querySelector('script[data-ranking-search-v090]'))return;const s=document.createElement('script');s.src='athlete-search-ui.js?v=090';s.dataset.rankingSearchV090='1';document.head.appendChild(s);}setTimeout(loadSearch,0);})();
-(function(){function loadLayout(){if(document.querySelector('script[data-ranking-layout-v016]'))return;const s=document.createElement('script');s.src='layout-v016.js?v=0160';s.dataset.rankingLayoutV016='1';document.head.appendChild(s);}setTimeout(loadLayout,0);})();
+(function(){function loadLayout(){if(document.querySelector('script[data-ranking-layout-v0161]'))return;const s=document.createElement('script');s.src='layout-v016.js?v=0161';s.dataset.rankingLayoutV0161='1';document.head.appendChild(s);}setTimeout(loadLayout,0);})();
 (function(){function loadCombinedFix(){if(document.querySelector('script[data-combined-ranking-fix-v0163]'))return;const s=document.createElement('script');s.src='combined-ranking-fix.js?v=0163';s.dataset.combinedRankingFixV0163='1';document.head.appendChild(s);}setTimeout(loadCombinedFix,0);})();
 (function(){function loadProfileUx(){if(document.querySelector('script[data-profile-ux-v0165]'))return;const s=document.createElement('script');s.src='profile-ux-v0165.js?v=0165';s.dataset.profileUxV0165='1';document.head.appendChild(s);}setTimeout(loadProfileUx,0);})();
 (function(){function loadGenderReset(){if(document.querySelector('script[data-gender-reset-v0166]'))return;const s=document.createElement('script');s.src='gender-reset.js?v=0166';s.dataset.genderResetV0166='1';document.head.appendChild(s);}setTimeout(loadGenderReset,0);})();
@@ -9,7 +9,7 @@
 (function(){function removeDuplicateCombinedBox(){document.querySelectorAll('#waProfileDetails div').forEach(el=>{const strong=el.querySelector(':scope > strong');if(strong&&strong.textContent.trim().startsWith('Tellende Performance Scores:'))el.remove();});}const details=document.getElementById('waProfileDetails');if(details)new MutationObserver(removeDuplicateCombinedBox).observe(details,{childList:true,subtree:true});setTimeout(removeDuplicateCombinedBox,200);})();
 // v0.20.4: synlig WA-ranking med diagnostikk dersom kilden feiler.
 (function(){
-  function loadOfficialRanking(){if(document.querySelector('script[data-official-ranking-v204]'))return;const s=document.createElement('script');s.src='official-ranking.js?v=204';s.dataset.officialRankingV204='1';document.head.appendChild(s);s.addEventListener('load',()=>setTimeout(loadBasis,0));}
-  function loadBasis(){if(document.querySelector('script[data-ranking-basis-v200]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=200';s.dataset.rankingBasisV200='1';document.head.appendChild(s);}
+  function loadOfficialRanking(){if(document.querySelector('script[data-official-ranking-v205]'))return;const s=document.createElement('script');s.src='official-ranking.js?v=205';s.dataset.officialRankingV205='1';document.head.appendChild(s);s.addEventListener('load',()=>setTimeout(loadBasis,0));}
+  function loadBasis(){if(document.querySelector('script[data-ranking-basis-v201]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=201';s.dataset.rankingBasisV201='1';document.head.appendChild(s);}
   setTimeout(loadOfficialRanking,0);
 })();

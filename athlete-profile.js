@@ -226,7 +226,9 @@
       waStatus.innerHTML=`<strong>WA-profil funnet:</strong> ${data.name||data.id}${sexLabel?' · '+sexLabel:''} · WA-ID ${data.id}`;
       renderWaDetails(data);
       applyBasisForSelectedEvent(data);
-      showStatus(`Koblet til World Athletics: ${data.name||data.id}`);
+      // Name/WA-ID are already shown in the WA status line right below - repeating them
+      // here just reads as duplicated text.
+      showStatus('Profil lagret automatisk.');
     }catch(e){
       waStatus.textContent=`Kunne ikke hente WA-profil: ${e.message}`;
       if(waDetails){waDetails.innerHTML='';waDetails.style.display='none';}
@@ -261,7 +263,11 @@
     if(store.name){profileName.value=store.name;if(nameSearch)nameSearch.value=store.name;}
     if(waInput&&store.waId)waInput.value=store.waId;
     if(store.sex&&[...sex.options].some(o=>o.value===store.sex))sex.value=store.sex;
-    if(store.name)showStatus(`Profil lastet: ${store.name}`);else showStatus('Ingen lagret profil ennå.',false);
+    // When a WA profile is stored, the line below already names the athlete + WA-ID, so
+    // keep this one generic instead of repeating the same name twice.
+    if(store.waName)showStatus('Profil lastet fra nettleseren.');
+    else if(store.name)showStatus(`Profil lastet: ${store.name}`);
+    else showStatus('Ingen lagret profil ennå.',false);
     if(store.waName&&waStatus)waStatus.textContent=`WA koblet: ${store.waName}${store.waId?' · WA-ID '+store.waId:''}`;
     setTimeout(()=>{
       if(store.event&&[...eventSelect.options].some(o=>o.value===store.event))eventSelect.value=store.event;
