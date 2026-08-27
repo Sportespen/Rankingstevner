@@ -29,12 +29,28 @@
     // moved to aria-label for accessibility instead of shown twice.
     hideRedundantLabelText(sexLabel,'Kjønn');
 
+    if(!document.getElementById('sexAndProfileRowStyle')){
+      const style=document.createElement('style');
+      style.id='sexAndProfileRowStyle';
+      style.textContent='#sexAndProfileRow{display:grid;grid-template-columns:190px minmax(0,1fr);gap:20px;align-items:start}@media(max-width:600px){#sexAndProfileRow{grid-template-columns:1fr;gap:14px}}';
+      document.head.appendChild(style);
+    }
+
     const sexSection=document.createElement('div');
     sexSection.id='sexChoiceBeforeAthlete';
-    sexSection.style.cssText='margin:0 0 12px;padding-bottom:12px;border-bottom:1px solid #d9e5e1;max-width:280px';
     sexSection.innerHTML='<span class="eyebrow">VELG KJØNN</span><div style="margin-top:9px"></div>';
     sexSection.querySelector('div').appendChild(sexLabel);
-    profileBox.parentNode.insertBefore(sexSection,profileBox);
+
+    const row=document.createElement('div');
+    row.id='sexAndProfileRow';
+    profileBox.parentNode.insertBefore(row,profileBox);
+    row.append(sexSection,profileBox);
+    // profileBox's own top border/spacing was meant for a full-width section below the
+    // hero; now that it sits beside VELG KJØNN in a row, that border would just draw a
+    // stray line under one column.
+    profileBox.style.borderTop='none';
+    profileBox.style.paddingTop='0';
+    profileBox.style.marginTop='0';
 
     // Drop the h4 entirely instead of renaming it to "Velg øvelse" - identical text to the
     // "VELG ØVELSE" eyebrow right above it.
