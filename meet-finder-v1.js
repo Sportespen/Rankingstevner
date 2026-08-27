@@ -210,21 +210,29 @@ async function loadMeetDetails(id,insightHost){
     //    worldathletics.org built the nonsensical worldathletics.org/sul.fi.
     //  - the literal string "404" (or a full https://worldathletics.org/404 URL) is WA's
     //    own placeholder for "not available", not a real link.
+    //  - some fields carry the URL plus a trailing note in the same string, e.g.
+    //    "www.ruotsiottelu.fi (only fin and swe athletes)" - the raw space made the whole
+    //    note part of the "hostname", so the browser tried to resolve that as one domain
+    //    and failed (DNS_PROBE_FINISHED_NXDOMAIN). Keep only the first token as the URL and
+    //    surface the rest as plain text instead of silently dropping it.
     const abs=u=>{
-      if(!u)return'';
-      const s=String(u).trim();
-      if(!s||/^\d+$/.test(s))return'';
+      if(!u)return null;
+      const raw=String(u).trim();
+      if(!raw||/^\d+$/.test(raw))return null;
+      const [s,...rest]=raw.split(/\s+/);
+      const note=rest.join(' ');
       try{
         const parsed=/^https?:\/\//i.test(s)||s.startsWith('/')
           ?new URL(s,'https://worldathletics.org/')
           :new URL(`https://${s}`);
-        return parsed.pathname==='/404'?'':parsed.href;
-      }catch(_){return'';}
+        return parsed.pathname==='/404'?null:{href:parsed.href,note};
+      }catch(_){return null;}
     };
+    const linkHtml=(label,u)=>{const r=abs(u);return r?`<a href="${esc(r.href)}" target="_blank" rel="noopener">${label}</a>${r.note?` <span class="muted">${esc(r.note)}</span>`:''}`:'';};
     const links=[
-      abs(x.websiteUrl)?`<a href="${esc(abs(x.websiteUrl))}" target="_blank" rel="noopener">Stevnets nettside</a>`:'',
-      abs(x.resultsUrl)?`<a href="${esc(abs(x.resultsUrl))}" target="_blank" rel="noopener">Resultater</a>`:'',
-      abs(x.liveStreamUrl)?`<a href="${esc(abs(x.liveStreamUrl))}" target="_blank" rel="noopener">Livestream</a>`:'',
+      linkHtml('Stevnets nettside',x.websiteUrl),
+      linkHtml('Resultater',x.resultsUrl),
+      linkHtml('Livestream',x.liveStreamUrl),
     ].filter(Boolean).join(' · ');
     const linksHtml=links?`<div style="margin-top:4px">${links}</div>`:'';
     const infoHtml=x.additionalInfo?`<div style="margin-top:4px">${esc(x.additionalInfo)}</div>`:'';
