@@ -186,14 +186,12 @@ function championshipStripHTML(){
     const topLabel=c.body==='WA'?'WA Toplist':'EA Toplist';
     const topHref=c.body==='WA'&&topUrl?topUrl:(c.body==='WA'?WA_CALENDAR:EA_TOPLIST_URL);
     const standard=c.entryStandards[code];
-    // Just the number, no links - a link here is either a duplicate of the WA/EA Toplist
-    // button below or, for indoor, dead weight since Valencia 2027's own combined-event
-    // standard hasn't been published (couldn't find a confirmed figure to show instead).
+    // Just the number, no links - a link here would duplicate the WA/EA Toplist button below.
     // Indoor combined events lean heavily on ranking rather than a fixed standard (Apeldoorn
     // 2025: only 3 of 14 heptathlon slots went via entry standard, 11 via World/European
-    // Ranking) - couldn't find Valencia 2027's own standard figure, and it may not be the
-    // main route in anyway, so say so plainly instead of showing "not published yet".
-    const req=standard?`Kvalifiseringskrav: ${standard} p`:'Kvalifiseres hovedsakelig via ranking, ikke fast krav';
+    // Ranking), and no Valencia 2027 standard figure could be confirmed anyway, so indoor
+    // just points at Toplist instead of showing a number.
+    const req=standard?`Kvalifiseringskrav: ${standard} p`:'Ingen direktekrav – kvalifisering via Toplist';
     return `<div><div style="font-weight:800">${indoor?'Innendørs':'Utendørs'} · ${esc(c.name)}</div><div class="muted" style="margin-top:4px">${req}</div><div style="margin-top:6px"><a class="buttonlike" href="${esc(topHref)}" target="_blank" rel="noopener">${topLabel}</a> <a class="buttonlike" href="${esc(c.roadUrl)}" target="_blank" rel="noopener">Road to ${esc(c.name)}</a></div></div>`;
   };
   return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box"><div style="font-size:12px;font-weight:800;letter-spacing:.12em;color:#007f73;margin:0 0 12px">KVALIFISERING TIL MESTERSKAP 2027</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">${section('outdoor')}${section('indoor')}</div></div>`;
