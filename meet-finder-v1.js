@@ -68,7 +68,17 @@ const EUROPE_CODES=new Set(['ALB','AND','ARM','AUT','BLR','BEL','BIH','BUL','CRO
 const COUNTRY_NAMES={ALB:'Albania',AND:'Andorra',ARM:'Armenia',AUT:'Østerrike',BLR:'Belarus',BEL:'Belgia',BIH:'Bosnia-Hercegovina',BUL:'Bulgaria',CRO:'Kroatia',CYP:'Kypros',CZE:'Tsjekkia',DEN:'Danmark',EST:'Estland',FIN:'Finland',FRA:'Frankrike',GEO:'Georgia',GER:'Tyskland',GIB:'Gibraltar',GBR:'Storbritannia',GRE:'Hellas',HUN:'Ungarn',ISL:'Island',IRL:'Irland',ITA:'Italia',KOS:'Kosovo',LAT:'Latvia',LIE:'Liechtenstein',LTU:'Litauen',LUX:'Luxembourg',MLT:'Malta',MDA:'Moldova',MON:'Monaco',MNE:'Montenegro',NED:'Nederland',MKD:'Nord-Makedonia',NOR:'Norge',POL:'Polen',POR:'Portugal',ROU:'Romania',SMR:'San Marino',SRB:'Serbia',SVK:'Slovakia',SLO:'Slovenia',ESP:'Spania',SWE:'Sverige',SUI:'Sveits',TUR:'Tyrkia',UKR:'Ukraina'};
 const EUROPE_NAMES=['albania','andorra','armenia','austria','belarus','belgium','bosnia','bulgaria','croatia','cyprus','czech','denmark','estonia','finland','france','georgia','germany','gibraltar','greece','hungary','iceland','ireland','italy','kosovo','latvia','liechtenstein','lithuania','luxembourg','malta','moldova','monaco','montenegro','netherlands','north macedonia','norway','poland','portugal','romania','san marino','serbia','slovakia','slovenia','spain','sweden','switzerland','turkey','turkiye','ukraine','united kingdom','england','scotland','wales','northern ireland'];
 function locationText(m){const loc=m?.location;if(!loc)return'';if(typeof loc==='string')return loc;if(typeof loc==='object')return [loc.venue,loc.city,loc.country,loc.countryCode,loc.area].filter(Boolean).join(' ');return String(loc);}
-function countryCode(m){const raw=[locationText(m),m?.area,m?.country,m?.countryCode].filter(Boolean).join(' ');const tokens=String(raw).toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim().split(/\s+/);return tokens.find(t=>EUROPE_CODES.has(t))||'';}
+function countryCode(m){
+  const raw=[locationText(m),m?.area,m?.country,m?.countryCode].filter(Boolean).join(' ');
+  // WA venue strings almost always end "... (CODE)" - prefer that over scanning every word,
+  // since ordinary English words collide with 3-letter codes (esp. "and" == AND/Andorra,
+  // which wrongly flagged e.g. "Harvard-Gordon Track and Tennis Center" as European).
+  const paren=raw.match(/\(([A-Z]{3})\)/);
+  if(paren)return EUROPE_CODES.has(paren[1])?paren[1]:'';
+  const STOPWORDS=new Set(['AND','ARM','DEN','FIN','FOR','THE','AGE']);
+  const tokens=String(raw).toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim().split(/\s+/);
+  return tokens.find(t=>EUROPE_CODES.has(t)&&!STOPWORDS.has(t))||'';
+}
 function isEurope(m){if(countryCode(m))return true;const raw=[locationText(m),m?.area,m?.country,m?.countryCode,m?.competitionGroup,m?.competitionSubgroup].filter(Boolean).join(' ');const s=norm(raw);return EUROPE_NAMES.some(name=>s.includes(norm(name)));}
 function countryLabel(m){const code=countryCode(m);if(code)return COUNTRY_NAMES[code]||code;const raw=norm(locationText(m));for(const [code,name] of Object.entries(COUNTRY_NAMES)){if(raw.includes(norm(name)))return name;}return 'Ukjent land';}
 function venueType(m){
@@ -86,7 +96,25 @@ function venueType(m){
 }
 function venueLabel(m){return venueType(m)==='indoor'?'Innendørs':'Utendørs';}
 function isEligibleAgeMeet(m){const s=norm([m?.name,m?.competitionGroup,m?.competitionSubgroup,locationText(m)].filter(Boolean).join(' '));if(/\bu ?23\b/.test(s)||/under ?23/.test(s))return true;const underage=[/\bu ?20\b/,/\bu ?18\b/,/\bu ?17\b/,/\bu ?16\b/,/\bu ?15\b/,/\bu ?14\b/,/under ?20/,/under ?18/,/under ?17/,/under ?16/,/under ?15/,/under ?14/,/\bjunior\b/,/\byouth\b/,/\bcadet\b/,/\bage group\b/,/school games/,/school championships?/,/jogos escolares/,/escolares/,/\b15 a 17 anos\b/,/\b14 a 17 anos\b/,/\b16 a 19 anos\b/,/\bjuvenil\b/,/\bsub ?20\b/,/\bsub ?18\b/,/\bsub ?17\b/];return !underage.some(re=>re.test(s));}
-function dedupeMeets(list){const map=new Map();for(const m of list){const key=[norm(m?.name),dateKey(m?.start||m?.end),countryCode(m)||norm(countryLabel(m)),String(m?.rankingCategory||'').toUpperCase()].join('|');if(!map.has(key)){map.set(key,m);continue;}const old=map.get(key);const oldScore=(old?.id?4:0)+(old?.hasCompetitionInformation?2:0)+(old?.hasStartlist?1:0)+((old?.disciplines||[]).length>0?1:0)+(locationText(old)?1:0);const newScore=(m?.id?4:0)+(m?.hasCompetitionInformation?2:0)+(m?.hasStartlist?1:0)+((m?.disciplines||[]).length>0?1:0)+(locationText(m)?1:0);if(newScore>oldScore)map.set(key,m);}return [...map.values()];}
+function dedupeMeets(list){
+  const map=new Map();
+  for(const m of list){
+    const key=[norm(m?.name),dateKey(m?.start||m?.end),countryCode(m)||norm(countryLabel(m)),String(m?.rankingCategory||'').toUpperCase()].join('|');
+    if(!map.has(key)){map.set(key,m);continue;}
+    const old=map.get(key);
+    const oldScore=(old?.id?4:0)+(old?.hasCompetitionInformation?2:0)+(old?.hasStartlist?1:0)+((old?.disciplines||[]).length>0?1:0)+(locationText(old)?1:0);
+    const newScore=(m?.id?4:0)+(m?.hasCompetitionInformation?2:0)+(m?.hasStartlist?1:0)+((m?.disciplines||[]).length>0?1:0)+(locationText(m)?1:0);
+    if(newScore>oldScore)map.set(key,m);
+  }
+  const deduped=[...map.values()];
+  // A second pass: verified fallback rows (no id, added so meet-search.js never returns a
+  // false zero) can describe the same real meet under a different name than the live
+  // calendar scrape ("International Combined Events Meeting Tallinn" vs "Tallinn"), so the
+  // exact name+category key above misses it. If a same-date-and-country entry WITH an id
+  // exists, the id-less one is redundant - drop it in favour of the real scraped one.
+  const dateCountryWithId=new Set(deduped.filter(m=>m.id).map(m=>`${dateKey(m.start||m.end)}|${countryCode(m)||norm(countryLabel(m))}`));
+  return deduped.filter(m=>m.id||!dateCountryWithId.has(`${dateKey(m.start||m.end)}|${countryCode(m)||norm(countryLabel(m))}`));
+}
 function baseMatches(){const c=eventCode();return dedupeMeets(allMeets.filter(m=>isFutureThrough2027(m)&&eventMatches(m,c)&&isEurope(m)&&isEligibleAgeMeet(m)));}
 function selectedFilters(){return{from:$('finderDateFrom')?.value||'',to:$('finderDateTo')?.value||'',country:$('finderCountry')?.value||'all',category:$('finderCategory')?.value||'all',venue:$('finderVenue')?.value||'all'};}
 function futureMatches(){const f=selectedFilters();return baseMatches().filter(m=>{const start=parseDate(m.start)||parseDate(m.end);const end=parseDate(m.end)||start;if(f.from){const d=new Date(f.from+'T00:00:00');if(end&&end<d)return false;}if(f.to){const d=new Date(f.to+'T23:59:59');if(start&&start>d)return false;}if(f.country!=='all'&&countryLabel(m)!==f.country)return false;if(f.category!=='all'&&String(m.rankingCategory||'').toUpperCase()!==f.category)return false;if(f.venue!=='all'&&venueType(m)!==f.venue)return false;return true;}).sort((a,b)=>(parseDate(a.start)?.getTime()||0)-(parseDate(b.start)?.getTime()||0));}
