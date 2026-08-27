@@ -70,6 +70,19 @@
     const homeParent=rankingAction.parentNode;
     const homeNext=rankingAction.nextSibling;
 
+    // Vindstatus mangekamp's column starts with a label line ("Vindstatus mangekamp") before
+    // its select - the button has no such line above it, so without a matching spacer it
+    // sits higher than the select and throws the whole row out of alignment.
+    let spacer=rankingAction.querySelector('.ranking-action-spacer');
+    if(!spacer){
+      spacer=document.createElement('div');
+      spacer.className='ranking-action-spacer';
+      spacer.setAttribute('aria-hidden','true');
+      spacer.style.cssText='display:none;font-size:13px;font-weight:700;line-height:1.2;visibility:hidden;margin-bottom:7px';
+      spacer.textContent='.';
+      rankingAction.insertBefore(spacer,rankingAction.firstChild);
+    }
+
     function place(){
       if(combinedWindSection.style.display!=='none'){
         rankingAction.style.marginTop='0';
@@ -80,6 +93,7 @@
         rankingAction.style.flexDirection='column';
         rankingAction.style.alignItems='flex-start';
         rankingAction.style.gap='5px';
+        spacer.style.display='block';
         combinedWindSection.appendChild(rankingAction);
       }else{
         rankingAction.style.marginTop='18px';
@@ -87,6 +101,7 @@
         rankingAction.style.flexDirection='';
         rankingAction.style.alignItems='';
         rankingAction.style.gap='';
+        spacer.style.display='none';
         homeParent.insertBefore(rankingAction,homeNext);
       }
     }
