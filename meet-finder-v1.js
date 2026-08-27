@@ -191,7 +191,7 @@ function championshipStripHTML(){
     // 2025: only 3 of 14 heptathlon slots went via entry standard, 11 via World/European
     // Ranking), and no Valencia 2027 standard figure could be confirmed anyway, so indoor
     // just points at Toplist instead of showing a number.
-    const req=standard?`Kvalifiseringskrav: ${standard} p`:'Ingen direktekrav – kvalifisering via Toplist';
+    const req=standard?`Kvalifiseringskrav: ${standard} p`:'Ingen direktekrav – kun Toplist';
     return `<div><div style="font-weight:800">${indoor?'Innendørs':'Utendørs'} · ${esc(c.name)}</div><div class="muted" style="margin-top:4px">${req}</div><div style="margin-top:6px"><a class="buttonlike" href="${esc(topHref)}" target="_blank" rel="noopener">${topLabel}</a> <a class="buttonlike" href="${esc(c.roadUrl)}" target="_blank" rel="noopener">Road to ${esc(c.name)}</a></div></div>`;
   };
   return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box"><div style="font-size:12px;font-weight:800;letter-spacing:.12em;color:#007f73;margin:0 0 12px">KVALIFISERING TIL MESTERSKAP 2027</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">${section('outdoor')}${section('indoor')}</div></div>`;
@@ -210,7 +210,7 @@ async function loadMeetDetails(id,insightHost){
       ?uniqueContacts.map(c=>esc([c.name,c.email,c.phone].filter(Boolean).join(' · '))).join(' ; ')
       :'Ingen kontaktperson oppgitt.';
     const prizeEntries=x.prizeMoney?Object.entries(x.prizeMoney).filter(([,v])=>v):[];
-    const prizeLabel=prizeEntries.length?`Premier: ${prizeEntries.map(([k,v])=>`${k}: ${v}`).join(', ')}`:'Premiepenger';
+    const prizeLabel=prizeEntries.length?`Premier: ${prizeEntries.map(([k,v])=>`${k}: ${v}`).join(', ')}`:'Premier';
     // WA's organiser payload is inconsistent about what shape these URLs come in:
     //  - a path starting with "/" (e.g. "/competition/.../results/123") IS relative to
     //    worldathletics.org - WA hosts results for meets worldwide, so resultsUrl commonly
@@ -259,7 +259,7 @@ async function loadMeetDetails(id,insightHost){
       return r?{anchor:`<a href="${esc(r.href)}" target="_blank" rel="noopener">${label}</a>`,note:r.note}:null;
     };
     const items=[
-      linkParts('Stevnets nettside',x.websiteUrl,fallbackUrl),
+      linkParts('Nettside',x.websiteUrl,fallbackUrl),
       linkParts('Resultater',x.resultsUrl,fallbackUrl),
       {anchor:`<a href="${esc(fallbackUrl)}" target="_blank" rel="noopener">${esc(prizeLabel)}</a>`,note:''},
       linkParts('Livestream',x.liveStreamUrl), // no fallback - only shown when WA actually has one
@@ -270,9 +270,11 @@ async function loadMeetDetails(id,insightHost){
     // .meet-insight span{font-size:11px} rule (meant for the small label spans elsewhere in
     // this box) was leaking into the nowrap wrapper spans below, shrinking every link except
     // the unwrapped first one and making them look mismatched.
-    const linkRow=items.map((it,i)=>`<span style="white-space:nowrap;font-size:13px">${i===0?'':'· '}${it.anchor}</span>`).join(' ');
+    // A flex row with gap packs the four links noticeably tighter than plain text-flow with
+    // literal space characters between them, giving the best chance all four sit on one line.
+    const linkRow=items.map((it,i)=>`<span style="white-space:nowrap;font-size:13px">${i===0?'':'· '}${it.anchor}</span>`).join('');
     const notesHtml=items.filter(it=>it.note).map(it=>`<div class="muted" style="margin-top:2px">${esc(it.note)}</div>`).join('');
-    const linksHtml=items.length?`<div style="margin-top:4px">${linkRow}</div>${notesHtml}`:'';
+    const linksHtml=items.length?`<div style="margin-top:4px;display:flex;flex-wrap:wrap;column-gap:8px;row-gap:2px">${linkRow}</div>${notesHtml}`:'';
     const infoHtml=x.additionalInfo?`<div style="margin-top:4px">${esc(x.additionalInfo)}</div>`:'';
     if(insightHost)insightHost.innerHTML=`<span>Kontakt og premier</span><strong>${contactText}</strong>${linksHtml}${infoHtml}`;
     // Confirmed via WA's /organiser payload: it carries contact/prize/link info only, no
