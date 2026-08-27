@@ -244,9 +244,9 @@ async function loadMeetDetails(id,insightHost){
         return {href:parsed.href,note};
       }catch(_){return null;}
     };
-    // Stevnets nettside/Resultater should always be present, so fall back to WA's own
-    // competition page (which always exists once we have an id) when the organiser payload's
-    // own field is missing or fails validation - only Livestream has no sensible fallback.
+    // Stevnets nettside/Resultater/Premiepenger should always be present, so fall back to
+    // WA's own competition page (which always exists once we have an id) when the organiser
+    // payload's own field is missing or fails validation.
     const fallbackUrl=waUrl({id});
     const linkHtml=(label,u,fallback)=>{
       const r=abs(u)||(fallback?{href:fallback,note:''}:null);
@@ -256,7 +256,7 @@ async function loadMeetDetails(id,insightHost){
       linkHtml('Stevnets nettside',x.websiteUrl,fallbackUrl),
       linkHtml('Resultater',x.resultsUrl,fallbackUrl),
       `<a href="${esc(fallbackUrl)}" target="_blank" rel="noopener">${esc(prizeLabel)}</a>`,
-      linkHtml('Livestream',x.liveStreamUrl),
+      linkHtml('Livestream',x.liveStreamUrl), // no fallback - only shown when WA actually has one
     ].filter(Boolean).join(' · ');
     const linksHtml=links?`<div style="margin-top:4px">${links}</div>`:'';
     const infoHtml=x.additionalInfo?`<div style="margin-top:4px">${esc(x.additionalInfo)}</div>`:'';
