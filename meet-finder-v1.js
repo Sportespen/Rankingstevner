@@ -158,8 +158,10 @@ const TOPLIST_SLUG={
 };
 // Combined events need arena+sex to pick the right discipline name (see perMeetEventLabel):
 // outdoor men=decathlon, outdoor women=heptathlon, indoor men=heptathlon, indoor women=pentathlon.
-function waTopListUrl(m){
-  const code=eventCode(),indoor=venueType(m)==='indoor',sex=sexCode()==='W'?'women':'men';
+// Takes arena/sex explicitly (not derived from a specific meet) since this now backs a single
+// shared box above the meet list instead of a per-card link - every meet in a given arena
+// points at the same Toplist/Road-to page regardless of which specific competition it is.
+function toplistUrlFor(code,indoor,sex){
   let category,slug;
   if(code==='Decathlon'||code==='Heptathlon'){
     category='combined-events';
@@ -167,29 +169,30 @@ function waTopListUrl(m){
   }else if(TOPLIST_SLUG[code]){
     [category,slug]=TOPLIST_SLUG[code];
   }else{
-    return waUrl(m);
+    return null;
   }
-  const year=(parseDate(m.start)||new Date()).getFullYear();
+  const year=new Date().getFullYear();
   return `https://worldathletics.org/records/toplists/${category}/${slug}/${indoor?'indoor':'outdoor'}/${sex}/senior/${year}`;
 }
-// Which federation's Toplist to link to also depends on arena, via CHAMPIONSHIP[venueType].body -
-// same source of truth as the championship button, so the two stay in sync if that config changes.
-function toplistButtonHTML(m){
-  const isWA=championshipFor(m).body==='WA';
-  return `<a class="buttonlike" href="${esc(isWA?waTopListUrl(m):EA_TOPLIST_URL)}" target="_blank" rel="noopener">${isWA?'WA Toplist':'EA Toplist'}</a>`;
-}
 function stamp(){return loadedAt?new Intl.DateTimeFormat('nb-NO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(loadedAt):'';}
-function championshipFor(m){return CHAMPIONSHIP[venueType(m)]||CHAMPIONSHIP.outdoor;}
-function championshipButtonHTML(m){const c=championshipFor(m);return `<a class="buttonlike" href="${esc(c.roadUrl)}" target="_blank" rel="noopener">Road to ${esc(c.name)}</a>`;}
-function roadBoxHTML(m){
-  const c=championshipFor(m);
-  const code=eventCode();
-  const standard=c.entryStandards[code];
-  const rankingUrl=c.rankingUrl[code];
-  const body=standard
-    ?`<strong>Kvalifiseringskrav: ${standard} p</strong>${rankingUrl?`<div style="margin-top:4px"><a href="${esc(rankingUrl)}" target="_blank" rel="noopener">Se offisiell ranking</a></div>`:''}`
-    :`<strong class="muted">Se offisielle krav hos arrangøren.</strong><div style="margin-top:4px"><a href="${esc(c.qualificationUrl)}" target="_blank" rel="noopener">${esc(c.name)}</a></div>`;
-  return `<div class="meet-insight road"><span>Road to ${esc(c.name)}</span>${body}</div>`;
+// One shared box (not per-card) covering both arenas, since the Toplist/Road-to links are the
+// same for every meet in that arena - repeating them on every card was pure duplication.
+function championshipStripHTML(){
+  const code=eventCode(),sex=sexCode()==='W'?'women':'men';
+  const section=arenaKey=>{
+    const c=CHAMPIONSHIP[arenaKey];
+    const indoor=arenaKey==='indoor';
+    const topUrl=toplistUrlFor(code,indoor,sex);
+    const topLabel=c.body==='WA'?'WA Toplist':'EA Toplist';
+    const topHref=c.body==='WA'&&topUrl?topUrl:(c.body==='WA'?WA_CALENDAR:EA_TOPLIST_URL);
+    const standard=c.entryStandards[code];
+    const rankingUrl=c.rankingUrl[code];
+    const req=standard
+      ?`Kvalifiseringskrav: ${standard} p${rankingUrl?` · <a href="${esc(rankingUrl)}" target="_blank" rel="noopener">Se offisiell ranking</a>`:''}`
+      :`<a href="${esc(c.qualificationUrl)}" target="_blank" rel="noopener">Se offisielle krav</a>`;
+    return `<div><div style="font-weight:800">${indoor?'Innendørs':'Utendørs'} · ${esc(c.name)}</div><div class="muted" style="margin-top:4px">${req}</div><div style="margin-top:6px"><a class="buttonlike" href="${esc(topHref)}" target="_blank" rel="noopener">${topLabel}</a> <a class="buttonlike" href="${esc(c.roadUrl)}" target="_blank" rel="noopener">Road to ${esc(c.name)}</a></div></div>`;
+  };
+  return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box"><div style="font-size:12px;font-weight:800;letter-spacing:.12em;color:#007f73;margin:0 0 12px">KVALIFISERING TIL MESTERSKAP 2027</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">${section('outdoor')}${section('indoor')}</div></div>`;
 }
 async function loadMeetDetails(id,insightHost){
   try{
@@ -258,7 +261,7 @@ function loadAllMeetDetails(host){
 }
 function filterBar(){const base=baseMatches();const countries=[...new Set(base.map(countryLabel).filter(x=>x&&x!=='Ukjent land'))].sort((a,b)=>a.localeCompare(b,'nb'));const cats=RANKING_CATEGORIES;const prev=selectedFilters();const today=new Date().toISOString().slice(0,10);return `<div class="finder-filterbar" style="margin:0 0 18px;padding:16px 20px 18px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box;height:100%"><div style="font-size:12px;font-weight:800;letter-spacing:.12em;color:#007f73;margin:0 0 12px">FILTRER STEVNER</div><div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px"><label style="font-size:12px;font-weight:700">Fra dato<input id="finderDateFrom" type="date" value="${esc(prev.from||today)}" min="${today}" max="2027-12-31" style="width:100%;margin-top:6px"></label><label style="font-size:12px;font-weight:700">Til dato<input id="finderDateTo" type="date" value="${esc(prev.to||'2027-12-31')}" min="${today}" max="2027-12-31" style="width:100%;margin-top:6px"></label><label style="font-size:12px;font-weight:700">Land<select id="finderCountry" style="width:100%;margin-top:6px"><option value="all">Alle land</option>${countries.map(x=>`<option${prev.country===x?' selected':''}>${esc(x)}</option>`).join('')}</select></label><label style="font-size:12px;font-weight:700">Stevnekategori<select id="finderCategory" style="width:100%;margin-top:6px"><option value="all">Alle kategorier</option>${cats.map(x=>`<option${prev.category===x?' selected':''}>${esc(x)}</option>`).join('')}</select></label><label style="font-size:12px;font-weight:700">Arena<select id="finderVenue" style="width:100%;margin-top:6px"><option value="all"${prev.venue==='all'?' selected':''}>Alle</option><option value="outdoor"${prev.venue==='outdoor'?' selected':''}>Utendørs</option><option value="indoor"${prev.venue==='indoor'?' selected':''}>Innendørs</option></select></label></div></div>`;}
 function bindFilters(){['finderDateFrom','finderDateTo','finderCountry','finderCategory','finderVenue'].forEach(id=>$(id)?.addEventListener('change',render));}
-function render(){const host=$('meetList');if(!host)return;const matches=futureMatches();const combinedNote=['Decathlon','Heptathlon'].includes(eventCode())?' For fremtidige mangekampstevner brukes også WA-betegnelsen «Combined Events» når detaljprogrammet ikke er publisert.':'';const summary=`<div class="finder-summary"><div><span class="eyebrow">FREMTIDIGE WA-STEVNER</span><h4>${esc(eventLabel())}</h4><p class="muted">Kun senior- og U23-stevner i Europa.${combinedNote}${loadedAt?` Sist oppdatert ${stamp()}.`:''}</p></div><div class="finder-count">${loading?'…':matches.length}<small>${loading?'henter':'aktuelle stevner'}</small></div></div>`;if(loading&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Henter fremtidige stevner…</strong></div>`;return;}if(loadError&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Kunne ikke hente stevnekalenderen.</strong><p class="muted">${esc(loadError)}</p></div>`;return;}const controls=filterBar();if(!matches.length){host.innerHTML=summary+controls+`<div class="finder-empty"><strong>Ingen treff med valgte filtre.</strong><p class="muted">Prøv å utvide dato eller velge Alle i filtrene.</p></div>`;bindFilters();return;}host.innerHTML=summary+controls+matches.map(m=>`<article class="meet-card meet-card-v1"><div class="meet-top"><div><h4>${esc(m.name||'Stevne')}</h4><div class="meta">${esc(locationText(m)||'Sted ikke publisert')}</div></div><span class="cat">${esc(m.rankingCategory||'WA')}</span></div><div class="meet-facts"><div><span>Dato</span>${dateBoxHTML(m)}</div><div><span>Land</span><strong>${esc(countryLabel(m))}</strong></div><div><span>Øvelse</span><strong>${esc(perMeetEventLabel(m))}</strong></div><div><span>Arena</span><strong>${esc(venueLabel(m))}</strong></div></div><div class="meet-insight"><span>Historisk nivå</span><strong>Historiske resultater kobles inn senere.</strong></div>${roadBoxHTML(m)}${m.id?`<div class="meet-insight" data-meet-contact="${esc(m.id)}"><span>Kontakt og premier</span><strong class="muted">Henter kontakt- og premieinfo …</strong></div>`:''}<div class="card-actions"><a class="buttonlike" href="${mapUrl(m)}" target="_blank" rel="noopener">Vis i kart</a>${toplistButtonHTML(m)}${championshipButtonHTML(m)}</div></article>`).join('');bindFilters();loadAllMeetDetails(host);}
+function render(){const host=$('meetList');if(!host)return;const matches=futureMatches();const combinedNote=['Decathlon','Heptathlon'].includes(eventCode())?' For fremtidige mangekampstevner brukes også WA-betegnelsen «Combined Events» når detaljprogrammet ikke er publisert.':'';const summary=`<div class="finder-summary"><div><span class="eyebrow">FREMTIDIGE WA-STEVNER</span><h4>${esc(eventLabel())}</h4><p class="muted">Kun senior- og U23-stevner i Europa.${combinedNote}${loadedAt?` Sist oppdatert ${stamp()}.`:''}</p></div><div class="finder-count">${loading?'…':matches.length}<small>${loading?'henter':'aktuelle stevner'}</small></div></div>`;if(loading&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Henter fremtidige stevner…</strong></div>`;return;}if(loadError&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Kunne ikke hente stevnekalenderen.</strong><p class="muted">${esc(loadError)}</p></div>`;return;}const controls=filterBar()+championshipStripHTML();if(!matches.length){host.innerHTML=summary+controls+`<div class="finder-empty"><strong>Ingen treff med valgte filtre.</strong><p class="muted">Prøv å utvide dato eller velge Alle i filtrene.</p></div>`;bindFilters();return;}host.innerHTML=summary+controls+matches.map(m=>`<article class="meet-card meet-card-v1"><div class="meet-top"><div><h4>${esc(m.name||'Stevne')}</h4><div class="meta">${esc(locationText(m)||'Sted ikke publisert')} <a href="${esc(mapUrl(m))}" target="_blank" rel="noopener">Vis i kart</a></div></div><span class="cat">${esc(m.rankingCategory||'WA')}</span></div><div class="meet-facts"><div><span>Dato</span>${dateBoxHTML(m)}</div><div><span>Land</span><strong>${esc(countryLabel(m))}</strong></div><div><span>Øvelse</span><strong>${esc(perMeetEventLabel(m))}</strong></div><div><span>Arena</span><strong>${esc(venueLabel(m))}</strong></div></div><div class="meet-insight"><span>Historisk nivå</span><strong>Historiske resultater kobles inn senere.</strong></div>${m.id?`<div class="meet-insight" data-meet-contact="${esc(m.id)}"><span>Kontakt og premier</span><strong class="muted">Henter kontakt- og premieinfo …</strong></div>`:''}</article>`).join('');bindFilters();loadAllMeetDetails(host);}
 async function load(){if(loading)return;loading=true;loadError='';render();try{const params=new URLSearchParams({v:'58',event:eventCode(),startDate:new Date().toISOString().slice(0,10),endDate:'2027-12-31'});const res=await fetch(`/api/meet-search?${params}`,{cache:'no-store'});const data=await res.json();if(!res.ok||!data?.ok)throw new Error(data?.error||`Kalenderkilde svarte ${res.status}`);allMeets=Array.isArray(data.results)?data.results:[];loadedAt=new Date();}catch(e){loadError=String(e?.message||e);}finally{loading=false;render();}}
 function install(){const panel=$('meetList')?.closest('.panel');if(panel){const h=panel.querySelector('h3');if(h)h.textContent='Finn aktuelle rankingstevner';const status=panel.querySelector('.section-head>.muted');if(status)status.textContent='World Athletics-kalender';}$('meetCategoryFilter')?.closest('.filters')?.setAttribute('style','display:none!important');$('event')?.addEventListener('change',()=>setTimeout(load,0));$('sex')?.addEventListener('change',()=>setTimeout(load,0));load();setInterval(load,15*60*1000);}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
 })();
