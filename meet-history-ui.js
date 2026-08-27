@@ -21,7 +21,7 @@ function apply(){
 function loadDedupe(){
   if(document.querySelector('script[data-meet-dedupe]'))return;
   const s=document.createElement('script');
-  s.src='meet-dedupe.js?v=2';
+  s.src='meet-dedupe.js?v=3';
   s.dataset.meetDedupe='1';
   document.head.appendChild(s);
 }
