@@ -200,20 +200,25 @@ async function loadMeetDetails(id,insightHost){
     const contacts=Array.isArray(x.contactPersons)?x.contactPersons:[];
     const contactText=contacts.length?contacts.map(c=>esc([c.name,c.role,c.email,c.phone].filter(Boolean).join(' · '))).join('<br>'):'Ingen kontaktperson oppgitt i WA.';
     const prizes=x.prizeMoney&&Object.keys(x.prizeMoney).length?esc(JSON.stringify(x.prizeMoney)):'Ikke oppgitt';
-    // WA's organiser payload sometimes gives a path relative to worldathletics.org
-    // (e.g. "/competition/.../results/123") rather than a full URL. Rendered as-is that
-    // resolves against *our* page instead and silently links back into this app.
-    // WA's organiser API sometimes returns the literal string "404" for a missing
-    // website/results/livestream URL instead of omitting the field or returning null -
-    // resolved as a relative path that innocently builds https://worldathletics.org/404.
+    // WA's organiser payload is inconsistent about what shape these URLs come in:
+    //  - a path starting with "/" (e.g. "/competition/.../results/123") IS relative to
+    //    worldathletics.org - WA hosts results for meets worldwide, so resultsUrl commonly
+    //    looks like this. Resolving it against *our* page instead silently linked back into
+    //    this app.
+    //  - a bare host with no scheme (e.g. "sul.fi" for a Finnish federation's own site) is
+    //    the organiser's OWN external domain, not a WA path - resolving THAT against
+    //    worldathletics.org built the nonsensical worldathletics.org/sul.fi.
+    //  - the literal string "404" (or a full https://worldathletics.org/404 URL) is WA's
+    //    own placeholder for "not available", not a real link.
     const abs=u=>{
-      if(!u||/^\d+$/.test(String(u).trim()))return'';
+      if(!u)return'';
+      const s=String(u).trim();
+      if(!s||/^\d+$/.test(s))return'';
       try{
-        const parsed=new URL(u,'https://worldathletics.org/');
-        // Reject WA's "not available" placeholder itself, whether it arrived as the bare
-        // string "404" (resolves to this path) or already as a full worldathletics.org/404 URL.
-        if(parsed.pathname==='/404')return'';
-        return parsed.href;
+        const parsed=/^https?:\/\//i.test(s)||s.startsWith('/')
+          ?new URL(s,'https://worldathletics.org/')
+          :new URL(`https://${s}`);
+        return parsed.pathname==='/404'?'':parsed.href;
       }catch(_){return'';}
     };
     const links=[
