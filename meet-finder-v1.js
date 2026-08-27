@@ -38,21 +38,53 @@ function locationText(m){const loc=m?.location;if(!loc)return'';if(typeof loc===
 function countryCode(m){const raw=[locationText(m),m?.area,m?.country,m?.countryCode].filter(Boolean).join(' ');const tokens=String(raw).toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim().split(/\s+/);return tokens.find(t=>EUROPE_CODES.has(t))||'';}
 function isEurope(m){if(countryCode(m))return true;const raw=[locationText(m),m?.area,m?.country,m?.countryCode,m?.competitionGroup,m?.competitionSubgroup].filter(Boolean).join(' ');const s=norm(raw);return EUROPE_NAMES.some(name=>s.includes(norm(name)));}
 function countryLabel(m){const code=countryCode(m);if(code)return COUNTRY_NAMES[code]||code;const raw=norm(locationText(m));for(const [code,name] of Object.entries(COUNTRY_NAMES)){if(raw.includes(norm(name)))return name;}return 'Ukjent land';}
-function venueType(m){const explicit=String(m?.venueType||m?.environment||'').toLowerCase();if(explicit==='indoor'||explicit==='outdoor')return explicit;const s=norm([m?.name,locationText(m),m?.competitionGroup,m?.competitionSubgroup,disciplineBlob(m)].filter(Boolean).join(' '));if(/indoor|short track|indoors|hallen|hall meeting|velodromo/.test(s))return'indoor';if(/outdoor|stadium|stadion|stade|sports ground|athletics track/.test(s))return'outdoor';return'unknown';}
-function venueLabel(m){return venueType(m)==='indoor'?'Innendørs':venueType(m)==='outdoor'?'Utendørs':'Ikke angitt';}
+function venueType(m){
+  const explicit=String(m?.venueType||m?.environment||'').toLowerCase();
+  if(explicit==='indoor'||explicit==='outdoor')return explicit;
+  const s=norm([m?.name,locationText(m),m?.competitionGroup,m?.competitionSubgroup,disciplineBlob(m)].filter(Boolean).join(' '));
+  if(/indoor|short track|indoors|hallen|hall meeting|velodromo/.test(s))return'indoor';
+  if(/outdoor|stadium|stadion|stade|sports ground|athletics track/.test(s))return'outdoor';
+  // WA calendar data almost always marks indoor meets explicitly but often omits "outdoor"
+  // since it's the default case. When neither keyword is present, fall back to the European
+  // indoor season (roughly desember-mars) by date rather than leaving Arena unanswered.
+  const d=parseDate(m?.start)||parseDate(m?.end);
+  if(d){const month=d.getMonth();return(month<=2||month===11)?'indoor':'outdoor';}
+  return'outdoor';
+}
+function venueLabel(m){return venueType(m)==='indoor'?'Innendørs':'Utendørs';}
 function isEligibleAgeMeet(m){const s=norm([m?.name,m?.competitionGroup,m?.competitionSubgroup,locationText(m)].filter(Boolean).join(' '));if(/\bu ?23\b/.test(s)||/under ?23/.test(s))return true;const underage=[/\bu ?20\b/,/\bu ?18\b/,/\bu ?17\b/,/\bu ?16\b/,/\bu ?15\b/,/\bu ?14\b/,/under ?20/,/under ?18/,/under ?17/,/under ?16/,/under ?15/,/under ?14/,/\bjunior\b/,/\byouth\b/,/\bcadet\b/,/\bage group\b/,/school games/,/school championships?/,/jogos escolares/,/escolares/,/\b15 a 17 anos\b/,/\b14 a 17 anos\b/,/\b16 a 19 anos\b/,/\bjuvenil\b/,/\bsub ?20\b/,/\bsub ?18\b/,/\bsub ?17\b/];return !underage.some(re=>re.test(s));}
 function dedupeMeets(list){const map=new Map();for(const m of list){const key=[norm(m?.name),dateKey(m?.start||m?.end),countryCode(m)||norm(countryLabel(m)),String(m?.rankingCategory||'').toUpperCase()].join('|');if(!map.has(key)){map.set(key,m);continue;}const old=map.get(key);const oldScore=(old?.id?4:0)+(old?.hasCompetitionInformation?2:0)+(old?.hasStartlist?1:0)+((old?.disciplines||[]).length>0?1:0)+(locationText(old)?1:0);const newScore=(m?.id?4:0)+(m?.hasCompetitionInformation?2:0)+(m?.hasStartlist?1:0)+((m?.disciplines||[]).length>0?1:0)+(locationText(m)?1:0);if(newScore>oldScore)map.set(key,m);}return [...map.values()];}
 function baseMatches(){const c=eventCode();return dedupeMeets(allMeets.filter(m=>isFutureThrough2027(m)&&eventMatches(m,c)&&isEurope(m)&&isEligibleAgeMeet(m)));}
 function selectedFilters(){return{from:$('finderDateFrom')?.value||'',to:$('finderDateTo')?.value||'',country:$('finderCountry')?.value||'all',category:$('finderCategory')?.value||'all',venue:$('finderVenue')?.value||'all'};}
 function futureMatches(){const f=selectedFilters();return baseMatches().filter(m=>{const start=parseDate(m.start)||parseDate(m.end);const end=parseDate(m.end)||start;if(f.from){const d=new Date(f.from+'T00:00:00');if(end&&end<d)return false;}if(f.to){const d=new Date(f.to+'T23:59:59');if(start&&start>d)return false;}if(f.country!=='all'&&countryLabel(m)!==f.country)return false;if(f.category!=='all'&&String(m.rankingCategory||'').toUpperCase()!==f.category)return false;if(f.venue!=='all'&&venueType(m)!==f.venue)return false;return true;}).sort((a,b)=>(parseDate(a.start)?.getTime()||0)-(parseDate(b.start)?.getTime()||0));}
-function formatDateValue(v){const d=parseDate(v);return d?new Intl.DateTimeFormat('nb-NO',{day:'numeric',month:'short',year:'numeric'}).format(d):'';}
-function dateText(m){const a=formatDateValue(m.start),b=formatDateValue(m.end);return a&&b&&a!==b?`${a} – ${b}`:(a||b||'Dato ikke publisert');}
+// Splits the date into a short main line (day + month) and a secondary year line,
+// since cramming "28. aug. 2026 – 30. aug. 2026" into a narrow facts box wraps to
+// several lines. Cross-year ranges are rare enough to just spell out in full.
+function dateParts(m){
+  const start=parseDate(m.start),end=parseDate(m.end);
+  const dayMonth=d=>new Intl.DateTimeFormat('nb-NO',{day:'numeric',month:'short'}).format(d);
+  const yearOf=d=>String(d.getFullYear());
+  if(!start&&!end)return{main:'Dato ikke publisert',year:''};
+  const single=start&&end?start.toDateString()===end.toDateString():true;
+  if(single){const d=start||end;return{main:dayMonth(d),year:yearOf(d)};}
+  const sameYear=start.getFullYear()===end.getFullYear();
+  if(sameYear&&start.getMonth()===end.getMonth()){
+    const monthAbbr=dayMonth(end).replace(/^\d+\.\s*/,'');
+    return{main:`${start.getDate()}.–${end.getDate()}. ${monthAbbr}`,year:yearOf(end)};
+  }
+  if(sameYear)return{main:`${dayMonth(start)} – ${dayMonth(end)}`,year:yearOf(end)};
+  const full=d=>new Intl.DateTimeFormat('nb-NO',{day:'numeric',month:'short',year:'numeric'}).format(d);
+  return{main:`${full(start)} – ${full(end)}`,year:''};
+}
+function dateBoxHTML(m){
+  const p=dateParts(m);
+  return `<strong class="meet-date">${esc(p.main)}</strong>${p.year?`<small>${esc(p.year)}</small>`:''}`;
+}
 function esc(v){return String(v??'').replace(/[&<>\"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]));}
 function mapUrl(m){return`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText(m)||m.name||'')}`;}
 function waUrl(m){return m.id?`https://worldathletics.org/competition/calendar-results/results/${encodeURIComponent(m.id)}`:WA_CALENDAR;}
 function stamp(){return loadedAt?new Intl.DateTimeFormat('nb-NO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(loadedAt):'';}
-async function showDetails(id,host){
-  host.innerHTML='<span class="muted">Henter kontakt- og stevneinformasjon …</span>';
+async function loadMeetDetails(id,insightHost,mapLink){
   try{
     const r=await fetch(`/api/meet-details?id=${encodeURIComponent(id)}`,{cache:'no-store'});
     const d=await r.json();
@@ -61,13 +93,27 @@ async function showDetails(id,host){
     const contacts=Array.isArray(x.contactPersons)?x.contactPersons:[];
     const contactText=contacts.length?contacts.map(c=>esc([c.name,c.role,c.email,c.phone].filter(Boolean).join(' · '))).join('<br>'):'Ingen kontaktperson oppgitt i WA.';
     const prizes=x.prizeMoney&&Object.keys(x.prizeMoney).length?esc(JSON.stringify(x.prizeMoney)):'Ikke oppgitt';
-    host.innerHTML=`<strong>Kontakt/påmelding</strong><div>${contactText}</div><div style="margin-top:6px"><strong>Premier:</strong> ${prizes}</div>${x.websiteUrl?`<div style="margin-top:6px"><a href="${esc(x.websiteUrl)}" target="_blank" rel="noopener">Stevnets nettside</a></div>`:''}`;
-  }catch(e){host.innerHTML=`<span class="muted">${esc(e.message)}</span>`;}
+    const site=x.websiteUrl?`<div style="margin-top:4px"><a href="${esc(x.websiteUrl)}" target="_blank" rel="noopener">Stevnets nettside</a></div>`:'';
+    if(insightHost)insightHost.innerHTML=`<span>Kontakt og premier</span><strong>${contactText}</strong><small>Premier: ${prizes}</small>${site}`;
+    // Organiser data sometimes has the actual stadium/venue name, which is far more useful
+    // in a map link than the calendar's city-level location text.
+    const venueName=[x.venue,x.stadium,x.venueName,x.address,x.location?.venue,x.location?.name].find(v=>typeof v==='string'&&v.trim());
+    if(mapLink&&venueName)mapLink.href=`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueName)}`;
+  }catch(e){
+    if(insightHost)insightHost.innerHTML=`<span>Kontakt og premier</span><strong class="muted">${esc(e.message)}</strong>`;
+  }
 }
-function bindDetailsButtons(host){host.querySelectorAll('[data-meet-details]').forEach(b=>b.addEventListener('click',()=>{const id=b.dataset.meetDetails;showDetails(id,host.querySelector(`[data-details-host="${id}"]`));}));}
+function loadAllMeetDetails(host){
+  host.querySelectorAll('[data-meet-contact]').forEach(insightHost=>{
+    const id=insightHost.dataset.meetContact;
+    const card=insightHost.closest('.meet-card-v1');
+    const mapLink=card?.querySelector('.card-actions a');
+    loadMeetDetails(id,insightHost,mapLink);
+  });
+}
 function filterBar(){const base=baseMatches();const countries=[...new Set(base.map(countryLabel).filter(x=>x&&x!=='Ukjent land'))].sort((a,b)=>a.localeCompare(b,'nb'));const cats=[...new Set(base.map(m=>String(m.rankingCategory||'').toUpperCase()).filter(Boolean))].sort();const prev=selectedFilters();const today=new Date().toISOString().slice(0,10);return `<div class="finder-filterbar" style="margin:0 0 18px;padding:16px 20px 18px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box;height:100%"><div style="font-size:12px;font-weight:800;letter-spacing:.12em;color:#007f73;margin:0 0 12px">FILTRER STEVNER</div><div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px"><label style="font-size:12px;font-weight:700">Fra dato<input id="finderDateFrom" type="date" value="${esc(prev.from||today)}" min="${today}" max="2027-12-31" style="width:100%;margin-top:6px"></label><label style="font-size:12px;font-weight:700">Til dato<input id="finderDateTo" type="date" value="${esc(prev.to||'2027-12-31')}" min="${today}" max="2027-12-31" style="width:100%;margin-top:6px"></label><label style="font-size:12px;font-weight:700">Land<select id="finderCountry" style="width:100%;margin-top:6px"><option value="all">Alle land</option>${countries.map(x=>`<option${prev.country===x?' selected':''}>${esc(x)}</option>`).join('')}</select></label><label style="font-size:12px;font-weight:700">Stevnekategori<select id="finderCategory" style="width:100%;margin-top:6px"><option value="all">Alle kategorier</option>${cats.map(x=>`<option${prev.category===x?' selected':''}>${esc(x)}</option>`).join('')}</select></label><label style="font-size:12px;font-weight:700">Arena<select id="finderVenue" style="width:100%;margin-top:6px"><option value="all"${prev.venue==='all'?' selected':''}>Alle</option><option value="outdoor"${prev.venue==='outdoor'?' selected':''}>Utendørs</option><option value="indoor"${prev.venue==='indoor'?' selected':''}>Innendørs</option></select></label></div></div>`;}
 function bindFilters(){['finderDateFrom','finderDateTo','finderCountry','finderCategory','finderVenue'].forEach(id=>$(id)?.addEventListener('change',render));}
-function render(){const host=$('meetList');if(!host)return;const matches=futureMatches();const combinedNote=['Decathlon','Heptathlon'].includes(eventCode())?' For fremtidige mangekampstevner brukes også WA-betegnelsen «Combined Events» når detaljprogrammet ikke er publisert.':'';const summary=`<div class="finder-summary"><div><span class="eyebrow">FREMTIDIGE WA-STEVNER</span><h4>${esc(eventLabel())}</h4><p class="muted">Kun senior- og U23-stevner i Europa.${combinedNote}${loadedAt?` Sist oppdatert ${stamp()}.`:''}</p></div><div class="finder-count">${loading?'…':matches.length}<small>${loading?'henter':'aktuelle stevner'}</small></div></div>`;if(loading&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Henter fremtidige stevner…</strong></div>`;return;}if(loadError&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Kunne ikke hente stevnekalenderen.</strong><p class="muted">${esc(loadError)}</p></div>`;return;}const controls=filterBar();if(!matches.length){host.innerHTML=summary+controls+`<div class="finder-empty"><strong>Ingen treff med valgte filtre.</strong><p class="muted">Prøv å utvide dato eller velge Alle i filtrene.</p></div>`;bindFilters();return;}host.innerHTML=summary+controls+matches.map(m=>`<article class="meet-card meet-card-v1"><div class="meet-top"><div><h4>${esc(m.name||'Stevne')}</h4><div class="meta">${esc(locationText(m)||'Sted ikke publisert')}</div></div><span class="cat">${esc(m.rankingCategory||'WA')}</span></div><div class="meet-facts"><div><span>Dato</span><strong>${esc(dateText(m))}</strong></div><div><span>Land</span><strong>${esc(countryLabel(m))}</strong></div><div><span>Øvelse</span><strong>${esc(perMeetEventLabel(m))}</strong></div><div><span>Arena</span><strong>${esc(venueLabel(m))}</strong></div></div><div class="meet-insight"><span>Historisk nivå</span><strong>Historiske resultater kobles inn senere.</strong></div><div class="meet-insight road"><span>Road to Beijing 2027</span><strong>Personlig sammenligning kobles inn senere.</strong></div><div class="card-actions"><a class="buttonlike" href="${mapUrl(m)}" target="_blank" rel="noopener">Vis i kart</a><a class="buttonlike" href="${waUrl(m)}" target="_blank" rel="noopener">World Athletics</a><a class="buttonlike" href="${ROAD}" target="_blank" rel="noopener">Beijing 2027</a>${m.id?`<button type="button" class="buttonlike" data-meet-details="${esc(m.id)}">Kontakt, premier og info</button>`:''}</div>${m.id?`<div data-details-host="${esc(m.id)}" class="meet-insight"></div>`:''}</article>`).join('');bindFilters();bindDetailsButtons(host);}
+function render(){const host=$('meetList');if(!host)return;const matches=futureMatches();const combinedNote=['Decathlon','Heptathlon'].includes(eventCode())?' For fremtidige mangekampstevner brukes også WA-betegnelsen «Combined Events» når detaljprogrammet ikke er publisert.':'';const summary=`<div class="finder-summary"><div><span class="eyebrow">FREMTIDIGE WA-STEVNER</span><h4>${esc(eventLabel())}</h4><p class="muted">Kun senior- og U23-stevner i Europa.${combinedNote}${loadedAt?` Sist oppdatert ${stamp()}.`:''}</p></div><div class="finder-count">${loading?'…':matches.length}<small>${loading?'henter':'aktuelle stevner'}</small></div></div>`;if(loading&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Henter fremtidige stevner…</strong></div>`;return;}if(loadError&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Kunne ikke hente stevnekalenderen.</strong><p class="muted">${esc(loadError)}</p></div>`;return;}const controls=filterBar();if(!matches.length){host.innerHTML=summary+controls+`<div class="finder-empty"><strong>Ingen treff med valgte filtre.</strong><p class="muted">Prøv å utvide dato eller velge Alle i filtrene.</p></div>`;bindFilters();return;}host.innerHTML=summary+controls+matches.map(m=>`<article class="meet-card meet-card-v1"><div class="meet-top"><div><h4>${esc(m.name||'Stevne')}</h4><div class="meta">${esc(locationText(m)||'Sted ikke publisert')}</div></div><span class="cat">${esc(m.rankingCategory||'WA')}</span></div><div class="meet-facts"><div><span>Dato</span>${dateBoxHTML(m)}</div><div><span>Land</span><strong>${esc(countryLabel(m))}</strong></div><div><span>Øvelse</span><strong>${esc(perMeetEventLabel(m))}</strong></div><div><span>Arena</span><strong>${esc(venueLabel(m))}</strong></div></div><div class="meet-insight"><span>Historisk nivå</span><strong>Historiske resultater kobles inn senere.</strong></div><div class="meet-insight road"><span>Road to Beijing 2027</span><strong>Personlig sammenligning kobles inn senere.</strong></div>${m.id?`<div class="meet-insight" data-meet-contact="${esc(m.id)}"><span>Kontakt og premier</span><strong class="muted">Henter kontakt- og premieinfo …</strong></div>`:''}<div class="card-actions"><a class="buttonlike" href="${mapUrl(m)}" target="_blank" rel="noopener">Vis i kart</a><a class="buttonlike" href="${waUrl(m)}" target="_blank" rel="noopener">World Athletics</a><a class="buttonlike" href="${ROAD}" target="_blank" rel="noopener">Beijing 2027</a></div></article>`).join('');bindFilters();loadAllMeetDetails(host);}
 async function load(){if(loading)return;loading=true;loadError='';render();try{const params=new URLSearchParams({v:'58',event:eventCode(),startDate:new Date().toISOString().slice(0,10),endDate:'2027-12-31'});const res=await fetch(`/api/meet-search?${params}`,{cache:'no-store'});const data=await res.json();if(!res.ok||!data?.ok)throw new Error(data?.error||`Kalenderkilde svarte ${res.status}`);allMeets=Array.isArray(data.results)?data.results:[];loadedAt=new Date();}catch(e){loadError=String(e?.message||e);}finally{loading=false;render();}}
 function install(){const panel=$('meetList')?.closest('.panel');if(panel){const h=panel.querySelector('h3');if(h)h.textContent='Finn aktuelle rankingstevner';const status=panel.querySelector('.section-head>.muted');if(status)status.textContent='World Athletics-kalender';}$('meetCategoryFilter')?.closest('.filters')?.setAttribute('style','display:none!important');$('event')?.addEventListener('change',()=>setTimeout(load,0));$('sex')?.addEventListener('change',()=>setTimeout(load,0));load();setInterval(load,15*60*1000);}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
 })();
