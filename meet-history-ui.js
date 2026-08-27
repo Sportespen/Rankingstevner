@@ -18,9 +18,17 @@ function apply(){
     });
   } finally {busy=false;}
 }
+function loadDedupe(){
+  if(document.querySelector('script[data-meet-dedupe]'))return;
+  const s=document.createElement('script');
+  s.src='meet-dedupe.js?v=2';
+  s.dataset.meetDedupe='1';
+  document.head.appendChild(s);
+}
 const observer=new MutationObserver(()=>requestAnimationFrame(apply));
 document.addEventListener('DOMContentLoaded',()=>{
   const host=document.getElementById('meetList');if(host)observer.observe(host,{childList:true,subtree:true});
   apply();
+  loadDedupe();
 });
 })();
