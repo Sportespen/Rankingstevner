@@ -69,6 +69,7 @@
 
     const homeParent=rankingAction.parentNode;
     const homeNext=rankingAction.nextSibling;
+    const windLabel=combinedWindSection.querySelector('label');
 
     // Vindstatus mangekamp's column starts with a label line ("Vindstatus mangekamp") before
     // its select - the button has no such line above it, so without a matching spacer it
@@ -83,17 +84,29 @@
       rankingAction.insertBefore(spacer,rankingAction.firstChild);
     }
 
+    // The "WA trekker 24 poeng …" <small> renders smaller than the "Resultatet sammenlignes
+    // …" span (browser default <small> shrink stacks on top of the label's own font-size) -
+    // match them so the two captions read as the same size.
+    if(!document.getElementById('combinedWindRowStyle')){
+      const style=document.createElement('style');
+      style.id='combinedWindRowStyle';
+      style.textContent='#combinedWindSection label small{font-size:13px;font-weight:400}';
+      document.head.appendChild(style);
+    }
+
     function place(){
       if(combinedWindSection.style.display!=='none'){
         rankingAction.style.marginTop='0';
-        rankingAction.style.gridColumn='span 3';
+        rankingAction.style.gridColumn='span 2';
         // Stack button-then-caption, matching the Vindstatus select-then-<small> column next
         // to it, so "Resultatet sammenlignes …" lines up beside "WA trekker 24 poeng …"
-        // instead of trailing the button on the same line.
+        // instead of trailing the button on the same line. Stretch (rather than left-align)
+        // so the button matches the select's full-width sizing - same size boxes.
         rankingAction.style.flexDirection='column';
-        rankingAction.style.alignItems='flex-start';
+        rankingAction.style.alignItems='stretch';
         rankingAction.style.gap='5px';
         spacer.style.display='block';
+        if(windLabel) windLabel.style.gridColumn='span 2';
         combinedWindSection.appendChild(rankingAction);
       }else{
         rankingAction.style.marginTop='18px';
@@ -102,6 +115,7 @@
         rankingAction.style.alignItems='';
         rankingAction.style.gap='';
         spacer.style.display='none';
+        if(windLabel) windLabel.style.gridColumn='';
         homeParent.insertBefore(rankingAction,homeNext);
       }
     }

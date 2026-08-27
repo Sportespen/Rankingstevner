@@ -55,9 +55,7 @@
   }
 
   function hintFor(code, athleteSex) {
-    if (combined.has(code)) return athleteSex === 'W'
-      ? 'Skriv bare poengsummen med tall, f.eks. 6500.'
-      : 'Skriv bare poengsummen med tall, f.eks. 8200.';
+    if (combined.has(code)) return '';
     if (technical.has(code)) return 'Skriv bare tall. De to siste sifrene blir centimeter.';
     if (longRace.has(code)) return 'Skriv bare tall. De fire siste sifrene blir sekunder og hundredeler.';
     return 'Skriv bare tall. De to siste sifrene blir hundredeler.';
