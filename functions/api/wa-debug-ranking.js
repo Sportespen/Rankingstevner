@@ -1,5 +1,16 @@
-const WA_GRAPHQL='https://graphql-prod-4746.prod.aws.worldathletics.org/graphql';
-const WA_API_KEY='da2-fcprvsdozzce5dx2baifenjwpu';
+async function getWaGraphConfig(){
+  const [endpointRes,keyRes]=await Promise.all([
+    fetch('https://worldathletics.nimarion.de/graphql/endpoint',{headers:{'Accept':'application/json'}}),
+    fetch('https://worldathletics.nimarion.de/graphql/api-key',{headers:{'Accept':'application/json'}})
+  ]);
+  if(!endpointRes.ok||!keyRes.ok)throw new Error('Kunne ikke hente WA GraphQL-konfigurasjon');
+  const endpointData=await endpointRes.json();
+  const keyData=await keyRes.json();
+  const endpoint=endpointData?.endpoint||endpointData?.url||endpointData?.value||endpointData?.apiEndpoint;
+  const apiKey=keyData?.apiKey||keyData?.key||keyData?.value||keyData?.token;
+  if(!endpoint||!apiKey)throw new Error('Ugyldig WA GraphQL-konfigurasjon');
+  return {endpoint,apiKey};
+}
 
 export async function onRequestGet(context){
   const url=new URL(context.request.url);
@@ -24,15 +35,19 @@ export async function onRequestGet(context){
     }
   }`;
 
+  let cfg;
+  try{cfg=await getWaGraphConfig();}
+  catch(e){return json({ok:false,id:Number(id),profile,name,error:String(e?.message||e)},502);}
+
   const attempts=[];
   for(const slug of unique){
     try{
-      const gr=await fetch(WA_GRAPHQL,{
+      const gr=await fetch(cfg.endpoint,{
         method:'POST',
         headers:{
           'content-type':'application/json',
           'accept':'application/json',
-          'x-api-key':WA_API_KEY,
+          'x-api-key':cfg.apiKey,
           'x-amz-user-agent':'aws-amplify/3.0.2',
           'user-agent':'Mozilla/5.0 Rankingstevner-Debug'
         },
