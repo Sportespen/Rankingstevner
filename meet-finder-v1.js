@@ -84,7 +84,7 @@ function esc(v){return String(v??'').replace(/[&<>\"]/g,ch=>({'&':'&amp;','<':'&
 function mapUrl(m){return`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText(m)||m.name||'')}`;}
 function waUrl(m){return m.id?`https://worldathletics.org/competition/calendar-results/results/${encodeURIComponent(m.id)}`:WA_CALENDAR;}
 function stamp(){return loadedAt?new Intl.DateTimeFormat('nb-NO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(loadedAt):'';}
-async function loadMeetDetails(id,insightHost,mapLink){
+async function loadMeetDetails(id,insightHost){
   try{
     const r=await fetch(`/api/meet-details?id=${encodeURIComponent(id)}`,{cache:'no-store'});
     const d=await r.json();
@@ -93,28 +93,24 @@ async function loadMeetDetails(id,insightHost,mapLink){
     const contacts=Array.isArray(x.contactPersons)?x.contactPersons:[];
     const contactText=contacts.length?contacts.map(c=>esc([c.name,c.role,c.email,c.phone].filter(Boolean).join(' · '))).join('<br>'):'Ingen kontaktperson oppgitt i WA.';
     const prizes=x.prizeMoney&&Object.keys(x.prizeMoney).length?esc(JSON.stringify(x.prizeMoney)):'Ikke oppgitt';
-    const site=x.websiteUrl?`<div style="margin-top:4px"><a href="${esc(x.websiteUrl)}" target="_blank" rel="noopener">Stevnets nettside</a></div>`:'';
-    if(insightHost)insightHost.innerHTML=`<span>Kontakt og premier</span><strong>${contactText}</strong><small>Premier: ${prizes}</small>${site}`;
-    // Organiser data sometimes has the actual stadium/venue name, which is far more useful
-    // in a map link than the calendar's city-level location text.
-    const venueName=[x.venue,x.stadium,x.venueName,x.address,x.location?.venue,x.location?.name].find(v=>typeof v==='string'&&v.trim());
-    if(mapLink&&venueName){
-      mapLink.href=`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueName)}`;
-    }else if(insightHost){
-      // TEMPORARY: none of the guessed field names matched, so surface the raw payload to
-      // find the real one instead of silently falling back to the city. Remove once confirmed.
-      insightHost.insertAdjacentHTML('beforeend',`<div style="margin-top:6px;font-size:11px;color:#9aa5ac">Fant ikke stadionfelt. Rådata fra WA: ${esc(JSON.stringify(x))}</div>`);
-    }
+    const links=[
+      x.websiteUrl?`<a href="${esc(x.websiteUrl)}" target="_blank" rel="noopener">Stevnets nettside</a>`:'',
+      x.resultsUrl?`<a href="${esc(x.resultsUrl)}" target="_blank" rel="noopener">Resultater</a>`:'',
+      x.liveStreamUrl?`<a href="${esc(x.liveStreamUrl)}" target="_blank" rel="noopener">Livestream</a>`:'',
+    ].filter(Boolean).join(' · ');
+    const linksHtml=links?`<div style="margin-top:4px">${links}</div>`:'';
+    const infoHtml=x.additionalInfo?`<div style="margin-top:4px">${esc(x.additionalInfo)}</div>`:'';
+    if(insightHost)insightHost.innerHTML=`<span>Kontakt og premier</span><strong>${contactText}</strong><small>Premier: ${prizes}</small>${linksHtml}${infoHtml}`;
+    // Confirmed via WA's /organiser payload: it carries contact/prize/link info only, no
+    // venue/stadium/address field, so the map link stays on the calendar's city-level text
+    // set at render time (mapUrl(m)) - there's nothing more precise to upgrade it to here.
   }catch(e){
     if(insightHost)insightHost.innerHTML=`<span>Kontakt og premier</span><strong class="muted">${esc(e.message)}</strong>`;
   }
 }
 function loadAllMeetDetails(host){
   host.querySelectorAll('[data-meet-contact]').forEach(insightHost=>{
-    const id=insightHost.dataset.meetContact;
-    const card=insightHost.closest('.meet-card-v1');
-    const mapLink=card?.querySelector('.card-actions a');
-    loadMeetDetails(id,insightHost,mapLink);
+    loadMeetDetails(insightHost.dataset.meetContact,insightHost);
   });
 }
 function filterBar(){const base=baseMatches();const countries=[...new Set(base.map(countryLabel).filter(x=>x&&x!=='Ukjent land'))].sort((a,b)=>a.localeCompare(b,'nb'));const cats=[...new Set(base.map(m=>String(m.rankingCategory||'').toUpperCase()).filter(Boolean))].sort();const prev=selectedFilters();const today=new Date().toISOString().slice(0,10);return `<div class="finder-filterbar" style="margin:0 0 18px;padding:16px 20px 18px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box;height:100%"><div style="font-size:12px;font-weight:800;letter-spacing:.12em;color:#007f73;margin:0 0 12px">FILTRER STEVNER</div><div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px"><label style="font-size:12px;font-weight:700">Fra dato<input id="finderDateFrom" type="date" value="${esc(prev.from||today)}" min="${today}" max="2027-12-31" style="width:100%;margin-top:6px"></label><label style="font-size:12px;font-weight:700">Til dato<input id="finderDateTo" type="date" value="${esc(prev.to||'2027-12-31')}" min="${today}" max="2027-12-31" style="width:100%;margin-top:6px"></label><label style="font-size:12px;font-weight:700">Land<select id="finderCountry" style="width:100%;margin-top:6px"><option value="all">Alle land</option>${countries.map(x=>`<option${prev.country===x?' selected':''}>${esc(x)}</option>`).join('')}</select></label><label style="font-size:12px;font-weight:700">Stevnekategori<select id="finderCategory" style="width:100%;margin-top:6px"><option value="all">Alle kategorier</option>${cats.map(x=>`<option${prev.category===x?' selected':''}>${esc(x)}</option>`).join('')}</select></label><label style="font-size:12px;font-weight:700">Arena<select id="finderVenue" style="width:100%;margin-top:6px"><option value="all"${prev.venue==='all'?' selected':''}>Alle</option><option value="outdoor"${prev.venue==='outdoor'?' selected':''}>Utendørs</option><option value="indoor"${prev.venue==='indoor'?' selected':''}>Innendørs</option></select></label></div></div>`;}
