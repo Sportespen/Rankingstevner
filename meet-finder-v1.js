@@ -206,7 +206,16 @@ async function loadMeetDetails(id,insightHost){
     // WA's organiser API sometimes returns the literal string "404" for a missing
     // website/results/livestream URL instead of omitting the field or returning null -
     // resolved as a relative path that innocently builds https://worldathletics.org/404.
-    const abs=u=>{if(!u||/^\d+$/.test(String(u).trim()))return'';try{return new URL(u,'https://worldathletics.org/').href;}catch(_){return'';}};
+    const abs=u=>{
+      if(!u||/^\d+$/.test(String(u).trim()))return'';
+      try{
+        const parsed=new URL(u,'https://worldathletics.org/');
+        // Reject WA's "not available" placeholder itself, whether it arrived as the bare
+        // string "404" (resolves to this path) or already as a full worldathletics.org/404 URL.
+        if(parsed.pathname==='/404')return'';
+        return parsed.href;
+      }catch(_){return'';}
+    };
     const links=[
       abs(x.websiteUrl)?`<a href="${esc(abs(x.websiteUrl))}" target="_blank" rel="noopener">Stevnets nettside</a>`:'',
       abs(x.resultsUrl)?`<a href="${esc(abs(x.resultsUrl))}" target="_blank" rel="noopener">Resultater</a>`:'',
