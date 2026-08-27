@@ -14,15 +14,21 @@ const WA_CALENDAR='https://worldathletics.org/competition/calendar-results';
 const CHAMPIONSHIP={
   outdoor:{
     body:'WA',
-    label:'VM Beijing 2027',
-    url:'https://worldathletics.org/competitions/world-athletics-championships/beijing27/news/press-releases/qualification-system-world-athletics-championships-beijing-27',
+    name:'Beijing 2027',
+    // Qualification rules/standards (press release) vs. the live "Road to Beijing 27"
+    // qualification tracker (published in WA's Stats Zone) - two different official pages.
+    qualificationUrl:'https://worldathletics.org/competitions/world-athletics-championships/beijing27/news/press-releases/qualification-system-world-athletics-championships-beijing-27',
+    roadUrl:'https://worldathletics.org/stats-zone',
     entryStandards:{Decathlon:8620,Heptathlon:6550},
     rankingUrl:{Decathlon:'https://worldathletics.org/world-rankings/decathlon/men',Heptathlon:'https://worldathletics.org/world-rankings/heptathlon/women'},
   },
   indoor:{
     body:'EA',
-    label:'EM Valencia 2027',
-    url:'https://www.european-athletics.com/home/competitions/european-athletics-indoor-championships-2027/valencia',
+    name:'Valencia 2027',
+    // EA doesn't publish a separate "Road to Valencia" tracker page (confirmed by search) -
+    // both links fall back to the same official championship page.
+    qualificationUrl:'https://www.european-athletics.com/home/competitions/european-athletics-indoor-championships-2027/valencia',
+    roadUrl:'https://www.european-athletics.com/home/competitions/european-athletics-indoor-championships-2027/valencia',
     entryStandards:{},
     rankingUrl:{},
   },
@@ -142,7 +148,7 @@ function toplistButtonHTML(m){
 }
 function stamp(){return loadedAt?new Intl.DateTimeFormat('nb-NO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(loadedAt):'';}
 function championshipFor(m){return CHAMPIONSHIP[venueType(m)]||CHAMPIONSHIP.outdoor;}
-function championshipButtonHTML(m){const c=championshipFor(m);return `<a class="buttonlike" href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.label)}</a>`;}
+function championshipButtonHTML(m){const c=championshipFor(m);return `<a class="buttonlike" href="${esc(c.roadUrl)}" target="_blank" rel="noopener">Road to ${esc(c.name)}</a>`;}
 function roadBoxHTML(m){
   const c=championshipFor(m);
   const code=eventCode();
@@ -150,8 +156,8 @@ function roadBoxHTML(m){
   const rankingUrl=c.rankingUrl[code];
   const body=standard
     ?`<strong>Kvalifiseringskrav: ${standard} p</strong>${rankingUrl?`<div style="margin-top:4px"><a href="${esc(rankingUrl)}" target="_blank" rel="noopener">Se offisiell ranking</a></div>`:''}`
-    :`<strong class="muted">Se offisielle krav hos arrangøren.</strong><div style="margin-top:4px"><a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.label)}</a></div>`;
-  return `<div class="meet-insight road"><span>Road to ${esc(c.label.replace(/^(VM|EM)\s*/,''))}</span>${body}</div>`;
+    :`<strong class="muted">Se offisielle krav hos arrangøren.</strong><div style="margin-top:4px"><a href="${esc(c.qualificationUrl)}" target="_blank" rel="noopener">${esc(c.name)}</a></div>`;
+  return `<div class="meet-insight road"><span>Road to ${esc(c.name)}</span>${body}</div>`;
 }
 async function loadMeetDetails(id,insightHost){
   try{
