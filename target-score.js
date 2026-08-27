@@ -9,7 +9,7 @@
 (function(){function removeDuplicateCombinedBox(){document.querySelectorAll('#waProfileDetails div').forEach(el=>{const strong=el.querySelector(':scope > strong');if(strong&&strong.textContent.trim().startsWith('Tellende Performance Scores:'))el.remove();});}const details=document.getElementById('waProfileDetails');if(details)new MutationObserver(removeDuplicateCombinedBox).observe(details,{childList:true,subtree:true});setTimeout(removeDuplicateCombinedBox,200);})();
 // v0.20.4: synlig WA-ranking med diagnostikk dersom kilden feiler.
 (function(){
-  function loadOfficialRanking(){if(document.querySelector('script[data-official-ranking-v206]'))return;const s=document.createElement('script');s.src='official-ranking.js?v=206';s.dataset.officialRankingV206='1';document.head.appendChild(s);s.addEventListener('load',()=>setTimeout(loadBasis,0));}
+  function loadOfficialRanking(){if(document.querySelector('script[data-official-ranking-v207]'))return;const s=document.createElement('script');s.src='official-ranking.js?v=207';s.dataset.officialRankingV207='1';document.head.appendChild(s);s.addEventListener('load',()=>setTimeout(loadBasis,0));}
   function loadBasis(){if(document.querySelector('script[data-ranking-basis-v201]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=201';s.dataset.rankingBasisV201='1';document.head.appendChild(s);}
   setTimeout(loadOfficialRanking,0);
 })();
