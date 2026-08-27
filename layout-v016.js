@@ -56,6 +56,37 @@
     if(eventLabel) eventLabel.style.width='100%';
   }
 
+  // Vindstatus mangekamp is the only field in its grid row - three empty columns next to
+  // it. Move "Beregn rankingeffekt" in there for combined events instead of giving it a
+  // whole separate row below.
+  function installRankingActionInline(){
+    const rankingAction=document.querySelector('.ranking-action');
+    const combinedWindSection=document.getElementById('combinedWindSection');
+    const eventSelect=document.getElementById('event');
+    if(!rankingAction||!combinedWindSection||!eventSelect){setTimeout(installRankingActionInline,100);return;}
+    if(rankingAction.dataset.inlineWindInstalled) return;
+    rankingAction.dataset.inlineWindInstalled='1';
+
+    const homeParent=rankingAction.parentNode;
+    const homeNext=rankingAction.nextSibling;
+
+    function place(){
+      if(combinedWindSection.style.display!=='none'){
+        rankingAction.style.marginTop='0';
+        rankingAction.style.gridColumn='span 3';
+        combinedWindSection.appendChild(rankingAction);
+      }else{
+        rankingAction.style.marginTop='18px';
+        rankingAction.style.gridColumn='';
+        homeParent.insertBefore(rankingAction,homeNext);
+      }
+    }
+    eventSelect.addEventListener('change',()=>setTimeout(place,60));
+    place();
+    setTimeout(place,500);
+  }
+  installRankingActionInline();
+
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',applyLayout,{once:true});
   else applyLayout();
 })();
