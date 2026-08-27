@@ -215,6 +215,12 @@ async function loadMeetDetails(id,insightHost){
     //    note part of the "hostname", so the browser tried to resolve that as one domain
     //    and failed (DNS_PROBE_FINISHED_NXDOMAIN). Keep only the first token as the URL and
     //    surface the rest as plain text instead of silently dropping it.
+    // Final safety net: WA's organiser data has already produced several distinct kinds of
+    // garbage (a bare "404" sentinel, a note glued onto the URL, a relative path). Rather than
+    // reacting to each new shape one bug report at a time, reject anything that doesn't
+    // resolve to a plausible real hostname - catches shapes not seen yet too, so a broken
+    // link fails closed (hidden) instead of shipping and waiting to be manually caught.
+    const VALID_HOST=/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
     const abs=u=>{
       if(!u)return null;
       const raw=String(u).trim();
@@ -225,7 +231,8 @@ async function loadMeetDetails(id,insightHost){
         const parsed=/^https?:\/\//i.test(s)||s.startsWith('/')
           ?new URL(s,'https://worldathletics.org/')
           :new URL(`https://${s}`);
-        return parsed.pathname==='/404'?null:{href:parsed.href,note};
+        if(parsed.pathname==='/404'||!VALID_HOST.test(parsed.hostname))return null;
+        return {href:parsed.href,note};
       }catch(_){return null;}
     };
     const linkHtml=(label,u)=>{const r=abs(u);return r?`<a href="${esc(r.href)}" target="_blank" rel="noopener">${label}</a>${r.note?` <span class="muted">${esc(r.note)}</span>`:''}`:'';};
