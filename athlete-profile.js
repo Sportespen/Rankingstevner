@@ -54,6 +54,9 @@
     });
   }
   function showStatus(text,good=true){ profileStatus.textContent=text; profileStatus.style.color=good?'#087f5b':'#677585'; }
+  // Name/sex/WA-ID are already visible in the fields right above - the WA status line just
+  // needs to say whether the search is running, succeeded or failed, not repeat them.
+  function setWaStatus(text,tone){ if(!waStatus)return; waStatus.textContent=text; waStatus.style.color=tone==='good'?'#087f5b':tone==='bad'?'#677585':''; }
   function normalizeEvent(s){
     return String(s||'').toLowerCase().replace(/metres?|meters?/g,'m').replace(/women'?s|woman'?s|men'?s/g,'').replace(/[^a-z0-9]+/g,'');
   }
@@ -191,7 +194,7 @@
   async function loadAthlete(id){
     if(!id) return;
     if(waBtn) waBtn.disabled=true;
-    waStatus.textContent='Henter World Athletics-profil og rankinggrunnlag…';
+    setWaStatus('Søker …');
     try{
       const [profileRes,rankRes,resultsRes]=await Promise.all([
         fetch(`/api/athlete?id=${encodeURIComponent(id)}&v=081`,{cache:'no-store'}),
@@ -222,22 +225,18 @@
         sex.value=data.sex; sex.dispatchEvent(new Event('change')); store.sex=data.sex;
       }
       store.event=eventSelect.value; writeStore(store);
-      const sexLabel=data.sex==='W'?'Kvinner':data.sex==='M'?'Menn':'';
-      waStatus.innerHTML=`<strong>WA-profil funnet:</strong> ${data.name||data.id}${sexLabel?' · '+sexLabel:''} · WA-ID ${data.id}`;
+      setWaStatus('Koblet til World Athletics.','good');
       renderWaDetails(data);
       applyBasisForSelectedEvent(data);
-      // Name/WA-ID are already shown in the WA status line right below - repeating them
-      // here just reads as duplicated text.
-      showStatus('Profil lagret automatisk.');
     }catch(e){
-      waStatus.textContent=`Kunne ikke hente WA-profil: ${e.message}`;
+      setWaStatus('Fant ikke WA-profil.');
       if(waDetails){waDetails.innerHTML='';waDetails.style.display='none';}
     }finally{ if(waBtn) waBtn.disabled=false; }
   }
 
   waBtn?.addEventListener('click',()=>{
     const id=waInput.value.trim().match(/(\d{7,9})/)?.[1];
-    if(!id){waStatus.textContent='Skriv inn en gyldig WA-ID eller profil-lenke.';return;}
+    if(!id){setWaStatus('Skriv inn en gyldig WA-ID.');return;}
     loadAthlete(id);
   });
 
@@ -255,7 +254,7 @@
     showStatus(`Lagret for ${store.name}: ${currentEventLabel()}`);
   });
   clearProfileBtn.addEventListener('click',()=>{
-    localStorage.removeItem(STORAGE_KEY); profileName.value=''; if(nameSearch) nameSearch.value=''; if(waInput) waInput.value=''; if(waStatus) waStatus.textContent='Velg en utøver for å hente rankinggrunnlaget.'; if(waDetails){waDetails.innerHTML='';waDetails.style.display='none';} clearScores(); showStatus('Profil og lagrede scores er slettet.',false);
+    localStorage.removeItem(STORAGE_KEY); profileName.value=''; if(nameSearch) nameSearch.value=''; if(waInput) waInput.value=''; setWaStatus('Ingen WA-profil valgt.'); if(waDetails){waDetails.innerHTML='';waDetails.style.display='none';} clearScores();
   });
 
   function restoreProfile(){
@@ -263,12 +262,7 @@
     if(store.name){profileName.value=store.name;if(nameSearch)nameSearch.value=store.name;}
     if(waInput&&store.waId)waInput.value=store.waId;
     if(store.sex&&[...sex.options].some(o=>o.value===store.sex))sex.value=store.sex;
-    // When a WA profile is stored, the line below already names the athlete + WA-ID, so
-    // keep this one generic instead of repeating the same name twice.
-    if(store.waName)showStatus('Profil lastet fra nettleseren.');
-    else if(store.name)showStatus(`Profil lastet: ${store.name}`);
-    else showStatus('Ingen lagret profil ennå.',false);
-    if(store.waName&&waStatus)waStatus.textContent=`WA koblet: ${store.waName}${store.waId?' · WA-ID '+store.waId:''}`;
+    if(store.waName)setWaStatus('Koblet til World Athletics.','good');
     setTimeout(()=>{
       if(store.event&&[...eventSelect.options].some(o=>o.value===store.event))eventSelect.value=store.event;
       eventSelect.dispatchEvent(new Event('change'));

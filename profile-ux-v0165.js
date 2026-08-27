@@ -33,7 +33,7 @@
 
     function decorateLoading(){
       const txt=(waStatus.textContent||'').trim();
-      if(/^Henter World Athletics-profil og rankinggrunnlag/i.test(txt) && !waStatus.querySelector('.wa-spinner-0165')){
+      if(/^Søker/i.test(txt) && !waStatus.querySelector('.wa-spinner-0165')){
         const spinner=document.createElement('span');
         spinner.className='wa-spinner-0165';
         spinner.setAttribute('aria-hidden','true');
