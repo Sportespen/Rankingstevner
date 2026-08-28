@@ -17,8 +17,8 @@ function fetchHistory(name, date){
     try {
       const res = await fetch(`/api/meet-history?name=${encodeURIComponent(name)}&event=${encodeURIComponent(event)}&date=${encodeURIComponent(date||'')}&v=1`, { cache: 'no-store' });
       const data = await res.json();
-      return data?.ok ? data : null;
-    } catch (_) { return null; }
+      return data?.ok ? data : { found: false, diagnostics: [{ source: 'fetch', status: res.status, body: data }] };
+    } catch (e) { return { found: false, diagnostics: [{ source: 'fetch', error: String(e?.message || e) }] }; }
   })();
   cache.set(key, p);
   return p;
@@ -39,9 +39,19 @@ function placementFor(allMarks, mark){
 }
 function ordinal(n){ return `${n}.`; }
 
+function esc(s){ return String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+// Temporary while this lookup is unverified against live WA data (network-blocked from the
+// dev sandbox) - shows exactly why a match failed instead of just "not found", the same
+// pattern already used for the official WA ranking lookup's "WA-diagnostikk" block.
+function diagnosticsHtml(data){
+  if (!data?.diagnostics) return '';
+  const diag = esc(JSON.stringify(data.diagnostics, null, 2));
+  return `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px;color:#677585">Diagnostikk</summary><pre style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:#f7f9fb;padding:8px;border-radius:6px;margin-top:6px">${diag}</pre></details>`;
+}
+
 function renderHtml(data){
   if (!data || !data.found) {
-    return '<strong>Historiske resultater er ikke verifisert ennå.</strong><small>Fant ikke forrige utgave av stevnet i World Athletics-kalenderen.</small>';
+    return `<strong>Historiske resultater er ikke verifisert ennå.</strong><small>Fant ikke forrige utgave av stevnet i World Athletics-kalenderen.</small>${diagnosticsHtml(data)}`;
   }
   const pb = bestOwnMark();
   const place = pb != null ? placementFor(data.allMarks, pb) : null;
