@@ -67,6 +67,18 @@
         performanceScore:Number(x.score),
         type:x.type||'main',
         source:x.source||null
+      })),
+      // Every legal scored result, not just the top `needed` selected for the ranking score
+      // itself - "Historisk nivå" needs the athlete's best mark in ONE specific discipline
+      // (e.g. indoor Heptathlon), which is often not among the top 2 overall if the athlete's
+      // other discipline (e.g. outdoor Decathlon) scores higher - that mark still exists and is
+      // still legal, it just isn't part of *this* athlete's combined ranking basis.
+      candidates:(basis.candidates||[]).map(x=>({
+        date:x.date||null,
+        competition:x.competition||null,
+        result:x.mark??null,
+        discipline:x.discipline||null,
+        type:x.type||'main'
       }))
     };
     window.dispatchEvent(new CustomEvent('rankingbasisupdated'));

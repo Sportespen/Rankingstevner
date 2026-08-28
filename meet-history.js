@@ -24,47 +24,35 @@ function fetchHistory(name, date){
   return p;
 }
 
-// WA's own world ranking for men's combined events pools outdoor Decathlon (10 events) and
-// indoor Heptathlon (7 events) marks together into one ranking basis (women: outdoor
-// Heptathlon + indoor Pentathlon) - this app's "Tellende rankinggrunnlag" mirrors that on
-// purpose. But an outdoor 10-event total and an indoor 7-event total aren't on the same raw
-// points scale (more events structurally means more points), so comparing "what place would my
-// best mark get" against one specific meet's field needs the mark from the SAME real-world
-// discipline as that meet - otherwise an outdoor decathlon PB looks artificially unbeatable
-// against every indoor meet.
+// An outdoor 10-event total and an indoor 7-event total aren't on the same raw points scale
+// (more events structurally means more points), so comparing "what place would my best mark
+// get" against one specific meet's field needs the mark from the SAME real-world discipline as
+// that meet - otherwise an outdoor decathlon PB looks artificially unbeatable against every
+// indoor meet.
 //
-// Confirmed wrong on the first live test: this data (window.__rankingstevnerOfficialRanking.basis)
-// comes from WA's official ranking calculation API (wa-official-ranking.js), not the same raw
-// results feed ranking-basis.js reads its own discipline names from - reusing that file's
-// "short track"/"sh" suffix check here rejected a genuine indoor Heptathlon result because this
-// API just reports it as plain "Heptathlon", no suffix. Men only ever have two possible
-// real-world combined-event names (Decathlon=outdoor, Heptathlon=indoor - never both for the
-// same season), so plain name matching is enough and unambiguous; no suffix needed.
-function normDiscipline(s){ return String(s||'').toLowerCase().replace(/metres?|meters?/g,'m').replace(/[^a-z0-9]+/g,''); }
-function matchesEventVariant(discipline, code, indoor){
-  const n = normDiscipline(discipline);
-  if (code === 'Decathlon') return indoor ? n.startsWith('heptathlon') : n.startsWith('decathlon');
-  if (code === 'Heptathlon') return indoor ? n.startsWith('pentathlon') : n.startsWith('heptathlon');
-  return false;
-}
-// The best mark among the athlete's own currently-counting WA results for the specific
-// indoor/outdoor discipline this meet actually is (the same table shown under "Tellende
-// rankinggrunnlag") - not literally an all-time PB, but the closest thing already available
-// without a separate fetch.
-//
-// Also returns a diagnostics object alongside the mark: a live test showed no placement line at
-// all for an athlete who does have a genuine counting result in the right discipline, and rather
-// than guess a third time at what field/shape is actually wrong without being able to inspect it
-// myself, surfacing the raw basis contents lets the next live check show the real cause directly.
+// Two earlier attempts at this got the data source wrong: window.__rankingstevnerOfficialRanking
+// .basis only holds the top `needed` (2) results actually selected for the athlete's combined
+// ranking SCORE - a live diagnostics dump showed an athlete whose two best results were both
+// outdoor Decathlon, so his real, legal indoor Heptathlon Short Track result never appeared in
+// that list at all (it just wasn't among his best 2 overall). That's the wrong pool to search:
+// what's needed is every legal scored result, not just the ones that made the ranking cut.
+// window.__rankingstevnerReconstructedBasis.candidates (exposed by ranking-basis.js) is that
+// full pool, and each entry already carries a `type` ('main' = the code's own real discipline,
+// 'similar' = its indoor/outdoor counterpart) computed by that file's own already-tested
+// discipline classification - reusing it here instead of re-deriving discipline name matching a
+// third time.
 function bestOwnMark(indoor){
   const event = eventCode();
-  const official = window.__rankingstevnerOfficialRanking;
-  const basis = official?.basis;
-  const diag = { indoor, event, hasOfficialRanking: !!official, basisIsArray: Array.isArray(basis), basisLength: Array.isArray(basis) ? basis.length : null };
-  if (!Array.isArray(basis) || !basis.length) return { mark: null, diag };
-  diag.basisEntries = basis.map(b => ({ discipline: b.discipline, result: b.result, matched: matchesEventVariant(b.discipline, event, indoor) }));
-  const relevant = basis.filter(b => matchesEventVariant(b.discipline, event, indoor));
-  const marks = relevant.map(b => Number(b.result)).filter(Number.isFinite);
+  const reconstructed = window.__rankingstevnerReconstructedBasis;
+  const candidates = reconstructed?.candidates;
+  const diag = { indoor, event, hasReconstructedBasis: !!reconstructed, candidatesIsArray: Array.isArray(candidates), candidateCount: Array.isArray(candidates) ? candidates.length : null };
+  if (!Array.isArray(candidates) || !candidates.length) return { mark: null, diag };
+  // For code='Decathlon' (men): 'main'=outdoor Decathlon, 'similar'=indoor Heptathlon.
+  // For code='Heptathlon' (women): 'main'=outdoor Heptathlon, 'similar'=indoor Pentathlon.
+  const wantType = indoor ? 'similar' : 'main';
+  diag.candidateEntries = candidates.map(c => ({ discipline: c.discipline, result: c.result, type: c.type, matched: c.type === wantType }));
+  const relevant = candidates.filter(c => c.type === wantType);
+  const marks = relevant.map(c => Number(c.result)).filter(Number.isFinite);
   return { mark: marks.length ? Math.max(...marks) : null, diag };
 }
 function placementFor(allMarks, mark){
