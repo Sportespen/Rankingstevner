@@ -70,10 +70,13 @@ export async function onRequestGet(context) {
     diagnostics.push({ source: 'nimarion-competitions', error: String(e?.message || e) });
   }
 
-  for (const yearsBack of [1, 2]) {
+  // Small domestic/regional championships often don't run on a fixed weekend from year to
+  // year (unlike GL Tour meets), so a ±30 day window missed some real editions. Widened to
+  // ±45 days, and a 3rd yearsBack pass added for meets on a longer or irregular cycle.
+  for (const yearsBack of [1, 2, 3]) {
     const center = new Date(refDate.getTime() - yearsBack * 365 * 24 * 3600 * 1000);
-    const windowStart = new Date(center.getTime() - 30 * 24 * 3600 * 1000);
-    const windowEnd = new Date(center.getTime() + 30 * 24 * 3600 * 1000);
+    const windowStart = new Date(center.getTime() - 45 * 24 * 3600 * 1000);
+    const windowEnd = new Date(center.getTime() + 45 * 24 * 3600 * 1000);
     const seen = new Set();
     const windowCandidates = [];
 
@@ -257,6 +260,10 @@ function parseDate(v) {
 // that change (years, diacritics, punctuation) so "Décastar 2025" matches "Decastar 2026".
 function normalizeMeetName(s) {
   return String(s || '')
+    // Many German/Austrian/Swiss championships are named with a leading edition ordinal
+    // ("58. Nordrhein-Meisterschaften ...") that increments every year - left in, it would
+    // break substring matching against the same meet a year later since "58" never equals "59".
+    .replace(/^\s*\d+\.\s*/, '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/\b(19|20)\d{2}\b/g, '')
