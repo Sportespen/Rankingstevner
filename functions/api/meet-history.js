@@ -10,64 +10,69 @@ export async function onRequestGet(context) {
   if (event !== 'Decathlon' && event !== 'Heptathlon') return json({ ok: true, found: false, reason: 'not-combined-event' });
 
   const refDate = parseDate(refDateRaw) || new Date();
-  const endDate = new Date(refDate.getTime() - 24 * 3600 * 1000);
-  const startDate = new Date(refDate.getTime() - 450 * 24 * 3600 * 1000);
   const diagnostics = [];
+  const wantedNorm = normalizeMeetName(name);
 
-  const candidates = [];
-  const seen = new Set();
-
-  // WA's own calendar-results page is built for finding upcoming meets (it's what
-  // meet-search.js searches forward from today) and may not actually honour a past date
-  // range at all. The nimarion proxy's flat /competitions feed isn't date-scoped the same
-  // way, so it's tried first as a second, independent source of past editions.
+  // A 450-day blanket lookback turned out to return thousands of unrelated meets (youth
+  // championships, marathons) with no sign of a real recurring GL meet anywhere in the first
+  // ~1000 - the global calendar is just too dense to page through blindly. Annual meets recur
+  // around the same calendar date each year, so search narrow (±30 day) windows centered on
+  // that date, one year back at a time, instead of one wide unfocused scan.
+  let candidates = [];
+  let nimarionAll = null;
   try {
     const r = await fetch('https://worldathletics.nimarion.de/competitions', { headers: { Accept: 'application/json', 'User-Agent': 'Rankingstevner/1.0' } });
-    if (r.ok) {
-      const data = await r.json();
-      for (const x of Array.isArray(data) ? data : []) {
-        if (!x?.id || !x?.name || !x?.start) continue;
-        const d = parseDate(x.start);
-        if (!d || d < startDate || d > endDate) continue;
-        const key = `${x.id}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        candidates.push({ id: x.id, name: x.name, start: x.start });
-      }
-    }
-    diagnostics.push({ source: 'nimarion-competitions', count: candidates.length });
+    if (r.ok) nimarionAll = await r.json();
+    diagnostics.push({ source: 'nimarion-competitions', count: Array.isArray(nimarionAll) ? nimarionAll.length : 0 });
   } catch (e) {
     diagnostics.push({ source: 'nimarion-competitions', error: String(e?.message || e) });
   }
 
-  const offsets = [0, 100, 200, 300, 400, 500, 600, 700, 800, 900];
-  await Promise.all(offsets.map(async offset => {
-    const wa = new URL('https://worldathletics.org/competition/calendar-results');
-    wa.searchParams.set('startDate', startDate.toISOString().slice(0, 10));
-    wa.searchParams.set('endDate', endDate.toISOString().slice(0, 10));
-    wa.searchParams.set('disciplineId', '1');
-    // Without this the calendar defaults to listing competitions regardless of whether they
-    // have published results (including future ones with none yet), which is presumably why
-    // a past-date search was coming back full of unrelated meets instead of completed ones.
-    wa.searchParams.set('hideCompetitionsWithNoResults', 'true');
-    if (offset) wa.searchParams.set('offset', String(offset));
-    try {
-      const r = await fetch(wa.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
-      if (!r.ok) return;
-      const html = await r.text();
-      for (const row of extractCalendarObjects(html)) {
-        if (!row.id || !row.name || !row.start) continue;
-        const key = `${row.id}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        candidates.push(row);
-      }
-    } catch (e) {
-      diagnostics.push({ source: 'calendar', offset, error: String(e?.message || e) });
-    }
-  }));
+  for (const yearsBack of [1, 2]) {
+    const center = new Date(refDate.getTime() - yearsBack * 365 * 24 * 3600 * 1000);
+    const windowStart = new Date(center.getTime() - 30 * 24 * 3600 * 1000);
+    const windowEnd = new Date(center.getTime() + 30 * 24 * 3600 * 1000);
+    const seen = new Set();
+    const windowCandidates = [];
 
-  const wantedNorm = normalizeMeetName(name);
+    for (const x of Array.isArray(nimarionAll) ? nimarionAll : []) {
+      if (!x?.id || !x?.name || !x?.start) continue;
+      const d = parseDate(x.start);
+      if (!d || d < windowStart || d > windowEnd) continue;
+      const key = `${x.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      windowCandidates.push({ id: x.id, name: x.name, start: x.start });
+    }
+
+    await Promise.all([0, 100, 200].map(async offset => {
+      const wa = new URL('https://worldathletics.org/competition/calendar-results');
+      wa.searchParams.set('startDate', windowStart.toISOString().slice(0, 10));
+      wa.searchParams.set('endDate', windowEnd.toISOString().slice(0, 10));
+      wa.searchParams.set('disciplineId', '1');
+      wa.searchParams.set('hideCompetitionsWithNoResults', 'true');
+      if (offset) wa.searchParams.set('offset', String(offset));
+      try {
+        const r = await fetch(wa.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
+        if (!r.ok) return;
+        const html = await r.text();
+        for (const row of extractCalendarObjects(html)) {
+          if (!row.id || !row.name || !row.start) continue;
+          const key = `${row.id}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          windowCandidates.push(row);
+        }
+      } catch (e) {
+        diagnostics.push({ source: 'calendar', yearsBack, offset, error: String(e?.message || e) });
+      }
+    }));
+
+    diagnostics.push({ source: 'window', yearsBack, windowStart: windowStart.toISOString().slice(0, 10), windowEnd: windowEnd.toISOString().slice(0, 10), candidateCount: windowCandidates.length, sampleNames: windowCandidates.slice(0, 8).map(c => c.name) });
+    candidates = candidates.concat(windowCandidates);
+    if (windowCandidates.some(c => nameScore(wantedNorm, normalizeMeetName(c.name)) > 0)) break;
+  }
+
   const scored = candidates
     .map(c => ({ c, score: nameScore(wantedNorm, normalizeMeetName(c.name)) }))
     .filter(x => x.score > 0)
