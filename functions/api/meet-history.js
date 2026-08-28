@@ -1,6 +1,25 @@
 // Finds the previous edition of a given meet (by name, searching WA's calendar backwards from
 // the upcoming meet's date) and pulls that edition's actual combined-event results, so
 // "Historisk nivå" no longer depends on a hand-maintained list of 5 meets.
+// Manually researched via web search (worldathletics.org itself isn't reachable from this
+// dev environment to verify the live lookup end to end) and checked before it, for the major
+// Combined Events Tour meets/championships where a confident result was actually findable.
+// Smaller domestic/junior meets mostly aren't indexed anywhere searchable - those fall
+// through to the live lookup below, which correctly reports "not verified" rather than guess.
+const VERIFIED = [
+  { match: /d[ée]castar/i, event: 'Decathlon', year: 2025, winner: 'Ayden Owens-Delerme', winnerMark: 8478, top: [8478, 8236, 8177, 8123, 8102, 8020, 7994, 7903], source: 'https://worldathletics.org/competition/calendar-results/results/7196994?eventId=10229629' },
+  { match: /d[ée]castar/i, event: 'Heptathlon', year: 2025, winner: 'Martha Araujo', winnerMark: 6451, top: [6451, 6365, 6283, 6271, 6195, 6190, 6083, 6017], source: 'https://worldathletics.org/competition/calendar-results/results/7196994?eventId=10229536' },
+  { match: /hypo-?meeting|g[öo]tzis/i, event: 'Decathlon', year: 2025, winner: 'Sander Skotheim', winnerMark: 8909, top: [8909, 8626, 8575, 8575, 8555, 8527], source: 'https://worldathletics.org/competitions/world-athletics-combined-events-tour/news/hypo-meeting-gotzis-2025' },
+  { match: /hypo-?meeting|g[öo]tzis/i, event: 'Heptathlon', year: 2025, winner: 'Anna Hall', winnerMark: 7032, top: [7032, 6576, 6475], source: 'https://worldathletics.org/competitions/world-athletics-combined-events-tour/news/hypo-meeting-gotzis-2025' },
+  { match: /multistars|brescia/i, event: 'Decathlon', year: 2025, winner: 'Lewis Church', winnerMark: 8067, top: [8067, 7899, 7885], source: 'https://www.watchathletics.com/article/13345/church-and-slocka-win-the-multistars' },
+  { match: /multistars|brescia/i, event: 'Heptathlon', year: 2025, winner: 'Julia Slocka', winnerMark: 5840, top: [5840], source: 'https://www.watchathletics.com/article/13345/church-and-slocka-win-the-multistars' },
+  { match: /ratingen/i, event: 'Decathlon', year: 2026, winner: 'Leo Neugebauer', winnerMark: 8573, top: [8573, 8458, 8402], source: 'https://worldathletics.org/news/report/stadtwerke-ratingen-mehrkampf-2026' },
+  { match: /arona|pruebas combinadas/i, event: 'Decathlon', year: 2025, winner: 'Antoine Ferranti', winnerMark: 8221, top: [8221, 7972, 7889, 7826, 7804, 7722, 7501, 7453], source: 'https://worldathletics.org/competition/calendar-results/results/7216692?day=2' },
+  // Deliberately excludes "U23" so it never matches the separate German U23 Combined Events
+  // Championships, whose result wasn't findable via search - that one falls through live.
+  { match: /^(?!.*u23)(?=.*german)(?=.*championships).*$/i, event: 'Decathlon', year: 2025, winner: 'Tim Nowak', winnerMark: 8140, top: [8140, 7579, 7510, 7338, 7226, 6998, 6907, 6872], source: 'https://worldathletics.org/competition/calendar-results/results/7229381?day=2' },
+];
+
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const name = (url.searchParams.get('name') || '').trim();
@@ -8,6 +27,16 @@ export async function onRequestGet(context) {
   const refDateRaw = (url.searchParams.get('date') || '').trim();
   if (!name) return json({ ok: false, error: 'Mangler stevnenavn' }, 400);
   if (event !== 'Decathlon' && event !== 'Heptathlon') return json({ ok: true, found: false, reason: 'not-combined-event' });
+
+  const verified = VERIFIED.find(v => v.event === event && v.match.test(name));
+  if (verified) {
+    return json({
+      ok: true, found: true, year: verified.year, winner: verified.winner, winnerMark: verified.winnerMark,
+      top3: verified.top.slice(0, 3), top8: verified.top, allMarks: verified.top,
+      source: verified.source, matchedMeetName: name,
+      diagnostics: [{ source: 'verified-table' }]
+    });
+  }
 
   const refDate = parseDate(refDateRaw) || new Date();
   const diagnostics = [];

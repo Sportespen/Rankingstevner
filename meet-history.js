@@ -58,7 +58,13 @@ function renderHtml(data){
   const placeLine = place != null
     ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste tellende prestasjon (${pb} p) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
     : '';
-  return `<strong>${data.year}: vinner ${data.winnerMark} p · topp 3 snitt ${avg(data.top3)} p · topp 8 snitt ${avg(data.top8)} p</strong><small>Vinner: ${data.winner || 'ukjent'}. <a href="${data.source}" target="_blank" rel="noopener">Se offisielle WA-resultater</a></small>${placeLine}`;
+  // Not every meet has a confirmed top 8 (or even top 3) - some sources only reported a
+  // winner. Labelling the stat with however many marks actually went into it (instead of a
+  // fixed "topp 3"/"topp 8") avoids implying more depth than what's actually verified.
+  const segments = [`vinner ${data.winnerMark} p`];
+  if (data.top3?.length > 1) segments.push(`topp ${data.top3.length} snitt ${avg(data.top3)} p`);
+  if (data.top8?.length > (data.top3?.length || 0)) segments.push(`topp ${data.top8.length} snitt ${avg(data.top8)} p`);
+  return `<strong>${data.year}: ${segments.join(' · ')}</strong><small>Vinner: ${data.winner || 'ukjent'}. <a href="${data.source}" target="_blank" rel="noopener">Se offisielle WA-resultater</a></small>${placeLine}`;
 }
 
 window.RankingstevnerMeetHistory = {
