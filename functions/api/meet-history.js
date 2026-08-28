@@ -344,6 +344,12 @@ function extractCalendarObjects(html) {
   while ((z = re.exec(text))) out.push({ id: Number(z[1]), name: z[2], start: z[3] });
   return out;
 }
+// This lookup's matching logic is still being actively fixed based on live diagnostics -
+// a 6-hour edge cache (the previous setting) meant a "not found" response from before a fix
+// kept being served by Cloudflare for hours after the fix was deployed, making it look like
+// nothing had changed. "found:true" results are cheap to recompute and can change too (a fixed
+// name-extraction bug should show up immediately), so nothing here is cached at the edge for
+// now; revisit once the matching/extraction logic has stopped changing week to week.
 function json(body, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=3600, s-maxage=21600' } });
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 }
