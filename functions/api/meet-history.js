@@ -312,11 +312,27 @@ function tokensMatch(shortTokens, longTokens) {
   }
   return true;
 }
+// "Full coverage of the shorter name" is too weak on its own when that shorter name is itself
+// mostly generic words - live-tested and confirmed: "German U23 Combined Events Championships"
+// matched plain "German Championships" (score 1) because "german"+"championships" is a trivial
+// subset of the wanted name's tokens, even though "u23"/"combined"/"events" are exactly the
+// words that make it a different competition. Two guards close this: an age/category word
+// present on only one side is a hard block (these mark genuinely different competitions, not
+// wording differences), and the two names' meaningful-token counts can't differ by more than 2
+// (an abbreviation swaps one word for one token, it doesn't add three qualifying words).
+const CATEGORY_WORDS = new Set(['u23', 'u20', 'u18', 'u17', 'u16', 'u15', 'u14', 'junior', 'juniors', 'jr', 'youth', 'cadet', 'cadets']);
+function categoryMismatch(a, b) {
+  const as = new Set(a), bs = new Set(b);
+  for (const w of CATEGORY_WORDS) if (as.has(w) !== bs.has(w)) return true;
+  return false;
+}
 function nameScore(wanted, candidate) {
   if (!wanted || !candidate) return 0;
   if (wanted === candidate) return 4;
   if (candidate.includes(wanted) || wanted.includes(candidate)) return 3;
   const a = meaningfulTokens(wanted), b = meaningfulTokens(candidate);
+  if (Math.abs(a.length - b.length) > 2) return 0;
+  if (categoryMismatch(a, b)) return 0;
   const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
   if (shorter.length >= 2 && tokensMatch(shorter, longer)) return 1;
   return 0;
