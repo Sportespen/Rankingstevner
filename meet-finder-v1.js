@@ -21,6 +21,11 @@ const CHAMPIONSHIP={
     roadUrl:'https://worldathletics.org/stats-zone',
     entryStandards:{Decathlon:8620,Heptathlon:6550},
     rankingUrl:{Decathlon:'https://worldathletics.org/world-rankings/decathlon/men',Heptathlon:'https://worldathletics.org/world-rankings/heptathlon/women'},
+    // Beijing 27's own target field size per event isn't published anywhere reachable from
+    // here, so this uses the confirmed number of starters at the previous edition (Tokyo 25,
+    // per Wikipedia) as a stand-in - labelled as such below, not shown as Beijing's own quota.
+    previousChampionship:'Tokyo 2025',
+    previousFieldSize:{Decathlon:24,Heptathlon:24},
   },
   indoor:{
     body:'EA',
@@ -31,6 +36,13 @@ const CHAMPIONSHIP={
     roadUrl:'https://www.european-athletics.com/home/competitions/european-athletics-indoor-championships-2027/valencia',
     entryStandards:{},
     rankingUrl:{},
+    // Same approach as outdoor: Valencia 27's own quota isn't published, so this falls back
+    // to the previous European Indoor Championships (Apeldoorn 25, per Wikipedia) - men's
+    // indoor Heptathlon and women's indoor Pentathlon both had 14 starters. This app doesn't
+    // distinguish indoor Pentathlon from outdoor Heptathlon in its event codes, so the lookup
+    // below reuses the same Decathlon/Heptathlon keys as outdoor.
+    previousChampionship:'Apeldoorn 2025',
+    previousFieldSize:{Decathlon:14,Heptathlon:14},
   },
 };
 // EA has no confirmed per-event deep-link pattern (unlike WA's toplists path), so the EA
@@ -192,7 +204,9 @@ function championshipStripHTML(){
     // Ranking), and no Valencia 2027 standard figure could be confirmed anyway, so indoor
     // just points at Toplist instead of showing a number.
     const req=standard?`Kvalifiseringskrav: ${standard} p`:'Ingen direktekrav – kun Toplist';
-    return `<div><div style="font-weight:800">${indoor?'Innendørs':'Utendørs'} · ${esc(c.name)}</div><div class="muted" style="margin-top:4px">${req}</div><div style="margin-top:6px"><a class="buttonlike" href="${esc(topHref)}" target="_blank" rel="noopener">${topLabel}</a> <a class="buttonlike" href="${esc(c.roadUrl)}" target="_blank" rel="noopener">Road to ${esc(c.name)}</a></div></div>`;
+    const prevSize=c.previousFieldSize?.[code];
+    const places=prevSize?` · ${prevSize} plasser (som ${esc(c.previousChampionship)})`:'';
+    return `<div><div style="font-weight:800">${indoor?'Innendørs':'Utendørs'} · ${esc(c.name)}</div><div class="muted" style="margin-top:4px">${req}${places}</div><div style="margin-top:6px"><a class="buttonlike" href="${esc(topHref)}" target="_blank" rel="noopener">${topLabel}</a> <a class="buttonlike" href="${esc(c.roadUrl)}" target="_blank" rel="noopener">Road to ${esc(c.name)}</a></div></div>`;
   };
   return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box"><div style="font-size:12px;font-weight:800;letter-spacing:.12em;color:#007f73;margin:0 0 12px">KVALIFISERING TIL MESTERSKAP 2027</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">${section('outdoor')}${section('indoor')}</div></div>`;
 }
