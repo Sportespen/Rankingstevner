@@ -295,7 +295,12 @@ async function loadMeetDetails(id,insightHost){
     // venue/stadium/address field, so the map link stays on the calendar's city-level text
     // set at render time (mapUrl(m)) - there's nothing more precise to upgrade it to here.
   }catch(e){
-    if(insightHost)insightHost.innerHTML=`<span>Kontakt og premier</span><strong class="muted">${esc(e.message)}</strong>`;
+    // A 404 here means WA hasn't published this meet's organiser/contact page yet - normal
+    // for a meet many months out, not a technical failure - so show that instead of leaking
+    // the raw "WA-kilde 404" backend error string to the user.
+    const notYet=/^WA-kilde 404$/.test(e.message||'');
+    const msg=notYet?'Kontaktinfo er ikke publisert av arrangøren ennå.':e.message;
+    if(insightHost)insightHost.innerHTML=`<span>Kontakt og premier</span><strong class="muted">${esc(msg)}</strong>`;
   }
 }
 function loadAllMeetDetails(host){
