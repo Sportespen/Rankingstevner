@@ -47,6 +47,11 @@ export async function onRequestGet(context) {
 
     await Promise.all([0, 100, 200].map(async offset => {
       const wa = new URL('https://worldathletics.org/competition/calendar-results');
+      // Without isSearchReset=true the page seems to ignore a custom startDate/endDate and
+      // just show its default (upcoming-focused) view - which matches exactly what we saw:
+      // a past date range returning generic current/future-ish meets instead of the
+      // requested window.
+      wa.searchParams.set('isSearchReset', 'true');
       wa.searchParams.set('startDate', windowStart.toISOString().slice(0, 10));
       wa.searchParams.set('endDate', windowEnd.toISOString().slice(0, 10));
       wa.searchParams.set('disciplineId', '1');
