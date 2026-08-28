@@ -104,7 +104,14 @@ export async function onRequestGet(context) {
       wa.searchParams.set('regionId', '3');
       wa.searchParams.set('regionType', 'area');
       wa.searchParams.set('disciplineId', '1');
-      wa.searchParams.set('hideCompetitionsWithNoResults', 'true');
+      // hideCompetitionsWithNoResults=true was dropped here: WA's own "has results" flag looks
+      // unreliable for smaller/domestic federations - a meet can be missing that flag while its
+      // results page is actually populated (this is consistent with those same meets' results
+      // never turning up in generic web search either - the data quality gap is on WA's side,
+      // not just search indexing). Keeping the filter meant those meets' previous editions were
+      // silently dropped from the candidate list before name-matching ever got a chance to run.
+      // A wrongly-included candidate just falls through to "no-standings-found" below, so
+      // dropping the filter can only add candidates, never break an existing match.
       if (offset) wa.searchParams.set('offset', String(offset));
       try {
         const r = await fetch(wa.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
