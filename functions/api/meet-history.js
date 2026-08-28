@@ -18,6 +18,8 @@ const VERIFIED = [
   // Deliberately excludes "U23" so it never matches the separate German U23 Combined Events
   // Championships, whose result wasn't findable via search - that one falls through live.
   { match: /^(?!.*u23)(?=.*german)(?=.*championships).*$/i, event: 'Decathlon', year: 2025, winner: 'Tim Nowak', winnerMark: 8140, top: [8140, 7579, 7510, 7338, 7226, 6998, 6907, 6872], source: 'https://worldathletics.org/competition/calendar-results/results/7229381?day=2' },
+  { match: /czapiewski/i, event: 'Decathlon', year: 2025, winner: 'Ondřej Kopecký', winnerMark: 8254, top: [8254, 8136, 8107], source: 'https://worldathletics.org/competition/calendar-results/results/7223230?eventId=10229629' },
+  { match: /czapiewski/i, event: 'Heptathlon', year: 2025, winner: 'Adrianna Sułek-Schubert', winnerMark: 6287, top: [6287, 6249, 6159], source: 'https://worldathletics.org/competition/calendar-results/results/7223230?eventId=10229536' },
 ];
 
 export async function onRequestGet(context) {
