@@ -96,55 +96,43 @@ export async function onRequestGet(context) {
   const best = scored[0]?.c;
   if (!best) return json({ ok: true, found: false, reason: 'no-previous-edition-found', diagnostics });
 
-  let resultsData = null;
-  try {
-    const r = await fetch(`https://worldathletics.nimarion.de/competitions/${best.id}/results`, { headers: { Accept: 'application/json', 'User-Agent': 'Rankingstevner/1.0' } });
-    if (r.ok) resultsData = await r.json();
-    diagnostics.push({ source: 'results', competitionId: best.id, status: r.status });
-  } catch (e) {
-    diagnostics.push({ source: 'results', competitionId: best.id, error: String(e?.message || e) });
-  }
-  const events = Array.isArray(resultsData?.events) ? resultsData.events : [];
-  // Temporary while the /results shape is unverified: if there's no events array at all,
-  // show what top-level keys the response actually has instead of just failing silently.
-  if (!events.length) {
-    diagnostics.push({ source: 'results-shape', topLevelKeys: resultsData && typeof resultsData === 'object' ? Object.keys(resultsData) : typeof resultsData, sample: resultsData ? JSON.stringify(resultsData).slice(0, 500) : null });
-  } else {
-    diagnostics.push({ source: 'results-shape', eventCount: events.length, events: events.slice(0, 30).map(ev => ({ id: ev?.id ?? ev?.eventId ?? null, discipline: ev?.discipline || ev?.name || null })) });
-  }
-  // WA's own results-page URLs use a fixed eventId per discipline regardless of which
-  // competition it is (confirmed: eventId 10229629/10229536 appear for both Décastar and
-  // Hypomeeting's Decathlon/Heptathlon) - match on that id first since it's exact, falling
-  // back to matching the discipline name in case nimarion's ids don't line up with WA's own.
+  // nimarion's /competitions/{id}/results only mirrors WA's per-discipline results (100m,
+  // Long Jump, Shot Put, ... each as its own event) - the computed final combined-event
+  // standings with total points don't appear anywhere in that JSON (verified: neither
+  // eventId 10229629 nor 10229536 ever showed up there). That aggregated table only seems to
+  // be server-rendered on WA's own results page, so scrape that page directly instead.
   const WA_EVENT_ID = { Decathlon: 10229629, Heptathlon: 10229536 };
   const wantedId = WA_EVENT_ID[event];
-  const matchEvent = events.find(ev => Number(ev?.id ?? ev?.eventId) === wantedId)
-    || events.find(ev => new RegExp(event, 'i').test(String(ev?.discipline || ev?.name || '')));
-  if (!matchEvent) return json({ ok: true, found: false, reason: 'event-not-in-results', diagnostics });
+  const resultsUrl = new URL(`https://worldathletics.org/competition/calendar-results/results/${best.id}`);
+  resultsUrl.searchParams.set('eventId', String(wantedId));
 
-  const entries = [];
-  for (const race of matchEvent.races || []) {
-    for (const r of race?.results || []) {
-      const mark = Number(r?.mark);
-      if (!Number.isFinite(mark) || mark <= 0) continue;
-      const athlete = Array.isArray(r?.athletes) ? r.athletes[0] : r?.athlete;
-      const athleteName = athleteDisplayName(athlete);
-      entries.push({ place: Number(r?.place) || null, mark, name: athleteName });
-    }
+  let html = '';
+  try {
+    const r = await fetch(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
+    if (r.ok) html = await r.text();
+    diagnostics.push({ source: 'wa-results-page', url: resultsUrl.toString(), status: r.status, htmlLength: html.length });
+  } catch (e) {
+    diagnostics.push({ source: 'wa-results-page', url: resultsUrl.toString(), error: String(e?.message || e) });
   }
-  if (!entries.length) {
+
+  const rows = extractCombinedEventStandings(html);
+  if (!rows.length) {
+    // Temporary while this page's embedded data shape is unverified: show enough of the
+    // __NEXT_DATA__ payload (or its absence) to see what's actually there.
+    const m = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
     diagnostics.push({
-      source: 'entries-shape',
-      raceCount: Array.isArray(matchEvent.races) ? matchEvent.races.length : 0,
-      matchEventKeys: Object.keys(matchEvent || {}),
-      sampleRace: matchEvent?.races?.[0] ? JSON.stringify(matchEvent.races[0]).slice(0, 800) : null
+      source: 'wa-results-shape',
+      hasNextData: !!m,
+      nextDataLength: m ? m[1].length : 0,
+      nextDataSample: m ? decode(m[1]).slice(0, 1500) : null,
+      htmlSample: !m ? html.slice(0, 800) : null
     });
-    return json({ ok: true, found: false, reason: 'no-valid-marks', diagnostics });
+    return json({ ok: true, found: false, reason: 'no-standings-found', diagnostics });
   }
 
-  entries.sort((a, b) => b.mark - a.mark);
-  const marks = entries.map(e => e.mark);
-  const winner = entries[0];
+  rows.sort((a, b) => b.mark - a.mark);
+  const marks = rows.map(r => r.mark);
+  const winner = rows[0];
   const year = parseDate(best.start)?.getUTCFullYear() || null;
 
   return json({
@@ -157,17 +145,46 @@ export async function onRequestGet(context) {
     top8: marks.slice(0, 8),
     allMarks: marks,
     competitionId: best.id,
-    eventId: matchEvent.id || null,
-    source: matchEvent.id ? `https://worldathletics.org/competition/calendar-results/results/${best.id}?eventId=${matchEvent.id}` : `https://worldathletics.org/competition/calendar-results/results/${best.id}`,
+    eventId: wantedId,
+    source: resultsUrl.toString(),
     matchedMeetName: best.name,
     diagnostics
   });
 }
 
+// A combined-event standings row looks like {place/rank, athlete name, total points} - the
+// point total for a senior decathlon/heptathlon is reliably in the 1000s (roughly 3000-9500),
+// which is a distinctive enough range to tell it apart from individual-event marks (seconds,
+// metres, centimetres) without knowing the exact field names in advance.
+function extractCombinedEventStandings(html) {
+  const m = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+  if (!m) return [];
+  let data;
+  try { data = JSON.parse(decode(m[1])); } catch (_) { return []; }
+  const out = [];
+  const seen = new Set();
+  walkResults(data, out, seen);
+  return out;
+}
+function walkResults(v, out, seen) {
+  if (!v) return;
+  if (Array.isArray(v)) { for (const x of v) walkResults(x, out, seen); return; }
+  if (typeof v !== 'object') return;
+  const place = Number(v.place ?? v.rank ?? v.position);
+  const markRaw = v.total ?? v.points ?? v.score ?? v.mark;
+  const mark = Number(markRaw);
+  if (Number.isFinite(place) && place > 0 && Number.isFinite(mark) && mark >= 2000 && mark <= 9999) {
+    const name = athleteDisplayName(v.athlete) || athleteDisplayName(v) || (typeof v.competitor === 'string' ? v.competitor : null);
+    const key = `${place}|${mark}|${name || ''}`;
+    if (!seen.has(key)) { seen.add(key); out.push({ place, mark, name }); }
+  }
+  for (const x of Object.values(v)) walkResults(x, out, seen);
+}
 function athleteDisplayName(a) {
-  if (!a) return null;
-  if (a.name) return String(a.name);
-  if (a.fullName) return String(a.fullName);
+  if (!a || typeof a !== 'object') return null;
+  if (typeof a.name === 'string') return a.name;
+  if (typeof a.fullName === 'string') return a.fullName;
+  if (typeof a.athleteName === 'string') return a.athleteName;
   const first = a.firstName || a.firstname || '';
   const last = a.lastName || a.lastname || '';
   const full = `${first} ${last}`.trim();
