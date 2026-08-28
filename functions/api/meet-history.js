@@ -20,6 +20,12 @@ const VERIFIED = [
   { match: /^(?!.*u23)(?=.*german)(?=.*championships).*$/i, event: 'Decathlon', year: 2025, winner: 'Tim Nowak', winnerMark: 8140, top: [8140, 7579, 7510, 7338, 7226, 6998, 6907, 6872], source: 'https://worldathletics.org/competition/calendar-results/results/7229381?day=2' },
   { match: /czapiewski/i, event: 'Decathlon', year: 2025, winner: 'Ondřej Kopecký', winnerMark: 8254, top: [8254, 8136, 8107], source: 'https://worldathletics.org/competition/calendar-results/results/7223230?eventId=10229629' },
   { match: /czapiewski/i, event: 'Heptathlon', year: 2025, winner: 'Adrianna Sułek-Schubert', winnerMark: 6287, top: [6287, 6249, 6159], source: 'https://worldathletics.org/competition/calendar-results/results/7223230?eventId=10229536' },
+  // Indoor combined events - this app files men's indoor (also called Heptathlon in real WA
+  // terminology) under the same 'Decathlon' code it uses for men outdoors, and women's indoor
+  // Pentathlon under 'Heptathlon' - matching how target-score.js already picks the event code
+  // purely by sex, not by season.
+  { match: /tallinn/i, event: 'Decathlon', year: 2026, winner: 'Rasmus Roosleht', winnerMark: 6045, top: [6045], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' },
+  { match: /tallinn/i, event: 'Heptathlon', year: 2026, winner: 'Szabina Szucs', winnerMark: 4494, top: [4494], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' },
 ];
 
 export async function onRequestGet(context) {
