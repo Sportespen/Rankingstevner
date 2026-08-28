@@ -30,29 +30,30 @@ function fetchHistory(name, date){
 // that meet - otherwise an outdoor decathlon PB looks artificially unbeatable against every
 // indoor meet.
 //
-// Two earlier attempts at this got the data source wrong: window.__rankingstevnerOfficialRanking
-// .basis only holds the top `needed` (2) results actually selected for the athlete's combined
-// ranking SCORE - a live diagnostics dump showed an athlete whose two best results were both
-// outdoor Decathlon, so his real, legal indoor Heptathlon Short Track result never appeared in
-// that list at all (it just wasn't among his best 2 overall). That's the wrong pool to search:
-// what's needed is every legal scored result, not just the ones that made the ranking cut.
-// window.__rankingstevnerReconstructedBasis.candidates (exposed by ranking-basis.js) is that
-// full pool, and each entry already carries a `type` ('main' = the code's own real discipline,
-// 'similar' = its indoor/outdoor counterpart) computed by that file's own already-tested
-// discipline classification - reusing it here instead of re-deriving discipline name matching a
-// third time.
+// Two earlier attempts at this got the data source wrong. First,
+// window.__rankingstevnerOfficialRanking.basis only holds the top `needed` (2) results actually
+// selected for the athlete's combined ranking SCORE. Then window.__rankingstevnerReconstructedBasis
+// .candidates looked like the fix, but a second live diagnostics dump showed it was ALSO missing
+// a real, legal indoor Heptathlon Short Track result (5788pts, confirmed via the athlete's own WA
+// seasons-best page) - because that list is built by candidate(), which additionally requires
+// resolving a WA Result Score + a placingTables[category][place-1] lookup to succeed. That
+// machinery is for reconstructing a ranking SCORE and has nothing to do with "what did they
+// score in this discipline" - a result missing/failing either lookup got silently dropped
+// regardless of being a perfectly valid mark.
+// window.__rankingstevnerCombinedResults.rows (exposed by ranking-basis.js) bypasses that
+// entirely: only legal + date-valid + discipline classified, no ranking-score reconstruction.
 function bestOwnMark(indoor){
   const event = eventCode();
-  const reconstructed = window.__rankingstevnerReconstructedBasis;
-  const candidates = reconstructed?.candidates;
-  const diag = { indoor, event, hasReconstructedBasis: !!reconstructed, candidatesIsArray: Array.isArray(candidates), candidateCount: Array.isArray(candidates) ? candidates.length : null };
-  if (!Array.isArray(candidates) || !candidates.length) return { mark: null, diag };
+  const combined = window.__rankingstevnerCombinedResults;
+  const rows = combined?.event === event ? combined.rows : null;
+  const diag = { indoor, event, hasCombinedResults: !!combined, combinedEvent: combined?.event || null, rowsIsArray: Array.isArray(rows), rowCount: Array.isArray(rows) ? rows.length : null };
+  if (!Array.isArray(rows) || !rows.length) return { mark: null, diag };
   // For code='Decathlon' (men): 'main'=outdoor Decathlon, 'similar'=indoor Heptathlon.
   // For code='Heptathlon' (women): 'main'=outdoor Heptathlon, 'similar'=indoor Pentathlon.
   const wantType = indoor ? 'similar' : 'main';
-  diag.candidateEntries = candidates.map(c => ({ discipline: c.discipline, result: c.result, type: c.type, matched: c.type === wantType }));
-  const relevant = candidates.filter(c => c.type === wantType);
-  const marks = relevant.map(c => Number(c.result)).filter(Number.isFinite);
+  diag.rowEntries = rows.map(r => ({ discipline: r.discipline, mark: r.mark, type: r.type, matched: r.type === wantType }));
+  const relevant = rows.filter(r => r.type === wantType);
+  const marks = relevant.map(r => Number(r.mark)).filter(Number.isFinite);
   return { mark: marks.length ? Math.max(...marks) : null, diag };
 }
 function placementFor(allMarks, mark){

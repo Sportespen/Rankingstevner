@@ -108,7 +108,26 @@
     if(basis.complete){rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">BEREGNET RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div><div class="ranking-score-note">Midlertidig beregning. Ingen offisiell WA Ranking Score funnet.</div></div>`;}
     box.innerHTML=`<div class="ranking-basis-left">${leftHtml}</div>${rightHtml}`;waDetails.appendChild(box);waDetails.style.display='block';
   }
-  function refresh(){if(!allResults.length){window.__rankingstevnerReconstructedBasis={event:eventSelect.value,selected:[],needed:req[group(eventSelect.value)],complete:false,rankingScore:null};window.dispatchEvent(new CustomEvent('rankingbasisupdated'));return;}const b=basisFor(eventSelect.value);fillScores(b);setTimeout(()=>renderBasis(b),180);}
+  // "Historisk nivå" only needs the athlete's best raw mark in a given discipline (indoor
+  // Heptathlon vs outdoor Decathlon etc.) - not a reconstructed WA ranking score. Reusing
+  // candidate()/basisFor() for that turned out wrong: a live diagnostics dump showed a real,
+  // legal indoor Heptathlon Short Track result (5788pts, confirmed via the athlete's own WA
+  // seasons-best page) never appearing among the exposed candidates at all, because candidate()
+  // additionally requires resolving a WA Result Score + a placingTables[category][place-1]
+  // lookup to succeed - machinery this app needs for the ranking-score box above, but that has
+  // nothing to do with "what did they score in this discipline". A result missing/failing either
+  // of those got silently dropped regardless of being a perfectly valid mark. This exposes
+  // discipline-matched raw results directly - only legal + date-valid + discipline classified,
+  // no ranking-score reconstruction required.
+  function exposeRawCombinedResults(){
+    const code=eventSelect.value;
+    if(code!=='Decathlon'&&code!=='Heptathlon'){window.__rankingstevnerCombinedResults=null;return;}
+    const rows=allResults
+      .filter(r=>r.legal!==false&&validDate(r,code)&&combinedType(r.discipline,code))
+      .map(r=>({date:r.date||null,competition:r.competition||null,discipline:r.discipline||null,mark:r.mark??null,type:combinedType(r.discipline,code)}));
+    window.__rankingstevnerCombinedResults={event:code,rows};
+  }
+  function refresh(){exposeRawCombinedResults();if(!allResults.length){window.__rankingstevnerReconstructedBasis={event:eventSelect.value,selected:[],needed:req[group(eventSelect.value)],complete:false,rankingScore:null};window.dispatchEvent(new CustomEvent('rankingbasisupdated'));return;}const b=basisFor(eventSelect.value);fillScores(b);setTimeout(()=>renderBasis(b),180);}
   async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){await ensureScoring();refresh();return;}loading=true;try{const [res]=await Promise.all([fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=213`,{cache:'no-store'}),ensureScoring()]);const data=await res.json();if(data?.ok&&Array.isArray(data.results)){currentId=String(id);allResults=data.results;refresh();}}catch(_){}finally{loading=false;}}
   function idFromInput(){return waInput.value.trim().match(/(\d{7,9})/)?.[1]||'';}
   eventSelect.addEventListener('change',()=>setTimeout(refresh,220));sex.addEventListener('change',()=>setTimeout(refresh,260));waInput.addEventListener('change',()=>load(idFromInput()));if(waStatus){new MutationObserver(()=>{const id=idFromInput();if(id)setTimeout(()=>load(id),50);}).observe(waStatus,{childList:true,subtree:true,characterData:true});}window.addEventListener('rankingofficialloaded',()=>setTimeout(refresh,40));const initial=idFromInput();if(initial)setTimeout(()=>load(initial),400);
