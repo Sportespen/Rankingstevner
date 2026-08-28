@@ -21,6 +21,7 @@ export async function onRequestGet(context){
   const disciplineId=combined?'1':'';
   for(const offset of [0,100,200,300,400,500,600,700,800,900]){
     const wa=new URL('https://worldathletics.org/competition/calendar-results');
+    wa.searchParams.set('isSearchReset','true');
     wa.searchParams.set('startDate',startDate);
     wa.searchParams.set('endDate',endDate);
     if(disciplineId)wa.searchParams.set('disciplineId',disciplineId);
