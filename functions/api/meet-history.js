@@ -174,9 +174,9 @@ function walkResults(v, out, seen) {
   const markRaw = v.total ?? v.points ?? v.score ?? v.mark;
   const mark = Number(markRaw);
   if (Number.isFinite(place) && place > 0 && Number.isFinite(mark) && mark >= 2000 && mark <= 9999) {
-    const name = athleteDisplayName(v.athlete) || athleteDisplayName(v) || (typeof v.competitor === 'string' ? v.competitor : null);
+    const name = athleteDisplayName(v.athlete) || athleteDisplayName(v.competitor) || athleteDisplayName(v.person) || athleteDisplayName(v) || guessNameField(v);
     const key = `${place}|${mark}|${name || ''}`;
-    if (!seen.has(key)) { seen.add(key); out.push({ place, mark, name }); }
+    if (!seen.has(key)) { seen.add(key); out.push({ place, mark, name, _rawKeys: name ? undefined : Object.keys(v) }); }
   }
   for (const x of Object.values(v)) walkResults(x, out, seen);
 }
@@ -185,10 +185,22 @@ function athleteDisplayName(a) {
   if (typeof a.name === 'string') return a.name;
   if (typeof a.fullName === 'string') return a.fullName;
   if (typeof a.athleteName === 'string') return a.athleteName;
+  if (typeof a.competitorName === 'string') return a.competitorName;
+  if (typeof a.displayName === 'string') return a.displayName;
   const first = a.firstName || a.firstname || '';
   const last = a.lastName || a.lastname || '';
   const full = `${first} ${last}`.trim();
   return full || null;
+}
+// Last-resort guess when none of the known field names match: a person's name in this data
+// is reliably "letters/spaces/hyphens, 4-60 chars, at least two words" - distinct enough from
+// country codes, dates, or venue strings to be a safe enough heuristic for a display label.
+function guessNameField(v) {
+  for (const [key, val] of Object.entries(v)) {
+    if (typeof val !== 'string') continue;
+    if (/^[\p{L}][\p{L}'.\- ]{3,59}$/u.test(val) && val.trim().includes(' ') && !/^\d+$/.test(val)) return val;
+  }
+  return null;
 }
 function parseDate(v) {
   if (!v) return null;
@@ -205,14 +217,17 @@ function normalizeMeetName(s) {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
+// Word-overlap scoring used to also award a weak match for 2+ shared words - which is exactly
+// how "German U23 Combined Events Championships" got matched to a wholly different country's
+// meet (they share "combined events championships", generic words that appear in dozens of
+// different national championships). A wrong match here means linking to another country's
+// official results, which is worse than admitting no match was found - so only exact name
+// equality or one name being a full substring of the other counts now.
 function nameScore(wanted, candidate) {
   if (!wanted || !candidate) return 0;
   if (wanted === candidate) return 3;
   if (candidate.includes(wanted) || wanted.includes(candidate)) return 2;
-  const wantedWords = new Set(wanted.split(' ').filter(w => w.length > 2));
-  const candWords = candidate.split(' ').filter(w => w.length > 2);
-  const overlap = candWords.filter(w => wantedWords.has(w)).length;
-  return overlap >= 2 ? 1 : 0;
+  return 0;
 }
 function decode(v) { return String(v || '').replace(/\\u0026/g, '&').replace(/\\u003c/g, '<').replace(/\\u003e/g, '>').replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&'); }
 function walk(v, out) {
