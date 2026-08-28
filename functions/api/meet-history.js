@@ -281,12 +281,44 @@ function normalizeMeetName(s) {
 // how "German U23 Combined Events Championships" got matched to a wholly different country's
 // meet (they share "combined events championships", generic words that appear in dozens of
 // different national championships). A wrong match here means linking to another country's
-// official results, which is worse than admitting no match was found - so only exact name
-// equality or one name being a full substring of the other counts now.
+// official results, which is worse than admitting no match was found - so a match now requires
+// full-string equality/containment, OR (below) every distinguishing word of the shorter name
+// individually accounted for in the other - never just some of them.
+//
+// That second tier exists because names get abbreviated inconsistently between editions - a
+// live diagnostics dump showed a meet whose current name reads "... Int.le ... Atl. etica ..."
+// (European meets commonly punctuate abbreviations like "Int.le" for "Internazionale"), which
+// after punctuation is collapsed to spaces normalizes to the separate tokens "int"/"le" and
+// "atl"/"etica" - neither a substring of a previous edition's fully spelled-out "internazionale"
+// / "atletica". Filtering out short connective words (di/le/a/of/...) via a length>=3 cutoff and
+// requiring every remaining token of the shorter name to prefix-match a distinct token of the
+// longer one - not merely intersect - keeps this from reopening the German/Austria bug: that
+// pair only ever shared generic words ("combined","events","championships"), never a country
+// name, so full coverage of the shorter list still fails for it (see tests run before shipping).
+function meaningfulTokens(norm) {
+  return norm.split(' ').filter(w => w.length >= 3);
+}
+function tokensMatch(shortTokens, longTokens) {
+  if (!shortTokens.length) return false;
+  const used = new Array(longTokens.length).fill(false);
+  for (const sw of shortTokens) {
+    let matched = false;
+    for (let i = 0; i < longTokens.length; i++) {
+      if (used[i]) continue;
+      const lw = longTokens[i];
+      if (lw === sw || lw.startsWith(sw) || sw.startsWith(lw)) { used[i] = true; matched = true; break; }
+    }
+    if (!matched) return false;
+  }
+  return true;
+}
 function nameScore(wanted, candidate) {
   if (!wanted || !candidate) return 0;
-  if (wanted === candidate) return 3;
-  if (candidate.includes(wanted) || wanted.includes(candidate)) return 2;
+  if (wanted === candidate) return 4;
+  if (candidate.includes(wanted) || wanted.includes(candidate)) return 3;
+  const a = meaningfulTokens(wanted), b = meaningfulTokens(candidate);
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  if (shorter.length >= 2 && tokensMatch(shorter, longer)) return 1;
   return 0;
 }
 function decode(v) { return String(v || '').replace(/\\u0026/g, '&').replace(/\\u003c/g, '<').replace(/\\u003e/g, '>').replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&'); }
