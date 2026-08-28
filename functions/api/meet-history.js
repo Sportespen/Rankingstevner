@@ -100,6 +100,13 @@ export async function onRequestGet(context) {
     diagnostics.push({ source: 'results', competitionId: best.id, error: String(e?.message || e) });
   }
   const events = Array.isArray(resultsData?.events) ? resultsData.events : [];
+  // Temporary while the /results shape is unverified: if there's no events array at all,
+  // show what top-level keys the response actually has instead of just failing silently.
+  if (!events.length) {
+    diagnostics.push({ source: 'results-shape', topLevelKeys: resultsData && typeof resultsData === 'object' ? Object.keys(resultsData) : typeof resultsData, sample: resultsData ? JSON.stringify(resultsData).slice(0, 500) : null });
+  } else {
+    diagnostics.push({ source: 'results-shape', eventCount: events.length, eventNames: events.slice(0, 30).map(ev => ev?.discipline || ev?.name || '(no name/discipline field)') });
+  }
   const matchEvent = events.find(ev => new RegExp(event, 'i').test(String(ev?.discipline || ev?.name || '')));
   if (!matchEvent) return json({ ok: true, found: false, reason: 'event-not-in-results', diagnostics });
 
@@ -113,7 +120,15 @@ export async function onRequestGet(context) {
       entries.push({ place: Number(r?.place) || null, mark, name: athleteName });
     }
   }
-  if (!entries.length) return json({ ok: true, found: false, reason: 'no-valid-marks', diagnostics });
+  if (!entries.length) {
+    diagnostics.push({
+      source: 'entries-shape',
+      raceCount: Array.isArray(matchEvent.races) ? matchEvent.races.length : 0,
+      matchEventKeys: Object.keys(matchEvent || {}),
+      sampleRace: matchEvent?.races?.[0] ? JSON.stringify(matchEvent.races[0]).slice(0, 800) : null
+    });
+    return json({ ok: true, found: false, reason: 'no-valid-marks', diagnostics });
+  }
 
   entries.sort((a, b) => b.mark - a.mark);
   const marks = entries.map(e => e.mark);
