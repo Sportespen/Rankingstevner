@@ -46,6 +46,10 @@ export async function onRequestGet(context) {
     wa.searchParams.set('startDate', startDate.toISOString().slice(0, 10));
     wa.searchParams.set('endDate', endDate.toISOString().slice(0, 10));
     wa.searchParams.set('disciplineId', '1');
+    // Without this the calendar defaults to listing competitions regardless of whether they
+    // have published results (including future ones with none yet), which is presumably why
+    // a past-date search was coming back full of unrelated meets instead of completed ones.
+    wa.searchParams.set('hideCompetitionsWithNoResults', 'true');
     if (offset) wa.searchParams.set('offset', String(offset));
     try {
       const r = await fetch(wa.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
