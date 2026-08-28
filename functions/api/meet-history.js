@@ -105,9 +105,16 @@ export async function onRequestGet(context) {
   if (!events.length) {
     diagnostics.push({ source: 'results-shape', topLevelKeys: resultsData && typeof resultsData === 'object' ? Object.keys(resultsData) : typeof resultsData, sample: resultsData ? JSON.stringify(resultsData).slice(0, 500) : null });
   } else {
-    diagnostics.push({ source: 'results-shape', eventCount: events.length, eventNames: events.slice(0, 30).map(ev => ev?.discipline || ev?.name || '(no name/discipline field)') });
+    diagnostics.push({ source: 'results-shape', eventCount: events.length, events: events.slice(0, 30).map(ev => ({ id: ev?.id ?? ev?.eventId ?? null, discipline: ev?.discipline || ev?.name || null })) });
   }
-  const matchEvent = events.find(ev => new RegExp(event, 'i').test(String(ev?.discipline || ev?.name || '')));
+  // WA's own results-page URLs use a fixed eventId per discipline regardless of which
+  // competition it is (confirmed: eventId 10229629/10229536 appear for both Décastar and
+  // Hypomeeting's Decathlon/Heptathlon) - match on that id first since it's exact, falling
+  // back to matching the discipline name in case nimarion's ids don't line up with WA's own.
+  const WA_EVENT_ID = { Decathlon: 10229629, Heptathlon: 10229536 };
+  const wantedId = WA_EVENT_ID[event];
+  const matchEvent = events.find(ev => Number(ev?.id ?? ev?.eventId) === wantedId)
+    || events.find(ev => new RegExp(event, 'i').test(String(ev?.discipline || ev?.name || '')));
   if (!matchEvent) return json({ ok: true, found: false, reason: 'event-not-in-results', diagnostics });
 
   const entries = [];
