@@ -56,7 +56,7 @@ function renderHtml(data){
   const pb = bestOwnMark();
   const place = pb != null ? placementFor(data.allMarks, pb) : null;
   const placeLine = place != null
-    ? `<small>Din beste tellende prestasjon (${pb} p) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
+    ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste tellende prestasjon (${pb} p) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
     : '';
   return `<strong>${data.year}: vinner ${data.winnerMark} p · topp 3 snitt ${avg(data.top3)} p · topp 8 snitt ${avg(data.top8)} p</strong><small>Vinner: ${data.winner || 'ukjent'}. <a href="${data.source}" target="_blank" rel="noopener">Se offisielle WA-resultater</a></small>${placeLine}`;
 }
