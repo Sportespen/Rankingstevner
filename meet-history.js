@@ -1,83 +1,61 @@
-// Verified historical competition level for selected meetings.
-// Only values backed by official World Athletics result pages are shown.
+// Historisk nivå for hvert stevne - finner forrige utgave av stevnet i World Athletics'
+// kalender og henter dens faktiske sluttresultater i mangekamp-øvelsen, i stedet for en
+// håndskrevet liste over noen få stevner.
 (() => {
 'use strict';
-const HISTORY = [
-  {
-    match: /decastar/i,
-    event: 'Decathlon',
-    sex: 'M',
-    year: 2025,
-    winner: 'Ayden Owens-Delerme',
-    winnerMark: 8478,
-    top3: [8478,8236,8177],
-    top8: [8478,8236,8177,8123,8102,8020,7994,7903],
-    source: 'https://worldathletics.org/competition/calendar-results/results/7196994?eventId=10229629'
-  },
-  {
-    match: /decastar/i,
-    event: 'Heptathlon',
-    sex: 'W',
-    year: 2025,
-    winner: 'Martha Araujo',
-    winnerMark: 6451,
-    top3: [6451,6365,6283],
-    top8: [6451,6365,6283,6271,6195,6190,6083,6017],
-    source: 'https://worldathletics.org/competition/calendar-results/results/7196994?eventId=10229536'
-  },
-  {
-    match: /hypomeeting|gotzis|götzis/i,
-    event: 'Decathlon',
-    sex: 'M',
-    year: 2026,
-    winner: 'Simon Ehammer',
-    winnerMark: 8778,
-    top3: [8778,8730,8528],
-    top8: [8778,8730,8528,8497,8428,8413,8400,8357],
-    source: 'https://worldathletics.org/competition/calendar-results/results/7232824?eventId=10229629&gender=M'
-  },
-  {
-    match: /hypomeeting|gotzis|götzis/i,
-    event: 'Heptathlon',
-    sex: 'W',
-    year: 2026,
-    winner: 'Annik Kälin',
-    winnerMark: 6726,
-    top3: [6726,6705,6627],
-    top8: [6726,6705,6627,6449,6413,6381,6350,6328],
-    source: 'https://worldathletics.org/competition/calendar-results/results/7232824?eventId=10229536'
-  },
-  {
-    match: /arona|pruebas combinadas/i,
-    event: 'Decathlon',
-    sex: 'M',
-    year: 2025,
-    winner: 'Antoine Ferranti',
-    winnerMark: 8221,
-    top3: [8221,7972,7889],
-    top8: [8221,7972,7889,7826,7804,7722,7501,7453],
-    source: 'https://worldathletics.org/competition/calendar-results/results/7216692?day=2'
-  },
-  {
-    match: /german combined events championships|german championships/i,
-    event: 'Decathlon',
-    sex: 'M',
-    year: 2025,
-    winner: 'Tim Nowak',
-    winnerMark: 8140,
-    top3: [8140,7579,7510],
-    top8: [8140,7579,7510,7338,7226,6998,6907,6872],
-    source: 'https://worldathletics.org/competition/calendar-results/results/7229381?day=2'
+const cache = new Map();
+
+function eventCode(){ return document.getElementById('event')?.value || ''; }
+function avg(a){ return Math.round(a.reduce((s,x)=>s+x,0)/a.length); }
+
+function fetchHistory(name, date){
+  const event = eventCode();
+  if (event !== 'Decathlon' && event !== 'Heptathlon') return Promise.resolve(null);
+  const key = `${name}|${date||''}|${event}`;
+  if (cache.has(key)) return cache.get(key);
+  const p = (async () => {
+    try {
+      const res = await fetch(`/api/meet-history?name=${encodeURIComponent(name)}&event=${encodeURIComponent(event)}&date=${encodeURIComponent(date||'')}&v=1`, { cache: 'no-store' });
+      const data = await res.json();
+      return data?.ok ? data : null;
+    } catch (_) { return null; }
+  })();
+  cache.set(key, p);
+  return p;
+}
+
+// The best mark among the athlete's own currently-counting WA results (the same table shown
+// under "Tellende rankinggrunnlag") - not literally an all-time PB, but the closest thing
+// already available without a separate fetch.
+function bestOwnMark(){
+  const basis = window.__rankingstevnerOfficialRanking?.basis;
+  if (!Array.isArray(basis) || !basis.length) return null;
+  const marks = basis.map(b => Number(b.result)).filter(Number.isFinite);
+  return marks.length ? Math.max(...marks) : null;
+}
+function placementFor(allMarks, mark){
+  if (!Array.isArray(allMarks) || !allMarks.length || !Number.isFinite(mark)) return null;
+  return allMarks.filter(m => m > mark).length + 1;
+}
+function ordinal(n){ return `${n}.`; }
+
+function renderHtml(data){
+  if (!data || !data.found) {
+    return '<strong>Historiske resultater er ikke verifisert ennå.</strong><small>Fant ikke forrige utgave av stevnet i World Athletics-kalenderen.</small>';
   }
-];
-function avg(a){return Math.round(a.reduce((s,x)=>s+x,0)/a.length);}
-function eventCode(){return document.getElementById('event')?.value||'';}
-function sex(){return document.getElementById('sex')?.value||'M';}
-function get(name){return HISTORY.find(h=>h.match.test(String(name||''))&&h.event===eventCode()&&h.sex===sex())||null;}
-window.RankingstevnerMeetHistory={
-  get,
-  html(name){const h=get(name);if(!h)return '<strong>Historiske resultater er ikke verifisert ennå.</strong><small>Vises først når vi har en offisiell World Athletics-kilde.</small>';
-    return `<strong>${h.year}: vinner ${h.winnerMark} p · topp 3 snitt ${avg(h.top3)} p · topp 8 snitt ${avg(h.top8)} p</strong><small>Vinner: ${h.winner}. <a href="${h.source}" target="_blank" rel="noopener">Se offisielle WA-resultater</a></small>`;
+  const pb = bestOwnMark();
+  const place = pb != null ? placementFor(data.allMarks, pb) : null;
+  const placeLine = place != null
+    ? `<small>Din beste tellende prestasjon (${pb} p) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
+    : '';
+  return `<strong>${data.year}: vinner ${data.winnerMark} p · topp 3 snitt ${avg(data.top3)} p · topp 8 snitt ${avg(data.top8)} p</strong><small>Vinner: ${data.winner || 'ukjent'}. <a href="${data.source}" target="_blank" rel="noopener">Se offisielle WA-resultater</a></small>${placeLine}`;
+}
+
+window.RankingstevnerMeetHistory = {
+  loadingHtml: '<strong>Søker i World Athletics-kalenderen …</strong><small>Henter forrige utgave av stevnet.</small>',
+  async htmlAsync(name, date){
+    const data = await fetchHistory(name, date);
+    return renderHtml(data);
   }
 };
 })();

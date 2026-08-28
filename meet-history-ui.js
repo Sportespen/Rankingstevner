@@ -1,22 +1,23 @@
 // Inject verified historical level into Stevnefinner cards after each render.
 (() => {
 'use strict';
-let busy=false;
 function apply(){
-  if(busy)return; busy=true;
-  try{
-    const api=window.RankingstevnerMeetHistory;if(!api)return;
-    document.querySelectorAll('.meet-card-v1').forEach(card=>{
-      const name=card.querySelector('h4')?.textContent?.trim()||'';
-      const boxes=[...card.querySelectorAll('.meet-insight')];
-      const history=boxes.find(x=>/historisk nivå/i.test(x.textContent||''));
-      if(!history)return;
-      const html=api.html(name);
-      if(history.dataset.historyHtml===html)return;
-      history.dataset.historyHtml=html;
+  const api=window.RankingstevnerMeetHistory;if(!api)return;
+  document.querySelectorAll('.meet-card-v1').forEach(card=>{
+    const name=card.querySelector('h4')?.textContent?.trim()||'';
+    const date=card.dataset.meetStart||'';
+    const boxes=[...card.querySelectorAll('.meet-insight')];
+    const history=boxes.find(x=>/historisk nivå/i.test(x.textContent||''));
+    if(!history)return;
+    const requestKey=`${name}|${date}|${document.getElementById('event')?.value||''}`;
+    if(history.dataset.historyRequestKey===requestKey)return;
+    history.dataset.historyRequestKey=requestKey;
+    history.innerHTML=`<span>Historisk nivå</span>${api.loadingHtml}`;
+    api.htmlAsync(name,date).then(html=>{
+      if(history.dataset.historyRequestKey!==requestKey)return; // card moved on to a different meet/event since
       history.innerHTML=`<span>Historisk nivå</span>${html}`;
     });
-  } finally {busy=false;}
+  });
 }
 function loadDedupe(){
   if(document.querySelector('script[data-meet-dedupe]'))return;
