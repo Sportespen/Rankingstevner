@@ -6,14 +6,15 @@ function apply(){
   document.querySelectorAll('.meet-card-v1').forEach(card=>{
     const name=card.querySelector('h4')?.textContent?.trim()||'';
     const date=card.dataset.meetStart||'';
+    const indoor=card.dataset.meetIndoor==='1';
     const boxes=[...card.querySelectorAll('.meet-insight')];
     const history=boxes.find(x=>/historisk nivå/i.test(x.textContent||''));
     if(!history)return;
-    const requestKey=`${name}|${date}|${document.getElementById('event')?.value||''}`;
+    const requestKey=`${name}|${date}|${indoor}|${document.getElementById('event')?.value||''}`;
     if(history.dataset.historyRequestKey===requestKey)return;
     history.dataset.historyRequestKey=requestKey;
     history.innerHTML=`<span>Historisk nivå</span>${api.loadingHtml}`;
-    api.htmlAsync(name,date).then(html=>{
+    api.htmlAsync(name,date,indoor).then(html=>{
       if(history.dataset.historyRequestKey!==requestKey)return; // card moved on to a different meet/event since
       history.innerHTML=`<span>Historisk nivå</span>${html}`;
     });

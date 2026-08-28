@@ -24,13 +24,33 @@ function fetchHistory(name, date){
   return p;
 }
 
-// The best mark among the athlete's own currently-counting WA results (the same table shown
-// under "Tellende rankinggrunnlag") - not literally an all-time PB, but the closest thing
-// already available without a separate fetch.
-function bestOwnMark(){
+// WA's own world ranking for men's combined events pools outdoor Decathlon (10 events) and
+// indoor Heptathlon (7 events) marks together into one ranking basis (women: outdoor
+// Heptathlon + indoor Pentathlon) - this app's "Tellende rankinggrunnlag" mirrors that on
+// purpose. But an outdoor 10-event total and an indoor 7-event total aren't on the same raw
+// points scale (more events structurally means more points), so comparing "what place would my
+// best mark get" against one specific meet's field needs the mark from the SAME real-world
+// discipline as that meet - otherwise an outdoor decathlon PB looks artificially unbeatable
+// against every indoor meet. This mirrors the exact discipline-name convention ranking-basis.js
+// already uses to tell them apart (WA labels indoor men's combined events and outdoor women's
+// heptathlon in a way that needs the same "short track"/"sh" check to disambiguate).
+function normDiscipline(s){ return String(s||'').toLowerCase().replace(/metres?|meters?/g,'m').replace(/[^a-z0-9]+/g,''); }
+function matchesEventVariant(discipline, code, indoor){
+  const n = normDiscipline(discipline);
+  if (code === 'Decathlon') return indoor ? (n.includes('heptathlon') && (n.includes('shorttrack') || n.endsWith('sh'))) : n.startsWith('decathlon');
+  if (code === 'Heptathlon') return indoor ? (n.includes('pentathlon') && (n.includes('shorttrack') || n.endsWith('sh') || n === 'pentathlon')) : (n.startsWith('heptathlon') && !n.includes('shorttrack') && !n.endsWith('sh'));
+  return false;
+}
+// The best mark among the athlete's own currently-counting WA results for the specific
+// indoor/outdoor discipline this meet actually is (the same table shown under "Tellende
+// rankinggrunnlag") - not literally an all-time PB, but the closest thing already available
+// without a separate fetch.
+function bestOwnMark(indoor){
   const basis = window.__rankingstevnerOfficialRanking?.basis;
   if (!Array.isArray(basis) || !basis.length) return null;
-  const marks = basis.map(b => Number(b.result)).filter(Number.isFinite);
+  const event = eventCode();
+  const relevant = basis.filter(b => matchesEventVariant(b.discipline, event, indoor));
+  const marks = relevant.map(b => Number(b.result)).filter(Number.isFinite);
   return marks.length ? Math.max(...marks) : null;
 }
 function placementFor(allMarks, mark){
@@ -49,11 +69,11 @@ function diagnosticsHtml(data){
   return `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px;color:#677585">Diagnostikk</summary><pre style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:#f7f9fb;padding:8px;border-radius:6px;margin-top:6px">${diag}</pre></details>`;
 }
 
-function renderHtml(data){
+function renderHtml(data, indoor){
   if (!data || !data.found) {
     return `<strong>Historiske resultater er ikke verifisert ennå.</strong><small>Fant ikke forrige utgave av stevnet i World Athletics-kalenderen.</small>${diagnosticsHtml(data)}`;
   }
-  const pb = bestOwnMark();
+  const pb = bestOwnMark(indoor);
   const place = pb != null ? placementFor(data.allMarks, pb) : null;
   const placeLine = place != null
     ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste tellende prestasjon (${pb} p) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
@@ -69,9 +89,9 @@ function renderHtml(data){
 
 window.RankingstevnerMeetHistory = {
   loadingHtml: '<strong>Søker i World Athletics-kalenderen …</strong><small>Henter forrige utgave av stevnet.</small>',
-  async htmlAsync(name, date){
+  async htmlAsync(name, date, indoor){
     const data = await fetchHistory(name, date);
-    return renderHtml(data);
+    return renderHtml(data, indoor);
   }
 };
 })();
