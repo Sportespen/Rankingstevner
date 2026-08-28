@@ -24,6 +24,12 @@ export async function onRequestGet(context){
     wa.searchParams.set('isSearchReset','true');
     wa.searchParams.set('startDate',startDate);
     wa.searchParams.set('endDate',endDate);
+    // regionId=3&regionType=area is WA's own Europe filter (confirmed from the site's own
+    // discipline+region picker) - the app only ever wants European meets anyway (filtered
+    // client-side already via isEurope()), so narrowing server-side too means far fewer
+    // irrelevant pages to page through for the same coverage.
+    wa.searchParams.set('regionId','3');
+    wa.searchParams.set('regionType','area');
     if(disciplineId)wa.searchParams.set('disciplineId',disciplineId);
     if(offset)wa.searchParams.set('offset',String(offset));
     try{

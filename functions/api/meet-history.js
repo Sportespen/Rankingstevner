@@ -85,6 +85,10 @@ export async function onRequestGet(context) {
       wa.searchParams.set('isSearchReset', 'true');
       wa.searchParams.set('startDate', windowStart.toISOString().slice(0, 10));
       wa.searchParams.set('endDate', windowEnd.toISOString().slice(0, 10));
+      // regionId=3&regionType=area is WA's own Europe filter (confirmed on the site itself) -
+      // narrows the candidate pool a lot, same reasoning as meet-search.js.
+      wa.searchParams.set('regionId', '3');
+      wa.searchParams.set('regionType', 'area');
       wa.searchParams.set('disciplineId', '1');
       wa.searchParams.set('hideCompetitionsWithNoResults', 'true');
       if (offset) wa.searchParams.set('offset', String(offset));
