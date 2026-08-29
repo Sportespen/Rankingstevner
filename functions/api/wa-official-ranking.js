@@ -178,6 +178,16 @@ async function trpc(proc,input){
   return body?.result?.data?.json;
 }
 
+// A few full, unmodified rows (not just the fields this file already picks out) from whichever
+// page the athlete was actually found on - to answer a real open question: this list has far
+// fewer entries (~1800) than the true number of ranked athletes worldwide (confirmed: one
+// athlete's real WA world rank was 3532nd, yet still appeared on this list), so SOME filtering is
+// happening, but nothing here confirms what kind - Europe-only, a score cutoff, a recency window,
+// or something else. Dumping raw rows (country/nationality fields if present, whatever the shape
+// actually is) is the fastest way to settle it from a live report instead of guessing further.
+function sampleRows(rows){
+  return (rows||[]).slice(0,5).map(r=>r&&typeof r==='object'?{...r}:r);
+}
 function athleteMatches(row,wantedName,wantedSlug){
   const rowSlug=String(row?.athleteUrlSlug||'').trim();
   if(wantedSlug&&rowSlug&&rowSlug===wantedSlug)return true;
@@ -196,7 +206,10 @@ async function fetchOfficialRanking(slug,gender,name,athleteSlug,knownRank,diagn
   const pageSize=Math.max(1,firstRows.length||100);
   let row=firstRows.find(r=>athleteMatches(r,name,athleteSlug));
   diagnostics.push({source:'ea-ranking',slug,gender,page:1,count:firstRows.length,pages:maxPages,pageSize,knownRank,found:!!row});
-  if(row&&validScore(row.rankingScore))return {row,page:1,rankDate:first?.rankDate||null};
+  if(row&&validScore(row.rankingScore)){
+    diagnostics.push({source:'ea-ranking-row-sample',page:1,sample:sampleRows(firstRows)});
+    return {row,page:1,rankDate:first?.rankDate||null};
+  }
 
   const targets=[];
   if(validRank(knownRank)){
@@ -212,7 +225,10 @@ async function fetchOfficialRanking(slug,gender,name,athleteSlug,knownRank,diagn
       const rows=Array.isArray(data?.rankings)?data.rankings:[];
       row=rows.find(r=>athleteMatches(r,name,athleteSlug));
       diagnostics.push({source:'ea-ranking-targeted',slug,gender,page,count:rows.length,found:!!row});
-      if(row&&validScore(row.rankingScore))return {row,page,rankDate:data?.rankDate||first?.rankDate||null};
+      if(row&&validScore(row.rankingScore)){
+        diagnostics.push({source:'ea-ranking-row-sample',page,sample:sampleRows(rows)});
+        return {row,page,rankDate:data?.rankDate||first?.rankDate||null};
+      }
     }catch(e){diagnostics.push({source:'ea-ranking-targeted',slug,gender,page,error:String(e?.message||e)});}
   }
 
@@ -226,6 +242,7 @@ async function fetchOfficialRanking(slug,gender,name,athleteSlug,knownRank,diagn
       row=rows.find(r=>athleteMatches(r,name,athleteSlug));
       if(row&&validScore(row.rankingScore)){
         diagnostics.push({source:'ea-ranking-fullscan',slug,gender,page,found:true});
+        diagnostics.push({source:'ea-ranking-row-sample',page,sample:sampleRows(rows)});
         return {row,page,rankDate:data?.rankDate||first?.rankDate||null};
       }
     }catch(e){diagnostics.push({source:'ea-ranking-fullscan',slug,gender,page,error:String(e?.message||e)});break;}
