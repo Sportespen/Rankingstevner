@@ -19,23 +19,17 @@ function fmtDate(v){if(!v)return'–';const d=new Date(v);if(Number.isNaN(d.getT
 function renderLoading(){mount.innerHTML=`<strong>Rankinggrunnlag for ${label()}:</strong><br><span class="muted">Henter offisiell ranking fra World Athletics …</span>`;}
 function renderNone(d){const diag=esc(JSON.stringify(d?.diagnostics??d??{},null,2));mount.innerHTML=`<strong>Rankinggrunnlag for ${label()}:</strong><br><span class="muted">Ingen verifisert WA-ranking funnet for denne øvelsen.</span><details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">WA-diagnostikk</summary><pre style="white-space:pre-wrap;word-break:break-word;font-size:12px;background:#f7f9fb;padding:10px;border-radius:8px;margin-top:8px">${diag}</pre></details>`;window.__rankingstevnerOfficialRanking=null;}
 function basisHtml(data,heading){const rows=Array.isArray(data?.basis)?data.basis:[];if(!rows.length)return `<div class="muted">Offisiell Ranking Score er hentet, men WA leverte ikke detaljert rankinggrunnlag i dette oppslaget.</div>`;return `<div><strong>Tellende rankinggrunnlag i ${esc(heading)} fra World Athletics:</strong><div style="overflow-x:auto;margin-top:7px"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left;padding:6px">Dato</th><th style="text-align:left;padding:6px">Stevne</th><th style="text-align:left;padding:6px">Kat.</th><th style="text-align:left;padding:6px">Resultat</th><th style="text-align:right;padding:6px">Result Score</th><th style="text-align:right;padding:6px">Placing Score</th><th style="text-align:right;padding:6px">Performance Score</th></tr></thead><tbody>${rows.map(r=>`<tr style="border-top:1px solid #e5ecea"><td style="padding:6px">${fmtDate(r.date)}</td><td style="padding:6px">${esc(r.competition||'–')}</td><td style="padding:6px">${esc(r.category||'–')}</td><td style="padding:6px">${esc(r.result??r.mark??'–')}</td><td style="padding:6px;text-align:right">${r.resultScore??'–'}</td><td style="padding:6px;text-align:right">${r.placingScore??'–'}</td><td style="padding:6px;text-align:right;font-weight:700">${r.performanceScore??'–'}</td></tr>`).join('')}</tbody></table></div></div>`;}
-// `rank`/`rankScope` and `europeanRank` are genuinely different populations, not the same number
-// from two sources (see functions/api/wa-official-ranking.js) - nimarion's own athlete lookup
-// (rankScope:'world') is sourced directly from World Athletics' GraphQL backend, while
-// europeanRank only reflects standing among European athletes. Showing a European number
-// labelled "i verden" was reporting a real figure under the wrong scope, so each is only ever
-// shown under its own correct label - "i verden" requires rankScope==='world", the European
-// figure (when it exists and differs from the world one) gets its own line.
+// The rank shown here is now sourced directly from WA's own world-rankings page (see
+// functions/api/wa-official-ranking.js) - EA is no longer used anywhere in this file, per
+// explicit instruction, after live diagnostics confirmed its list was Europe-scoped rather than
+// the world ranking this app needs. Only ever shows "i verden" when rankScope is actually
+// 'world' - never a number whose real scope isn't confirmed.
 function render(data){
   const score=Number(data.score),heading=label();
   const rank=Number(data.rank),hasWorldRank=data.rankScope==='world'&&Number.isFinite(rank)&&rank>0;
-  const euroRank=Number(data.europeanRank),hasEuroRank=Number.isFinite(euroRank)&&euroRank>0&&euroRank!==(hasWorldRank?rank:null);
-  const rankLines=[
-    hasWorldRank?`<div style="font-size:20px;font-weight:800;color:#0b5f58;margin-bottom:6px">#${rank} i verden</div>`:'',
-    hasEuroRank?`<div style="font-size:14px;font-weight:700;color:#526170;margin-bottom:6px">#${euroRank} i Europa</div>`:''
-  ].join('');
-  mount.innerHTML=`<div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:18px;align-items:stretch"><div>${basisHtml(data,heading)}</div><div style="background:#f7fbfa;border:1px solid #cfe2dc;border-radius:14px;padding:22px 18px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center"><div style="font-size:13px;letter-spacing:.12em;font-weight:900;color:#0b5f58">OFFISIELL WA RANKING SCORE</div><div style="font-size:52px;line-height:1;font-weight:900;color:#0b4f4a;margin:14px 0 10px">${score}</div>${rankLines}</div></div>`;
-  window.__rankingstevnerOfficialRanking={event:eventSelect.value,score,rank:hasWorldRank?rank:null,europeanRank:hasEuroRank?euroRank:null,basis:Array.isArray(data.basis)?data.basis:[],source:'World Athletics official ranking calculation'};
+  const rankLine=hasWorldRank?`<div style="font-size:20px;font-weight:800;color:#0b5f58;margin-bottom:6px">#${rank} i verden</div>`:'';
+  mount.innerHTML=`<div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:18px;align-items:stretch"><div>${basisHtml(data,heading)}</div><div style="background:#f7fbfa;border:1px solid #cfe2dc;border-radius:14px;padding:22px 18px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center"><div style="font-size:13px;letter-spacing:.12em;font-weight:900;color:#0b5f58">OFFISIELL WA RANKING SCORE</div><div style="font-size:52px;line-height:1;font-weight:900;color:#0b4f4a;margin:14px 0 10px">${score}</div>${rankLine}</div></div>`;
+  window.__rankingstevnerOfficialRanking={event:eventSelect.value,score,rank:hasWorldRank?rank:null,basis:Array.isArray(data.basis)?data.basis:[],source:'World Athletics official ranking calculation'};
   window.dispatchEvent(new CustomEvent('rankingofficialloaded'));
 }
 async function fetchOnce(id,seq){const res=await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(id)}&event=${encodeURIComponent(eventSelect.value)}&sex=${encodeURIComponent(sex.value)}&v=222&t=${Date.now()}`,{cache:'no-store'}),data=await res.json();if(seq!==requestSeq)return null;return data;}
