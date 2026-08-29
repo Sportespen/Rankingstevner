@@ -41,7 +41,15 @@
   function norm(s){return String(s||'').toLowerCase().replace(/metres?|meters?/g,'m').replace(/hurdles?/g,'h').replace(/steeplechase/g,'sc').replace(/[^a-z0-9]+/g,'');}
   const aliases={'100m':['100m'],'200m':['200m'],'400m':['400m'],'800m':['800m'],'1500m':['1500m'],'5000m':['5000m'],'10000m':['10000m'],'100mH':['100mh'],'110mH':['110mh'],'400mH':['400mh'],'3000mSC':['3000msc'],HJ:['highjump'],PV:['polevault'],LJ:['longjump'],TJ:['triplejump'],SP:['shotput'],DT:['discusthrow'],HT:['hammerthrow'],JT:['javelinthrow'],Decathlon:['decathlon'],Heptathlon:['heptathlon']};
   function exactMatch(discipline,code){const n=norm(discipline);return (aliases[code]||[]).some(a=>n===a||n.startsWith(a));}
-  function combinedType(discipline,code){const n=norm(discipline);if(code==='Decathlon'){if(n.startsWith('decathlon'))return'main';if(n.includes('heptathlon')&&(n.includes('shorttrack')||n.endsWith('sh')))return'similar';}if(code==='Heptathlon'){if(n.startsWith('heptathlon')&&!n.includes('shorttrack')&&!n.endsWith('sh'))return'main';if(n.includes('pentathlon')&&(n.includes('shorttrack')||n.endsWith('sh')||n==='pentathlon'))return'similar';}return null;}
+  // Confirmed via a live raw-data dump: WA's actual data reports a man's indoor combined event
+  // as plain "Heptathlon" (no "Short Track" suffix at all, despite that being the label WA's own
+  // website displays it under) - requiring that suffix here silently dropped a real, legal
+  // 5788pt result. The suffix check was solving a non-problem anyway: `code` already reflects
+  // the athlete's sex (this app always codes men as 'Decathlon', women as 'Heptathlon',
+  // regardless of season - see target-score.js's ensureCombinedEvent), so a man's result plainly
+  // called "Heptathlon" can only mean his indoor event, and a woman's "Pentathlon" can only mean
+  // hers - no further disambiguation needed.
+  function combinedType(discipline,code){const n=norm(discipline);if(code==='Decathlon'){if(n.startsWith('decathlon'))return'main';if(n.startsWith('heptathlon'))return'similar';}if(code==='Heptathlon'){if(n.startsWith('heptathlon'))return'main';if(n.startsWith('pentathlon'))return'similar';}return null;}
   function validDate(r,code){const raw=r?.date;if(!raw)return false;const d=new Date(raw);if(Number.isNaN(d.getTime()))return false;const cutoff=new Date();if(group(code)==='combined'||group(code)==='tenk')cutoff.setUTCMonth(cutoff.getUTCMonth()-18);else cutoff.setUTCFullYear(cutoff.getUTCFullYear()-1);return d>=cutoff;}
   async function ensureScoring(){if(scoringData)return scoringData;try{const res=await fetch(SCORING_URL,{cache:'force-cache'});if(res.ok)scoringData=await res.json();}catch(_){}return scoringData;}
   function parseMark(raw,unit){const s=String(raw??'').trim().replace(',','.');if(!s)return NaN;if(unit==='seconds'&&s.includes(':')){const p=s.split(':').map(Number);if(p.some(v=>!Number.isFinite(v)))return NaN;if(p.length===2)return p[0]*60+p[1];if(p.length===3)return p[0]*3600+p[1]*60+p[2];}return Number(s.replace(/[^0-9.+-]/g,''));}
