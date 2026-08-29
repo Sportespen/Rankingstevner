@@ -1,7 +1,16 @@
-// Rankingstevner - estimated new world-ranking POSITION for a simulated result, found by
-// locating where the new Ranking Score would fall in World Athletics' current ranking list
-// for that event. This is an estimate: other athletes' scores can change before the result
-// is official, so it's only ever labelled "(estimat)", never shown as a confirmed position.
+// Rankingstevner - estimated new EUROPEAN ranking POSITION for a simulated result, found by
+// locating where the new Ranking Score would fall in the ranking list this app can actually walk
+// page by page (api.european-athletics.com's EA_TRPC gateway - see functions/api/
+// wa-official-ranking.js). That list is Europe-scoped, confirmed via live diagnostics (an
+// athlete's real World Athletics world rank, sourced directly from WA's own GraphQL backend via
+// nimarion, was 3532nd, while this list - despite its proc being misleadingly named
+// "worldAthletics.getRanking" - only has ~1800 rows total and still found him around 1250th: a
+// European athlete placing far better among Europeans only than among the whole world). No
+// full GLOBAL ranking list is available to this app to walk instead (nimarion only exposes a
+// single current-place snapshot per athlete, not a list), so this is unavoidably a European
+// estimate - labelled as such in the UI ("Ny plassering (Europa)"), never presented as a world
+// rank. It's also still only an estimate in the ordinary sense: other athletes' scores can
+// change before a result is official.
 (function(){
   'use strict';
 
@@ -50,9 +59,9 @@
         const res=await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(id)}&event=${encodeURIComponent(eventSelect.value)}&sex=${encodeURIComponent(sex.value)}&newScore=${encodeURIComponent(newScore)}&v=1`,{cache:'no-store'});
         const data=await res.json();
         if(mySeq!==seq)return;
-        const ok=Number.isFinite(data?.estimatedNewRank)&&data.estimatedNewRank>0;
-        out.textContent=ok?`#${data.estimatedNewRank}`:'–';
-        showDiag({status:res.status,estimatedNewRank:data?.estimatedNewRank??null,name:data?.name||null,rank:data?.rank??null,diagnostics:data?.diagnostics||[]});
+        const ok=Number.isFinite(data?.estimatedNewEuropeanRank)&&data.estimatedNewEuropeanRank>0;
+        out.textContent=ok?`#${data.estimatedNewEuropeanRank}`:'–';
+        showDiag({status:res.status,estimatedNewEuropeanRank:data?.estimatedNewEuropeanRank??null,name:data?.name||null,worldRank:data?.rankScope==='world'?data?.rank:null,europeanRank:data?.europeanRank??null,diagnostics:data?.diagnostics||[]});
       }catch(e){
         if(mySeq===seq){ out.textContent='–'; showDiag({source:'fetch',error:String(e?.message||e)}); }
       }

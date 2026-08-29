@@ -30,24 +30,36 @@ export async function onRequestGet(context){
   const gender=sex==='W'?'women':'men';
 
   // fetchOfficialRanking runs first: it already falls back to a full page scan when a seed
-  // guess misses, so it can find the athlete even off a bad starting rank. Confirmed live: for
-  // one athlete nimarion's own `knownRank` (from currentWorldRankings) reported 3532nd, but EA's
-  // real, currently-published list only has 18 pages (~1800 ranked athletes) and actually placed
-  // him around page 13 (~1250th) - a seed of 3532 pointed estimateNewRankPosition's cheaper
-  // radius-expanding search at a page number that doesn't exist, so it gave up immediately even
-  // though fetchOfficialRanking, run independently, found him fine. Seeding the position
-  // estimate from whatever fetchOfficialRanking actually confirmed - not nimarion's raw,
-  // sometimes-stale field - fixes that mismatch instead of trusting the less reliable source.
+  // guess misses, so it can find the athlete even off a bad starting rank.
   let official=null;
   if(slug&&name){
     official=await fetchOfficialRanking(slug,gender,name,athleteSlug,knownRank,diagnostics);
   }
-  const officialRank=Number(official?.row?.worldPlace)||Number(official?.row?.place)||null;
-  const seedRank=validRank(officialRank)?officialRank:knownRank;
+  // `europeanRank` (this athlete's position within the EA_TRPC list) is NOT the same figure as
+  // `knownRank` (nimarion's `worldRankings.current.place`, sourced directly from World
+  // Athletics' own GraphQL backend - confirmed by reading nimarion's own source, see
+  // athlete.query.ts's getSingleCompetitor query). Live diagnostics proved these are genuinely
+  // different populations, not just noise: one athlete's real WA world rank (knownRank) was
+  // 3532nd, yet the EA_TRPC list - despite its proc being misleadingly named
+  // "worldAthletics.getRanking" - only has ~1800 rows total and still found him on page 13
+  // (~1250th). A European sprinter placing far better among Europeans only than among the
+  // entire world is exactly what you'd expect if that list is Europe-scoped - which is also
+  // what the "european-athletics.com" domain itself is. Labelling that list's rank/position as
+  // "i verden" (world rank) was therefore reporting a real number under the wrong scope - not a
+  // guess, an actually different ranking population. `europeanRank` is kept and exposed
+  // separately (still genuinely useful - it IS this athlete's real European standing), but the
+  // GLOBAL claim now comes from `knownRank` (nimarion/WA) whenever available.
+  const europeanRank=Number(official?.row?.worldPlace)||Number(official?.row?.place)||null;
+  const seedRank=validRank(europeanRank)?europeanRank:knownRank;
 
-  let estimatedNewRank=null;
+  // The estimated NEW position for a hypothetical result can only ever be computed by walking
+  // the EA_TRPC list (nimarion exposes no full ranking list to walk, only a single current-place
+  // snapshot per athlete) - so this is unavoidably a European-scoped estimate too, seeded from
+  // the athlete's already-confirmed position within that SAME list (seedRank), never nimarion's
+  // global rank, which wouldn't correspond to a page number in this list at all.
+  let estimatedNewEuropeanRank=null;
   if(slug&&name&&validScore(newScore)){
-    estimatedNewRank=await estimateNewRankPosition(slug,gender,newScore,name,athleteSlug,seedRank,diagnostics);
+    estimatedNewEuropeanRank=await estimateNewRankPosition(slug,gender,newScore,name,athleteSlug,seedRank,diagnostics);
   }
 
   if(official){
@@ -55,7 +67,9 @@ export async function onRequestGet(context){
     const basis=Array.isArray(calc?.results)?calc.results.map(normalizeBasis).filter(Boolean):[];
     return json({
       ok:true,id:Number(id),event,name,
-      rank:Number(official.row.worldPlace)||Number(official.row.place)||knownRank,
+      rank:validRank(knownRank)?knownRank:europeanRank,
+      rankScope:validRank(knownRank)?'world':(europeanRank?'europe':null),
+      europeanRank,
       score:Number(official.row.rankingScore),
       rankDate:official.rankDate||null,
       source:'World Athletics official ranking data',
@@ -65,12 +79,12 @@ export async function onRequestGet(context){
       averagePerformanceScore:Number(calc?.averagePerformanceScore)||null,
       calculationId:Number(official.row.id)||null,
       basis,
-      estimatedNewRank,
+      estimatedNewEuropeanRank,
       diagnostics
     });
   }
 
-  return json({ok:true,id:Number(id),event,name,rank:knownRank,score:null,verifiedPublished:false,basisVerified:false,basis:[],estimatedNewRank,diagnostics});
+  return json({ok:true,id:Number(id),event,name,rank:knownRank,rankScope:knownRank?'world':null,europeanRank:null,score:null,verifiedPublished:false,basisVerified:false,basis:[],estimatedNewEuropeanRank,diagnostics});
 }
 
 // A single simulated result won't jump an athlete across the whole ranking list, so start
