@@ -30,12 +30,15 @@ const VERIFIED = [
 // each known candidate in turn and use whichever one's results page actually has standings,
 // rather than assuming a single fixed ID.
 const EVENT_ID_CANDIDATES = {
-  // 10229630 showed up in two independent real WA URLs found via search (Multistars' own men's
-  // results link, and separately the North Macedonian Championships) - both apparently men's
-  // Decathlon-type results under a different id than 10229629. Not fully explained (maybe a
-  // different competition-category grouping on WA's side), but same low-risk reasoning as the
-  // indoor id below: an extra wrong candidate just wastes a fetch, never causes a bad match.
-  Decathlon: [10229629, 10229571, 10229630], // outdoor Decathlon, indoor Heptathlon Short Track (confirmed live), alt id
+  // 10229630, previously listed here as an "alt id" guessed from search context, is actually WA's
+  // global id for Men's 100 Metres - confirmed directly from two live diagnostics dumps (North
+  // Macedonian Championships and German U23 Championships), both showing
+  // "event":"Men's 100 Metres","eventId":10229630 in the raw page data. It only ever showed up in
+  // search results because the 100m is also part of every decathlon program, not because it's a
+  // decathlon variant. Removed - it could never have matched real combined-event standings
+  // anyway (individual sprint times don't fall in the 2000-9999 point-total range this app looks
+  // for), so this wasn't a correctness risk, just a wasted fetch and a wrong comment.
+  Decathlon: [10229629, 10229571], // outdoor Decathlon, indoor Heptathlon Short Track (both confirmed live)
   // outdoor Heptathlon (women, confirmed), then two unconfirmed candidates for indoor Pentathlon
   // Short Track (WA's own toplist naming confirms that discipline exists, "Pentathlon Short
   // Track - women", but not yet which numeric id it uses) - trying an extra wrong id here is
@@ -61,8 +64,10 @@ const KNOWN_COMPETITION = [
   // The U23-specific meet, found separately (competition ID 7229280) - no fallback data found
   // via search for this one, so it depends entirely on the live fetch succeeding.
   { match: /german.*u23.*combined events championships/i, event: 'Decathlon', competitionId: 7229280, year: 2025 },
-  // Found earlier this session; no fallback data found via search for this one either.
-  { match: /north macedonian/i, event: 'Decathlon', competitionId: 7187813, year: 2025 },
+  // North Macedonian Championships intentionally NOT listed here: the competition id found
+  // earlier this session (7187813) turned out via live diagnostics to be a stale 2022 edition,
+  // not 2025 - pointing this app at it would eventually have shown 3-year-old results labelled
+  // as current. Left to the standard calendar-search path instead, which date-windows properly.
   { match: /czapiewski/i, event: 'Decathlon', competitionId: 7223230, year: 2025, fallback: { winner: 'Ondřej Kopecký', winnerMark: 8254, top: [8254, 8136, 8107], source: 'https://worldathletics.org/competition/calendar-results/results/7223230?eventId=10229629' } },
   { match: /czapiewski/i, event: 'Heptathlon', competitionId: 7223230, year: 2025, fallback: { winner: 'Adrianna Sułek-Schubert', winnerMark: 6287, top: [6287, 6249, 6159], source: 'https://worldathletics.org/competition/calendar-results/results/7223230?eventId=10229536' } },
   { match: /tallinn/i, event: 'Decathlon', competitionId: 7230385, year: 2026, fallback: { winner: 'Rasmus Roosleht', winnerMark: 6045, top: [6045, 5812], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' } },
@@ -262,6 +267,31 @@ async function fetchStandingsForCompetition(competitionId, event) {
       nextDataSample: m ? decode(m[1]).slice(0, 800) : null,
       htmlSample: !m ? html.slice(0, 500) : null
     });
+  }
+  // For a dedicated combined-events meet (Décastar, Tallinn, ...) the eventId candidates above
+  // are enough - the competition IS the combined event. But a general multi-day national
+  // championships (German U23, North Macedonian - both confirmed via live diagnostics) files
+  // dozens of individual disciplines under its own competition-specific eventIds that don't
+  // follow the global pattern (their 10229629 request came back 500, meaning that id isn't even
+  // registered for that competition), so guessing further global ids doesn't scale. Querying by
+  // day instead - the same ?day=N shape this app's own original German Championships research
+  // URL used - asks WA's page for everything happening that day, which includes the decathlon if
+  // it's contested then, without needing that competition's specific eventId at all.
+  for (const day of [1, 2, 3, 4]) {
+    const resultsUrl = new URL(`https://worldathletics.org/competition/calendar-results/results/${competitionId}`);
+    resultsUrl.searchParams.set('day', String(day));
+    resultsUrl.searchParams.set('gender', gender);
+    let html = '';
+    try {
+      const r = await fetch(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
+      if (r.ok) html = await r.text();
+      diagnostics.push({ source: 'wa-results-page-by-day', url: resultsUrl.toString(), day, status: r.status, htmlLength: html.length });
+    } catch (e) {
+      diagnostics.push({ source: 'wa-results-page-by-day', url: resultsUrl.toString(), day, error: String(e?.message || e) });
+      continue;
+    }
+    const rows = extractCombinedEventStandings(html);
+    if (rows.length) return { rows, eventId: null, resultsUrl: resultsUrl.toString(), diagnostics };
   }
   return { rows: [], eventId: null, resultsUrl: null, diagnostics };
 }
