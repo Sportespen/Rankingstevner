@@ -61,6 +61,8 @@ const KNOWN_COMPETITION = [
   // The U23-specific meet, found separately (competition ID 7229280) - no fallback data found
   // via search for this one, so it depends entirely on the live fetch succeeding.
   { match: /german.*u23.*combined events championships/i, event: 'Decathlon', competitionId: 7229280, year: 2025 },
+  // Found earlier this session; no fallback data found via search for this one either.
+  { match: /north macedonian/i, event: 'Decathlon', competitionId: 7187813, year: 2025 },
   { match: /czapiewski/i, event: 'Decathlon', competitionId: 7223230, year: 2025, fallback: { winner: 'Ondřej Kopecký', winnerMark: 8254, top: [8254, 8136, 8107], source: 'https://worldathletics.org/competition/calendar-results/results/7223230?eventId=10229629' } },
   { match: /czapiewski/i, event: 'Heptathlon', competitionId: 7223230, year: 2025, fallback: { winner: 'Adrianna Sułek-Schubert', winnerMark: 6287, top: [6287, 6249, 6159], source: 'https://worldathletics.org/competition/calendar-results/results/7223230?eventId=10229536' } },
   { match: /tallinn/i, event: 'Decathlon', competitionId: 7230385, year: 2026, fallback: { winner: 'Rasmus Roosleht', winnerMark: 6045, top: [6045, 5812], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' } },
