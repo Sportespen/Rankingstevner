@@ -24,13 +24,15 @@ const VERIFIED = [
   // terminology) under the same 'Decathlon' code it uses for men outdoors, and women's indoor
   // Pentathlon under 'Heptathlon' - matching how target-score.js already picks the event code
   // purely by sex, not by season.
-  { match: /tallinn/i, event: 'Decathlon', year: 2026, winner: 'Rasmus Roosleht', winnerMark: 6045, top: [6045], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' },
-  { match: /tallinn/i, event: 'Heptathlon', year: 2026, winner: 'Szabina Szucs', winnerMark: 4494, top: [4494], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' },
+  // Kopecky's mark confirmed via ERR/Postimees reports of the meet; Hausenberg (2nd after day
+  // 1) withdrew injured before the competition finished, so he has no final total to include.
+  { match: /tallinn/i, event: 'Decathlon', year: 2026, winner: 'Rasmus Roosleht', winnerMark: 6045, top: [6045, 5812], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' },
+  { match: /tallinn/i, event: 'Heptathlon', year: 2026, winner: 'Szabina Szucs', winnerMark: 4494, top: [4494, 4439, 4416], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' },
   // Exact match only (not just "european athletics...championships") so this never matches
   // European Athletics U23 Championships or a future outdoor edition - those are different
   // meets with their own results.
-  { match: /^european athletics indoor championships$/i, event: 'Decathlon', year: 2025, winner: 'Sander Skotheim', winnerMark: 6558, top: [6558], source: 'https://www.european-athletics.com/home/news/skotheim-wins-epic-heptathlon-with-european-record' },
-  { match: /^european athletics indoor championships$/i, event: 'Heptathlon', year: 2025, winner: 'Saga Vanninen', winnerMark: 4922, top: [4922], source: 'https://www.european-athletics.com/home/news/vanninen-leads-hard-fought-pentathlon-after-three-events' },
+  { match: /^european athletics indoor championships$/i, event: 'Decathlon', year: 2025, winner: 'Sander Skotheim', winnerMark: 6558, top: [6558, 6506, 6388, 6380], source: 'https://www.european-athletics.com/home/news/skotheim-wins-epic-heptathlon-with-european-record' },
+  { match: /^european athletics indoor championships$/i, event: 'Heptathlon', year: 2025, winner: 'Saga Vanninen', winnerMark: 4922, top: [4922, 4826, 4781], source: 'https://www.european-athletics.com/home/news/vanninen-leads-hard-fought-pentathlon-after-three-events' },
 ];
 
 export async function onRequestGet(context) {
