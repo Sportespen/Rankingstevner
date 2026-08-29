@@ -58,6 +58,9 @@ const KNOWN_COMPETITION = [
   // Deliberately excludes "U23" so it never matches the separate German U23 Combined Events
   // Championships, which is a different meet with its own results.
   { match: /^(?!.*u23)(?=.*german)(?=.*championships).*$/i, event: 'Decathlon', competitionId: 7229381, year: 2025, fallback: { winner: 'Tim Nowak', winnerMark: 8140, top: [8140, 7579, 7510, 7338, 7226, 6998, 6907, 6872], source: 'https://worldathletics.org/competition/calendar-results/results/7229381?day=2' } },
+  // The U23-specific meet, found separately (competition ID 7229280) - no fallback data found
+  // via search for this one, so it depends entirely on the live fetch succeeding.
+  { match: /german.*u23.*combined events championships/i, event: 'Decathlon', competitionId: 7229280, year: 2025 },
   { match: /czapiewski/i, event: 'Decathlon', competitionId: 7223230, year: 2025, fallback: { winner: 'Ondřej Kopecký', winnerMark: 8254, top: [8254, 8136, 8107], source: 'https://worldathletics.org/competition/calendar-results/results/7223230?eventId=10229629' } },
   { match: /czapiewski/i, event: 'Heptathlon', competitionId: 7223230, year: 2025, fallback: { winner: 'Adrianna Sułek-Schubert', winnerMark: 6287, top: [6287, 6249, 6159], source: 'https://worldathletics.org/competition/calendar-results/results/7223230?eventId=10229536' } },
   { match: /tallinn/i, event: 'Decathlon', competitionId: 7230385, year: 2026, fallback: { winner: 'Rasmus Roosleht', winnerMark: 6045, top: [6045, 5812], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' } },
@@ -264,7 +267,10 @@ async function fetchStandingsForCompetition(competitionId, event) {
 // Fetches+parses the real results page directly for a meet whose WA competition ID is already
 // known, bypassing the calendar-search/name-matching entirely - see KNOWN_COMPETITION's comment
 // for why. Falls back to the hand-researched partial data if the live fetch/parse comes back
-// empty, so this can only add depth, never regress below what was already confirmed.
+// empty, so this can only add depth, never regress below what was already confirmed. `fallback`
+// is optional - some known-ID entries (a competition ID confirmed via search, but with no
+// findable news coverage of its own) have nothing to fall back to, so "not found" if the live
+// fetch fails there, same as if the ID had never been known at all.
 async function resolveKnownCompetition(known, event, name) {
   const fetched = await fetchStandingsForCompetition(known.competitionId, event);
   if (fetched.rows.length) {
@@ -272,12 +278,14 @@ async function resolveKnownCompetition(known, event, name) {
     const marks = fetched.rows.map(r => r.mark);
     const winner = fetched.rows[0];
     return json({
-      ok: true, found: true, year: known.year, winner: winner.name || known.fallback.winner, winnerMark: winner.mark,
+      ok: true, found: true, year: known.year, winner: winner.name || known.fallback?.winner || null, winnerMark: winner.mark,
       top3: marks.slice(0, 3), top8: marks.slice(0, 8), allMarks: marks,
       competitionId: known.competitionId, eventId: fetched.eventId, source: fetched.resultsUrl, matchedMeetName: name,
       diagnostics: [...fetched.diagnostics, { source: 'known-competition-live' }]
     });
   }
+
+  if (!known.fallback) return json({ ok: true, found: false, reason: 'known-competition-no-standings', diagnostics: fetched.diagnostics });
 
   return json({
     ok: true, found: true, year: known.year, winner: known.fallback.winner, winnerMark: known.fallback.winnerMark,
