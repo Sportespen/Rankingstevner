@@ -37,7 +37,17 @@ const VERIFIED = [
 // needed since the ID is already confirmed - which the DEPLOYED function can do since it has
 // real, unblocked network access. Falls back to the hand-researched partial data only if that
 // live fetch/parse fails, so a temporary WA hiccup can't regress below what's already confirmed.
-const WA_EVENT_ID = { Decathlon: 10229629, Heptathlon: 10229536 };
+// Confirmed via a user-provided European Athletics results link for Tallinn (eventId 10229571,
+// not the 10229629 used for outdoor Decathlon): WA/EA assigns indoor men's combined events
+// ("Heptathlon Short Track") a DISTINCT eventId from outdoor Decathlon - they are not the same
+// discipline in WA's own data model, even though this app pools them under one internal code
+// for ranking purposes. This affects every indoor meet's live lookup, not just Tallinn - try
+// each known candidate in turn and use whichever one's results page actually has standings,
+// rather than assuming a single fixed ID.
+const EVENT_ID_CANDIDATES = {
+  Decathlon: [10229629, 10229571], // outdoor Decathlon, indoor Heptathlon Short Track
+  Heptathlon: [10229536], // outdoor Heptathlon (women) - no confirmed indoor Pentathlon id yet
+};
 const KNOWN_COMPETITION = [
   { match: /tallinn/i, event: 'Decathlon', competitionId: 7230385, year: 2026, fallback: { winner: 'Rasmus Roosleht', winnerMark: 6045, top: [6045, 5812], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' } },
   { match: /tallinn/i, event: 'Heptathlon', competitionId: 7230385, year: 2026, fallback: { winner: 'Szabina Szucs', winnerMark: 4494, top: [4494, 4439, 4416], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' } },
@@ -172,40 +182,15 @@ export async function onRequestGet(context) {
 
   // nimarion's /competitions/{id}/results only mirrors WA's per-discipline results (100m,
   // Long Jump, Shot Put, ... each as its own event) - the computed final combined-event
-  // standings with total points don't appear anywhere in that JSON (verified: neither
-  // eventId 10229629 nor 10229536 ever showed up there). That aggregated table only seems to
-  // be server-rendered on WA's own results page, so scrape that page directly instead.
-  const wantedId = WA_EVENT_ID[event];
-  const resultsUrl = new URL(`https://worldathletics.org/competition/calendar-results/results/${best.id}`);
-  resultsUrl.searchParams.set('eventId', String(wantedId));
+  // standings with total points don't appear anywhere in that JSON. That aggregated table only
+  // seems to be server-rendered on WA's own results page, so scrape that page directly instead.
+  const fetched = await fetchStandingsForCompetition(best.id, event);
+  diagnostics.push(...fetched.diagnostics);
+  if (!fetched.rows.length) return json({ ok: true, found: false, reason: 'no-standings-found', diagnostics });
 
-  let html = '';
-  try {
-    const r = await fetch(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
-    if (r.ok) html = await r.text();
-    diagnostics.push({ source: 'wa-results-page', url: resultsUrl.toString(), status: r.status, htmlLength: html.length });
-  } catch (e) {
-    diagnostics.push({ source: 'wa-results-page', url: resultsUrl.toString(), error: String(e?.message || e) });
-  }
-
-  const rows = extractCombinedEventStandings(html);
-  if (!rows.length) {
-    // Temporary while this page's embedded data shape is unverified: show enough of the
-    // __NEXT_DATA__ payload (or its absence) to see what's actually there.
-    const m = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
-    diagnostics.push({
-      source: 'wa-results-shape',
-      hasNextData: !!m,
-      nextDataLength: m ? m[1].length : 0,
-      nextDataSample: m ? decode(m[1]).slice(0, 1500) : null,
-      htmlSample: !m ? html.slice(0, 800) : null
-    });
-    return json({ ok: true, found: false, reason: 'no-standings-found', diagnostics });
-  }
-
-  rows.sort((a, b) => b.mark - a.mark);
-  const marks = rows.map(r => r.mark);
-  const winner = rows[0];
+  fetched.rows.sort((a, b) => b.mark - a.mark);
+  const marks = fetched.rows.map(r => r.mark);
+  const winner = fetched.rows[0];
   const year = parseDate(best.start)?.getUTCFullYear() || null;
 
   return json({
@@ -218,11 +203,51 @@ export async function onRequestGet(context) {
     top8: marks.slice(0, 8),
     allMarks: marks,
     competitionId: best.id,
-    eventId: wantedId,
-    source: resultsUrl.toString(),
+    eventId: fetched.eventId,
+    source: fetched.resultsUrl,
     matchedMeetName: best.name,
     diagnostics
   });
+}
+
+// Tries each candidate eventId in turn against a competition's WA results page, returning the
+// first one whose page actually has combined-event standings. Shared by the calendar-search
+// path above and the known-competition-ID path below, since both need the same "which eventId
+// is this meet's discipline actually filed under" resolution.
+async function fetchStandingsForCompetition(competitionId, event) {
+  // Confirmed via a user-provided worldathletics.org link
+  // (results/7230385?eventId=10229571&gender=M) that WA's own URL structure includes an
+  // explicit gender param alongside eventId - this app already knows the athlete's sex from
+  // which internal code is being looked up (Decathlon=men, Heptathlon=women), so pass it
+  // through rather than relying on the page defaulting to the right one without it.
+  const gender = event === 'Decathlon' ? 'M' : 'W';
+  const diagnostics = [];
+  for (const eventId of EVENT_ID_CANDIDATES[event] || []) {
+    const resultsUrl = new URL(`https://worldathletics.org/competition/calendar-results/results/${competitionId}`);
+    resultsUrl.searchParams.set('eventId', String(eventId));
+    resultsUrl.searchParams.set('gender', gender);
+    let html = '';
+    try {
+      const r = await fetch(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
+      if (r.ok) html = await r.text();
+      diagnostics.push({ source: 'wa-results-page', url: resultsUrl.toString(), eventId, status: r.status, htmlLength: html.length });
+    } catch (e) {
+      diagnostics.push({ source: 'wa-results-page', url: resultsUrl.toString(), eventId, error: String(e?.message || e) });
+      continue;
+    }
+    const rows = extractCombinedEventStandings(html);
+    if (rows.length) return { rows, eventId, resultsUrl: resultsUrl.toString(), diagnostics };
+    // Temporary while this page's embedded data shape is unverified: show enough of the
+    // __NEXT_DATA__ payload (or its absence) to see what's actually there.
+    const m = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+    diagnostics.push({
+      source: 'wa-results-shape', eventId, hasNextData: !!m,
+      nextDataLength: m ? m[1].length : 0,
+      nextDataSample: m ? decode(m[1]).slice(0, 800) : null,
+      htmlSample: !m ? html.slice(0, 500) : null
+    });
+  }
+  return { rows: [], eventId: null, resultsUrl: null, diagnostics };
 }
 
 // Fetches+parses the real results page directly for a meet whose WA competition ID is already
@@ -230,46 +255,24 @@ export async function onRequestGet(context) {
 // for why. Falls back to the hand-researched partial data if the live fetch/parse comes back
 // empty, so this can only add depth, never regress below what was already confirmed.
 async function resolveKnownCompetition(known, event, name) {
-  const diagnostics = [];
-  const wantedId = WA_EVENT_ID[event];
-  const resultsUrl = new URL(`https://worldathletics.org/competition/calendar-results/results/${known.competitionId}`);
-  resultsUrl.searchParams.set('eventId', String(wantedId));
-
-  let html = '';
-  try {
-    const r = await fetch(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
-    if (r.ok) html = await r.text();
-    diagnostics.push({ source: 'known-competition-results-page', url: resultsUrl.toString(), status: r.status, htmlLength: html.length });
-  } catch (e) {
-    diagnostics.push({ source: 'known-competition-results-page', url: resultsUrl.toString(), error: String(e?.message || e) });
-  }
-
-  const rows = extractCombinedEventStandings(html);
-  if (rows.length) {
-    rows.sort((a, b) => b.mark - a.mark);
-    const marks = rows.map(r => r.mark);
-    const winner = rows[0];
+  const fetched = await fetchStandingsForCompetition(known.competitionId, event);
+  if (fetched.rows.length) {
+    fetched.rows.sort((a, b) => b.mark - a.mark);
+    const marks = fetched.rows.map(r => r.mark);
+    const winner = fetched.rows[0];
     return json({
       ok: true, found: true, year: known.year, winner: winner.name || known.fallback.winner, winnerMark: winner.mark,
       top3: marks.slice(0, 3), top8: marks.slice(0, 8), allMarks: marks,
-      competitionId: known.competitionId, eventId: wantedId, source: resultsUrl.toString(), matchedMeetName: name,
-      diagnostics: [...diagnostics, { source: 'known-competition-live' }]
+      competitionId: known.competitionId, eventId: fetched.eventId, source: fetched.resultsUrl, matchedMeetName: name,
+      diagnostics: [...fetched.diagnostics, { source: 'known-competition-live' }]
     });
   }
 
-  const m = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
-  diagnostics.push({
-    source: 'known-competition-shape',
-    hasNextData: !!m,
-    nextDataLength: m ? m[1].length : 0,
-    nextDataSample: m ? decode(m[1]).slice(0, 1500) : null,
-    htmlSample: !m ? html.slice(0, 800) : null
-  });
   return json({
     ok: true, found: true, year: known.year, winner: known.fallback.winner, winnerMark: known.fallback.winnerMark,
     top3: known.fallback.top.slice(0, 3), top8: known.fallback.top, allMarks: known.fallback.top,
     source: known.fallback.source, matchedMeetName: name,
-    diagnostics: [...diagnostics, { source: 'known-competition-fallback' }]
+    diagnostics: [...fetched.diagnostics, { source: 'known-competition-fallback' }]
   });
 }
 
