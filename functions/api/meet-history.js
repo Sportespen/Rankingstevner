@@ -26,13 +26,26 @@ const VERIFIED = [
   // purely by sex, not by season.
   // Kopecky's mark confirmed via ERR/Postimees reports of the meet; Hausenberg (2nd after day
   // 1) withdrew injured before the competition finished, so he has no final total to include.
-  { match: /tallinn/i, event: 'Decathlon', year: 2026, winner: 'Rasmus Roosleht', winnerMark: 6045, top: [6045, 5812], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' },
-  { match: /tallinn/i, event: 'Heptathlon', year: 2026, winner: 'Szabina Szucs', winnerMark: 4494, top: [4494, 4439, 4416], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' },
+];
+
+// Meets whose exact WA competition ID is already known from manual research (this session's own
+// network access is blocked, so WebSearch was the only tool available - and it only ever
+// returns page titles and prose summaries, never a results page's actual table, capping every
+// hand-researched entry at whatever a news article happened to report - usually just the
+// podium). Rather than keep those partial numbers as the final answer, these skip straight to
+// fetching+parsing the real results page by its known ID - no calendar-search/name-matching
+// needed since the ID is already confirmed - which the DEPLOYED function can do since it has
+// real, unblocked network access. Falls back to the hand-researched partial data only if that
+// live fetch/parse fails, so a temporary WA hiccup can't regress below what's already confirmed.
+const WA_EVENT_ID = { Decathlon: 10229629, Heptathlon: 10229536 };
+const KNOWN_COMPETITION = [
+  { match: /tallinn/i, event: 'Decathlon', competitionId: 7230385, year: 2026, fallback: { winner: 'Rasmus Roosleht', winnerMark: 6045, top: [6045, 5812], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' } },
+  { match: /tallinn/i, event: 'Heptathlon', competitionId: 7230385, year: 2026, fallback: { winner: 'Szabina Szucs', winnerMark: 4494, top: [4494, 4439, 4416], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' } },
   // Exact match only (not just "european athletics...championships") so this never matches
   // European Athletics U23 Championships or a future outdoor edition - those are different
   // meets with their own results.
-  { match: /^european athletics indoor championships$/i, event: 'Decathlon', year: 2025, winner: 'Sander Skotheim', winnerMark: 6558, top: [6558, 6506, 6388, 6380], source: 'https://www.european-athletics.com/home/news/skotheim-wins-epic-heptathlon-with-european-record' },
-  { match: /^european athletics indoor championships$/i, event: 'Heptathlon', year: 2025, winner: 'Saga Vanninen', winnerMark: 4922, top: [4922, 4826, 4781], source: 'https://www.european-athletics.com/home/news/vanninen-leads-hard-fought-pentathlon-after-three-events' },
+  { match: /^european athletics indoor championships$/i, event: 'Decathlon', competitionId: 7173256, year: 2025, fallback: { winner: 'Sander Skotheim', winnerMark: 6558, top: [6558, 6506, 6388, 6380], source: 'https://www.european-athletics.com/home/news/skotheim-wins-epic-heptathlon-with-european-record' } },
+  { match: /^european athletics indoor championships$/i, event: 'Heptathlon', competitionId: 7173256, year: 2025, fallback: { winner: 'Saga Vanninen', winnerMark: 4922, top: [4922, 4826, 4781], source: 'https://www.european-athletics.com/home/news/vanninen-leads-hard-fought-pentathlon-after-three-events' } },
 ];
 
 export async function onRequestGet(context) {
@@ -52,6 +65,9 @@ export async function onRequestGet(context) {
       diagnostics: [{ source: 'verified-table' }]
     });
   }
+
+  const known = KNOWN_COMPETITION.find(k => k.event === event && k.match.test(name));
+  if (known) return await resolveKnownCompetition(known, event, name);
 
   const refDate = parseDate(refDateRaw) || new Date();
   const diagnostics = [];
@@ -159,7 +175,6 @@ export async function onRequestGet(context) {
   // standings with total points don't appear anywhere in that JSON (verified: neither
   // eventId 10229629 nor 10229536 ever showed up there). That aggregated table only seems to
   // be server-rendered on WA's own results page, so scrape that page directly instead.
-  const WA_EVENT_ID = { Decathlon: 10229629, Heptathlon: 10229536 };
   const wantedId = WA_EVENT_ID[event];
   const resultsUrl = new URL(`https://worldathletics.org/competition/calendar-results/results/${best.id}`);
   resultsUrl.searchParams.set('eventId', String(wantedId));
@@ -207,6 +222,54 @@ export async function onRequestGet(context) {
     source: resultsUrl.toString(),
     matchedMeetName: best.name,
     diagnostics
+  });
+}
+
+// Fetches+parses the real results page directly for a meet whose WA competition ID is already
+// known, bypassing the calendar-search/name-matching entirely - see KNOWN_COMPETITION's comment
+// for why. Falls back to the hand-researched partial data if the live fetch/parse comes back
+// empty, so this can only add depth, never regress below what was already confirmed.
+async function resolveKnownCompetition(known, event, name) {
+  const diagnostics = [];
+  const wantedId = WA_EVENT_ID[event];
+  const resultsUrl = new URL(`https://worldathletics.org/competition/calendar-results/results/${known.competitionId}`);
+  resultsUrl.searchParams.set('eventId', String(wantedId));
+
+  let html = '';
+  try {
+    const r = await fetch(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
+    if (r.ok) html = await r.text();
+    diagnostics.push({ source: 'known-competition-results-page', url: resultsUrl.toString(), status: r.status, htmlLength: html.length });
+  } catch (e) {
+    diagnostics.push({ source: 'known-competition-results-page', url: resultsUrl.toString(), error: String(e?.message || e) });
+  }
+
+  const rows = extractCombinedEventStandings(html);
+  if (rows.length) {
+    rows.sort((a, b) => b.mark - a.mark);
+    const marks = rows.map(r => r.mark);
+    const winner = rows[0];
+    return json({
+      ok: true, found: true, year: known.year, winner: winner.name || known.fallback.winner, winnerMark: winner.mark,
+      top3: marks.slice(0, 3), top8: marks.slice(0, 8), allMarks: marks,
+      competitionId: known.competitionId, eventId: wantedId, source: resultsUrl.toString(), matchedMeetName: name,
+      diagnostics: [...diagnostics, { source: 'known-competition-live' }]
+    });
+  }
+
+  const m = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+  diagnostics.push({
+    source: 'known-competition-shape',
+    hasNextData: !!m,
+    nextDataLength: m ? m[1].length : 0,
+    nextDataSample: m ? decode(m[1]).slice(0, 1500) : null,
+    htmlSample: !m ? html.slice(0, 800) : null
+  });
+  return json({
+    ok: true, found: true, year: known.year, winner: known.fallback.winner, winnerMark: known.fallback.winnerMark,
+    top3: known.fallback.top.slice(0, 3), top8: known.fallback.top, allMarks: known.fallback.top,
+    source: known.fallback.source, matchedMeetName: name,
+    diagnostics: [...diagnostics, { source: 'known-competition-fallback' }]
   });
 }
 
