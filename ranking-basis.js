@@ -127,9 +127,24 @@
   // of those got silently dropped regardless of being a perfectly valid mark. This exposes
   // discipline-matched raw results directly - only legal + date-valid + discipline classified,
   // no ranking-score reconstruction required.
+  // "Historisk nivå" needs the athlete's best raw mark in the currently selected øvelse -
+  // for Decathlon/Heptathlon that means classifying each result as the meet's own discipline
+  // ('main') vs. its indoor/outdoor counterpart ('similar', see combinedType above); for every
+  // other øvelse there's only one type ('main') since e.g. Long Jump has no such sub-discipline
+  // split - exactMatch() (already used by candidate() above for the ranking-score
+  // reconstruction) does that name matching without duplicating a second scheme.
   function exposeRawCombinedResults(){
     const code=eventSelect.value;
-    if(code!=='Decathlon'&&code!=='Heptathlon'){window.__rankingstevnerCombinedResults=null;renderRawCombinedDebug([],code);return;}
+    if(!code){window.__rankingstevnerOwnResults=null;renderRawCombinedDebug([],code);return;}
+    const combined=code==='Decathlon'||code==='Heptathlon';
+    if(!combined){
+      renderRawCombinedDebug([],code);
+      const rows=allResults
+        .filter(r=>r.legal!==false&&validDate(r,code)&&exactMatch(r.discipline,code))
+        .map(r=>({date:r.date||null,competition:r.competition||null,discipline:r.discipline||null,mark:r.mark??null,type:'main'}));
+      window.__rankingstevnerOwnResults={event:code,rows};
+      return;
+    }
     // Every result whose discipline text even mentions decathlon/heptathlon/pentathlon,
     // completely unfiltered by legal/date/type - three straight fixes to the filtered version
     // below all still came up short on live data, so this shows which of the three gates (or
@@ -140,7 +155,7 @@
     const rows=allResults
       .filter(r=>r.legal!==false&&validDate(r,code)&&combinedType(r.discipline,code))
       .map(r=>({date:r.date||null,competition:r.competition||null,discipline:r.discipline||null,mark:r.mark??null,type:combinedType(r.discipline,code)}));
-    window.__rankingstevnerCombinedResults={event:code,rows};
+    window.__rankingstevnerOwnResults={event:code,rows};
   }
   function renderRawCombinedDebug(entries,code){
     if(!waDetails||!waDetails.parentNode)return;

@@ -10,7 +10,7 @@ function apply(){
     const boxes=[...card.querySelectorAll('.meet-insight')];
     const history=boxes.find(x=>/historisk nivå/i.test(x.textContent||''));
     if(!history)return;
-    const requestKey=`${name}|${date}|${indoor}|${document.getElementById('event')?.value||''}`;
+    const requestKey=`${name}|${date}|${indoor}|${document.getElementById('event')?.value||''}|${document.getElementById('sex')?.value||''}`;
     if(history.dataset.historyRequestKey===requestKey)return;
     history.dataset.historyRequestKey=requestKey;
     history.innerHTML=`<span>Historisk nivå</span>${api.loadingHtml}`;

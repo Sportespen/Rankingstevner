@@ -29,6 +29,29 @@ const VERIFIED = [
 // for ranking purposes. This affects every indoor meet's live lookup, not just Tallinn - try
 // each known candidate in turn and use whichever one's results page actually has standings,
 // rather than assuming a single fixed ID.
+// Universal event metadata: which codes are supported beyond Decathlon/Heptathlon, WA's own
+// English discipline name for each (needed to find the right block in a day-page's data - see
+// waDisciplineFullName below), and sort direction (track events: lower mark wins; everything
+// else, including combined events: higher wins). Norwegian display labels for these same codes
+// already exist in app.js's eventDefinitions - this is WA's OWN naming instead, confirmed
+// directly from live diagnostics ("Men's 100 Metres", "Men's Long Jump", etc., see
+// fetchStandingsForCompetition's day-based fallback).
+const TRACK_EVENTS = new Set(['100m', '200m', '400m', '800m', '1500m', '5000m', '10000m', '100mH', '110mH', '400mH', '3000mSC']);
+const WA_DISCIPLINE_NAME = {
+  '100m': '100 Metres', '200m': '200 Metres', '400m': '400 Metres', '800m': '800 Metres',
+  '1500m': '1500 Metres', '5000m': '5000 Metres', '10000m': '10000 Metres',
+  '100mH': '100 Metres Hurdles', '110mH': '110 Metres Hurdles', '400mH': '400 Metres Hurdles',
+  '3000mSC': '3000 Metres Steeplechase',
+  HJ: 'High Jump', PV: 'Pole Vault', LJ: 'Long Jump', TJ: 'Triple Jump',
+  SP: 'Shot Put', DT: 'Discus Throw', HT: 'Hammer Throw', JT: 'Javelin Throw',
+};
+function isCombinedEvent(event) { return event === 'Decathlon' || event === 'Heptathlon'; }
+function isSupportedEvent(event) { return isCombinedEvent(event) || !!WA_DISCIPLINE_NAME[event]; }
+function isAscending(event) { return TRACK_EVENTS.has(event); }
+function waDisciplineFullName(event, sex) {
+  const base = WA_DISCIPLINE_NAME[event];
+  return base ? `${sex === 'W' ? "Women's" : "Men's"} ${base}` : null;
+}
 const EVENT_ID_CANDIDATES = {
   // 10229630, previously listed here as an "alt id" guessed from search context, is actually WA's
   // global id for Men's 100 Metres - confirmed directly from two live diagnostics dumps (North
@@ -94,16 +117,24 @@ export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const name = (url.searchParams.get('name') || '').trim();
   const event = (url.searchParams.get('event') || '').trim();
+  // Only meaningful for individual events - Decathlon/Heptathlon already encode sex in the code
+  // itself (this app's own convention: men=Decathlon, women=Heptathlon, regardless of season).
+  // An individual event code like "LJ" doesn't, so the frontend sends the athlete's actual sex.
+  const sex = (url.searchParams.get('sex') || 'M').trim().toUpperCase() === 'W' ? 'W' : 'M';
   const refDateRaw = (url.searchParams.get('date') || '').trim();
   if (!name) return json({ ok: false, error: 'Mangler stevnenavn' }, 400);
-  if (event !== 'Decathlon' && event !== 'Heptathlon') return json({ ok: true, found: false, reason: 'not-combined-event' });
+  if (!isSupportedEvent(event)) return json({ ok: true, found: false, reason: 'unsupported-event' });
 
-  const verified = VERIFIED.find(v => v.event === event && v.match.test(name));
+  // VERIFIED and KNOWN_COMPETITION only ever list Decathlon/Heptathlon entries (all hand-
+  // researched or ID-confirmed so far), so individual events always fall through to the live
+  // calendar-search path below - correct for now, revisit once an individual-event meet is
+  // worth hand-verifying the same way.
+  const verified = isCombinedEvent(event) && VERIFIED.find(v => v.event === event && v.match.test(name));
   if (verified) {
     return json({
       ok: true, found: true, year: verified.year, winner: verified.winner, winnerMark: verified.winnerMark,
       top3: verified.top.slice(0, 3), top8: verified.top, allMarks: verified.top,
-      source: verified.source, matchedMeetName: name,
+      ascending: false, source: verified.source, matchedMeetName: name,
       diagnostics: [{ source: 'verified-table' }]
     });
   }
@@ -163,7 +194,13 @@ export async function onRequestGet(context) {
       // narrows the candidate pool a lot, same reasoning as meet-search.js.
       wa.searchParams.set('regionId', '3');
       wa.searchParams.set('regionType', 'area');
-      wa.searchParams.set('disciplineId', '1');
+      // disciplineId=1 is WA's own "Combined Events" filter - only meaningful for
+      // Decathlon/Heptathlon. No confirmed per-event disciplineId exists for individual events
+      // (same situation meet-search.js is already in for its own Stevnefinner listing), so
+      // those searches go unfiltered by discipline - broader, but still safe, since the
+      // eventNameFullName-based results extraction below only ever accepts standings whose
+      // "event" field actually matches the wanted discipline.
+      if (isCombinedEvent(event)) wa.searchParams.set('disciplineId', '1');
       // hideCompetitionsWithNoResults=true was dropped here: WA's own "has results" flag looks
       // unreliable for smaller/domestic federations - a meet can be missing that flag while its
       // results page is actually populated (this is consistent with those same meets' results
@@ -216,11 +253,13 @@ export async function onRequestGet(context) {
   // Long Jump, Shot Put, ... each as its own event) - the computed final combined-event
   // standings with total points don't appear anywhere in that JSON. That aggregated table only
   // seems to be server-rendered on WA's own results page, so scrape that page directly instead.
-  const fetched = await fetchStandingsForCompetition(best.id, event);
+  const fetched = await fetchStandingsForCompetition(best.id, event, sex);
   diagnostics.push(...fetched.diagnostics);
   if (!fetched.rows.length) return json({ ok: true, found: false, reason: 'no-standings-found', diagnostics });
 
-  fetched.rows.sort((a, b) => b.mark - a.mark);
+  // fetchStandingsForCompetition already returns rows sorted best-first (it knows internally
+  // whether this event's "better" is a higher or lower mark), so rows[0] is always the winner
+  // regardless of event type - no re-sort needed here.
   const marks = fetched.rows.map(r => r.mark);
   const winner = fetched.rows[0];
   const year = parseDate(best.start)?.getUTCFullYear() || null;
@@ -234,6 +273,7 @@ export async function onRequestGet(context) {
     top3: marks.slice(0, 3),
     top8: marks.slice(0, 8),
     allMarks: marks,
+    ascending: isAscending(event),
     competitionId: best.id,
     eventId: fetched.eventId,
     source: fetched.resultsUrl,
@@ -243,51 +283,57 @@ export async function onRequestGet(context) {
 }
 
 // Tries each candidate eventId in turn against a competition's WA results page, returning the
-// first one whose page actually has combined-event standings. Shared by the calendar-search
-// path above and the known-competition-ID path below, since both need the same "which eventId
-// is this meet's discipline actually filed under" resolution.
-async function fetchStandingsForCompetition(competitionId, event) {
+// first one whose page actually has standings for the wanted event - combined or individual.
+// Shared by the calendar-search path above and the known-competition-ID path below. Always
+// returns rows already sorted best-first (winner at index 0), since the two event families sort
+// in opposite directions (combined/field events: higher wins; track events: lower wins) - the
+// caller shouldn't have to know which.
+async function fetchStandingsForCompetition(competitionId, event, sex) {
   // Confirmed via a user-provided worldathletics.org link
   // (results/7230385?eventId=10229571&gender=M) that WA's own URL structure includes an
-  // explicit gender param alongside eventId - this app already knows the athlete's sex from
-  // which internal code is being looked up (Decathlon=men, Heptathlon=women), so pass it
-  // through rather than relying on the page defaulting to the right one without it.
-  const gender = event === 'Decathlon' ? 'M' : 'W';
+  // explicit gender param alongside eventId. Decathlon/Heptathlon already encode sex in the code
+  // itself (this app's convention: men=Decathlon, women=Heptathlon); an individual event code
+  // doesn't, so `sex` (from the athlete's own profile/selection) is used there instead.
+  const gender = isCombinedEvent(event) ? (event === 'Decathlon' ? 'M' : 'W') : sex;
   const diagnostics = [];
-  for (const eventId of EVENT_ID_CANDIDATES[event] || []) {
-    const resultsUrl = new URL(`https://worldathletics.org/competition/calendar-results/results/${competitionId}`);
-    resultsUrl.searchParams.set('eventId', String(eventId));
-    resultsUrl.searchParams.set('gender', gender);
-    let html = '';
-    try {
-      const r = await fetch(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
-      if (r.ok) html = await r.text();
-      diagnostics.push({ source: 'wa-results-page', url: resultsUrl.toString(), eventId, status: r.status, htmlLength: html.length });
-    } catch (e) {
-      diagnostics.push({ source: 'wa-results-page', url: resultsUrl.toString(), eventId, error: String(e?.message || e) });
-      continue;
+
+  if (isCombinedEvent(event)) {
+    for (const eventId of EVENT_ID_CANDIDATES[event] || []) {
+      const resultsUrl = new URL(`https://worldathletics.org/competition/calendar-results/results/${competitionId}`);
+      resultsUrl.searchParams.set('eventId', String(eventId));
+      resultsUrl.searchParams.set('gender', gender);
+      let html = '';
+      try {
+        const r = await fetch(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
+        if (r.ok) html = await r.text();
+        diagnostics.push({ source: 'wa-results-page', url: resultsUrl.toString(), eventId, status: r.status, htmlLength: html.length });
+      } catch (e) {
+        diagnostics.push({ source: 'wa-results-page', url: resultsUrl.toString(), eventId, error: String(e?.message || e) });
+        continue;
+      }
+      const rows = extractCombinedEventStandings(html);
+      if (rows.length) { rows.sort((a, b) => b.mark - a.mark); return { rows, eventId, resultsUrl: resultsUrl.toString(), diagnostics }; }
+      // Temporary while this page's embedded data shape is unverified: show enough of the
+      // __NEXT_DATA__ payload (or its absence) to see what's actually there.
+      const m = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+      diagnostics.push({
+        source: 'wa-results-shape', eventId, hasNextData: !!m,
+        nextDataLength: m ? m[1].length : 0,
+        nextDataSample: m ? decode(m[1]).slice(0, 800) : null,
+        htmlSample: !m ? html.slice(0, 500) : null
+      });
     }
-    const rows = extractCombinedEventStandings(html);
-    if (rows.length) return { rows, eventId, resultsUrl: resultsUrl.toString(), diagnostics };
-    // Temporary while this page's embedded data shape is unverified: show enough of the
-    // __NEXT_DATA__ payload (or its absence) to see what's actually there.
-    const m = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
-    diagnostics.push({
-      source: 'wa-results-shape', eventId, hasNextData: !!m,
-      nextDataLength: m ? m[1].length : 0,
-      nextDataSample: m ? decode(m[1]).slice(0, 800) : null,
-      htmlSample: !m ? html.slice(0, 500) : null
-    });
   }
-  // For a dedicated combined-events meet (Décastar, Tallinn, ...) the eventId candidates above
-  // are enough - the competition IS the combined event. But a general multi-day national
-  // championships (German U23, North Macedonian - both confirmed via live diagnostics) files
-  // dozens of individual disciplines under its own competition-specific eventIds that don't
-  // follow the global pattern (their 10229629 request came back 500, meaning that id isn't even
-  // registered for that competition), so guessing further global ids doesn't scale. Querying by
-  // day instead - the same ?day=N shape this app's own original German Championships research
-  // URL used - asks WA's page for everything happening that day, which includes the decathlon if
-  // it's contested then, without needing that competition's specific eventId at all.
+
+  // Day-based: for a general multi-day national championships holding combined events (German
+  // U23, North Macedonian - both confirmed via live diagnostics), the eventId candidates above
+  // don't apply - those competitions file every discipline under their own competition-specific
+  // eventIds, not the global ones (a 10229629 request there came back HTTP 500 - not registered
+  // for that competition at all). For individual events this is the ONLY strategy tried: there's
+  // no confirmed global eventId for any of them, so this goes straight to asking for a whole
+  // day's data (the same ?day=N shape this app's own original German Championships research URL
+  // used) and picks out the specific event by its WA name instead.
+  const wantedName = isCombinedEvent(event) ? null : waDisciplineFullName(event, gender);
   for (const day of [1, 2, 3, 4]) {
     const resultsUrl = new URL(`https://worldathletics.org/competition/calendar-results/results/${competitionId}`);
     resultsUrl.searchParams.set('day', String(day));
@@ -301,14 +347,19 @@ async function fetchStandingsForCompetition(competitionId, event) {
       diagnostics.push({ source: 'wa-results-page-by-day', url: resultsUrl.toString(), day, error: String(e?.message || e) });
       continue;
     }
-    const rows = extractCombinedEventStandings(html);
-    if (rows.length) return { rows, eventId: null, resultsUrl: resultsUrl.toString(), diagnostics };
+    if (isCombinedEvent(event)) {
+      const rows = extractCombinedEventStandings(html);
+      if (rows.length) { rows.sort((a, b) => b.mark - a.mark); return { rows, eventId: null, resultsUrl: resultsUrl.toString(), diagnostics }; }
+    } else if (wantedName) {
+      const rows = extractIndividualEventStandings(html, wantedName, isAscending(event));
+      if (rows.length) return { rows, eventId: null, resultsUrl: resultsUrl.toString(), diagnostics };
+    }
     // A day page can be huge (hundreds of KB, every discipline held that day) - dumping a raw
     // text sample like the eventId loop does would be unreadable. Pulling out just the distinct
-    // "event" name strings shows directly whether Decathlon/Heptathlon is even on that day at
+    // "event" name strings shows directly whether the wanted discipline is even on that day at
     // all, which is the actual question, without needing the full payload.
     const eventNames = [...new Set([...html.matchAll(/"event"\s*:\s*"([^"]+)"/g)].map(m => m[1]))];
-    diagnostics.push({ source: 'wa-results-day-shape', day, eventNamesFound: eventNames.slice(0, 40) });
+    diagnostics.push({ source: 'wa-results-day-shape', day, wantedName, eventNamesFound: eventNames.slice(0, 40) });
   }
   return { rows: [], eventId: null, resultsUrl: null, diagnostics };
 }
@@ -321,18 +372,18 @@ async function fetchStandingsForCompetition(competitionId, event) {
 // findable news coverage of its own) have nothing to fall back to, so "not found" if the live
 // fetch fails there, same as if the ID had never been known at all.
 async function resolveKnownCompetition(known, event, name) {
-  const fetched = await fetchStandingsForCompetition(known.competitionId, event);
+  const fetched = await fetchStandingsForCompetition(known.competitionId, event, null);
   if (fetched.rows.length && fetched.rows.some(r => r.mark === known.excludeWinnerMark)) {
     fetched.diagnostics.push({ source: 'known-competition-excluded', reason: 'matched another age category\'s known result', excludeWinnerMark: known.excludeWinnerMark });
     fetched.rows = [];
   }
   if (fetched.rows.length) {
-    fetched.rows.sort((a, b) => b.mark - a.mark);
+    // Already sorted best-first by fetchStandingsForCompetition - no re-sort needed.
     const marks = fetched.rows.map(r => r.mark);
     const winner = fetched.rows[0];
     return json({
       ok: true, found: true, year: known.year, winner: winner.name || known.fallback?.winner || null, winnerMark: winner.mark,
-      top3: marks.slice(0, 3), top8: marks.slice(0, 8), allMarks: marks,
+      top3: marks.slice(0, 3), top8: marks.slice(0, 8), allMarks: marks, ascending: false,
       competitionId: known.competitionId, eventId: fetched.eventId, source: fetched.resultsUrl, matchedMeetName: name,
       diagnostics: [...fetched.diagnostics, { source: 'known-competition-live' }]
     });
@@ -342,7 +393,7 @@ async function resolveKnownCompetition(known, event, name) {
 
   return json({
     ok: true, found: true, year: known.year, winner: known.fallback.winner, winnerMark: known.fallback.winnerMark,
-    top3: known.fallback.top.slice(0, 3), top8: known.fallback.top, allMarks: known.fallback.top,
+    top3: known.fallback.top.slice(0, 3), top8: known.fallback.top, allMarks: known.fallback.top, ascending: false,
     source: known.fallback.source, matchedMeetName: name,
     diagnostics: [...fetched.diagnostics, { source: 'known-competition-fallback' }]
   });
@@ -397,6 +448,66 @@ function guessNameField(v) {
     if (/^[\p{L}][\p{L}'.\- ]{3,59}$/u.test(val) && val.trim().includes(' ') && !/^\d+$/.test(val)) return val;
   }
   return null;
+}
+// An individual-event day-page's __NEXT_DATA__ holds a separate block per discipline (confirmed
+// via live diagnostics: {"event":"Men's 100 Metres","eventId":...,"races":[{"race":"Final",
+// "results":[{"competitor":{"name":...},"mark":...}]}]}) - unlike combined events, this can't be
+// found by a generic {place, mark-in-range} shape scan, since a raw time/distance could be any
+// number. Instead this finds the ONE block whose "event" name matches what's wanted (e.g. "Men's
+// Long Jump"), then reads its own results directly.
+function extractIndividualEventStandings(html, wantedEventName, ascending) {
+  const m = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+  if (!m) return [];
+  let data;
+  try { data = JSON.parse(decode(m[1])); } catch (_) { return []; }
+  const wantedNorm = wantedEventName.toLowerCase();
+  const blocks = [];
+  (function walk(v) {
+    if (!v) return;
+    if (Array.isArray(v)) { for (const x of v) walk(x); return; }
+    if (typeof v !== 'object') return;
+    if (typeof v.event === 'string' && v.event.toLowerCase() === wantedNorm && Array.isArray(v.races)) blocks.push(v);
+    for (const x of Object.values(v)) walk(x);
+  })(data);
+  if (!blocks.length) return [];
+
+  const raw = [];
+  for (const block of blocks) {
+    // Prefer the race explicitly marked "Final"; a heat/qualifying round isn't the meet's actual
+    // placing. Some events (a straight single-round race) may have only one race with no
+    // "Final" label at all, hence the raceNumber fallback.
+    const races = Array.isArray(block.races) ? block.races : [];
+    const finalRace = races.find(r => /final/i.test(r?.race || '')) || races.slice().sort((a, b) => (b?.raceNumber || 0) - (a?.raceNumber || 0))[0];
+    if (!finalRace || !Array.isArray(finalRace.results)) continue;
+    for (const r of finalRace.results) {
+      const mark = parseIndividualMark(r?.mark ?? r?.result ?? r?.performance);
+      if (!Number.isFinite(mark) || mark <= 0) continue;
+      const name = athleteDisplayName(r?.competitor) || athleteDisplayName(r?.athlete) || guessNameField(r || {});
+      raw.push({ mark, name });
+    }
+  }
+  if (!raw.length) return [];
+  // Placement is derived from sorted order rather than trusting a possibly-inconsistent "place"
+  // field in the source data (a DNF/DQ entry could otherwise skew a raw place number) - a mark
+  // that didn't parse was already dropped above, so every remaining row is a genuine result.
+  raw.sort((a, b) => ascending ? a.mark - b.mark : b.mark - a.mark);
+  return raw.map((r, i) => ({ place: i + 1, mark: r.mark, name: r.name }));
+}
+// Individual-event marks come as raw strings - "10.32" (seconds), "7.85" (metres), or "1:45.20"
+// / "3:32.10" (MM:SS.ss, or H:MM:SS.ss for very long track events) - not a fixed-format points
+// total. Converts any of those to a single comparable number (seconds, or metres/points as-is).
+function parseIndividualMark(raw) {
+  const s = String(raw ?? '').trim().replace(',', '.');
+  if (!s) return NaN;
+  if (s.includes(':')) {
+    const parts = s.split(':').map(Number);
+    if (parts.some(v => !Number.isFinite(v))) return NaN;
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return NaN;
+  }
+  const n = Number(s.replace(/[^0-9.+-]/g, ''));
+  return Number.isFinite(n) ? n : NaN;
 }
 function parseDate(v) {
   if (!v) return null;

@@ -1,27 +1,56 @@
 // Historisk nivå for hvert stevne - finner forrige utgave av stevnet i World Athletics'
-// kalender og henter dens faktiske sluttresultater i mangekamp-øvelsen, i stedet for en
-// håndskrevet liste over noen få stevner.
+// kalender og henter dens faktiske sluttresultater i den valgte øvelsen, i stedet for en
+// håndskrevet liste over noen få stevner. Fungerer likt for mangekamp og enkeltøvelser -
+// samme funksjoner, forskjellig fremstilling (poeng vs. tid/lengde, stigende vs. synkende
+// rekkefølge) styrt av hva API-et rapporterer tilbake (`ascending`) og øvelseskoden selv.
 (() => {
 'use strict';
 const cache = new Map();
 
+const TRACK_EVENTS = new Set(['100m', '200m', '400m', '800m', '1500m', '5000m', '10000m', '100mH', '110mH', '400mH', '3000mSC']);
+
 function eventCode(){ return document.getElementById('event')?.value || ''; }
-function avg(a){ return Math.round(a.reduce((s,x)=>s+x,0)/a.length); }
+function athleteSex(){ return document.getElementById('sex')?.value === 'W' ? 'W' : 'M'; }
+function isCombinedCode(event){ return event === 'Decathlon' || event === 'Heptathlon'; }
+function avg(a){ return a.reduce((s,x)=>s+x,0)/a.length; }
 
 function fetchHistory(name, date){
   const event = eventCode();
-  if (event !== 'Decathlon' && event !== 'Heptathlon') return Promise.resolve(null);
-  const key = `${name}|${date||''}|${event}`;
+  if (!event) return Promise.resolve(null);
+  const sex = athleteSex();
+  const key = `${name}|${date||''}|${event}|${sex}`;
   if (cache.has(key)) return cache.get(key);
   const p = (async () => {
     try {
-      const res = await fetch(`/api/meet-history?name=${encodeURIComponent(name)}&event=${encodeURIComponent(event)}&date=${encodeURIComponent(date||'')}&v=1`, { cache: 'no-store' });
+      const res = await fetch(`/api/meet-history?name=${encodeURIComponent(name)}&event=${encodeURIComponent(event)}&date=${encodeURIComponent(date||'')}&sex=${encodeURIComponent(sex)}&v=2`, { cache: 'no-store' });
       const data = await res.json();
       return data?.ok ? data : { found: false, diagnostics: [{ source: 'fetch', status: res.status, body: data }] };
     } catch (e) { return { found: false, diagnostics: [{ source: 'fetch', error: String(e?.message || e) }] }; }
   })();
   cache.set(key, p);
   return p;
+}
+
+// Time marks come back from the backend as plain seconds (see functions/api/meet-history.js'
+// parseIndividualMark) - not the "10.32"/"1:45.20" shape a user actually reads times in.
+// Converts back to that shape for display. Field-event marks (metres) need no conversion.
+function formatTime(totalSeconds){
+  if (!Number.isFinite(totalSeconds)) return '';
+  const wholeSeconds = Math.floor(totalSeconds);
+  const hundredths = Math.round((totalSeconds - wholeSeconds) * 100);
+  const h = Math.floor(wholeSeconds / 3600);
+  const m = Math.floor((wholeSeconds % 3600) / 60);
+  const s = wholeSeconds % 60;
+  const frac = String(hundredths).padStart(2, '0');
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${frac}`;
+  if (m > 0) return `${m}:${String(s).padStart(2, '0')}.${frac}`;
+  return `${s}.${frac}`;
+}
+function formatMark(mark, event){
+  if (!Number.isFinite(mark)) return '';
+  if (isCombinedCode(event)) return `${mark} p`;
+  if (TRACK_EVENTS.has(event)) return formatTime(mark);
+  return `${mark} m`;
 }
 
 // An outdoor 10-event total and an indoor 7-event total aren't on the same raw points scale
@@ -40,21 +69,22 @@ function fetchHistory(name, date){
 // machinery is for reconstructing a ranking SCORE and has nothing to do with "what did they
 // score in this discipline" - a result missing/failing either lookup got silently dropped
 // regardless of being a perfectly valid mark.
-// window.__rankingstevnerCombinedResults.rows (exposed by ranking-basis.js) bypasses that
-// entirely: only legal + date-valid + discipline classified, no ranking-score reconstruction.
-function bestOwnMark(indoor){
+// window.__rankingstevnerOwnResults.rows (exposed by ranking-basis.js) bypasses that entirely:
+// only legal + date-valid + discipline classified, no ranking-score reconstruction. It works the
+// same way for individual events (a single 'main' type, no indoor/outdoor split) as for combined
+// events ('main'/'similar' for the outdoor/indoor sub-discipline).
+function bestOwnMark(indoor, ascending){
   const event = eventCode();
-  const combined = window.__rankingstevnerCombinedResults;
-  const rows = combined?.event === event ? combined.rows : null;
-  const diag = { indoor, event, hasCombinedResults: !!combined, combinedEvent: combined?.event || null, rowsIsArray: Array.isArray(rows), rowCount: Array.isArray(rows) ? rows.length : null };
+  const own = window.__rankingstevnerOwnResults;
+  const rows = own?.event === event ? own.rows : null;
+  const diag = { indoor, event, ascending, hasOwnResults: !!own, resultsEvent: own?.event || null, rowsIsArray: Array.isArray(rows), rowCount: Array.isArray(rows) ? rows.length : null };
   if (!Array.isArray(rows) || !rows.length) return { mark: null, diag };
-  // For code='Decathlon' (men): 'main'=outdoor Decathlon, 'similar'=indoor Heptathlon.
-  // For code='Heptathlon' (women): 'main'=outdoor Heptathlon, 'similar'=indoor Pentathlon.
-  const wantType = indoor ? 'similar' : 'main';
+  const wantType = isCombinedCode(event) ? (indoor ? 'similar' : 'main') : 'main';
   diag.rowEntries = rows.map(r => ({ discipline: r.discipline, mark: r.mark, type: r.type, matched: r.type === wantType }));
   const relevant = rows.filter(r => r.type === wantType);
   const marks = relevant.map(r => Number(r.mark)).filter(Number.isFinite);
-  return { mark: marks.length ? Math.max(...marks) : null, diag };
+  if (!marks.length) return { mark: null, diag };
+  return { mark: ascending ? Math.min(...marks) : Math.max(...marks), diag };
 }
 // allMarks is only ever the marks a source actually reported - sometimes the full field, often
 // just the winner, or a top3/top8. Reported live: two meets whose VERIFIED entry only records
@@ -65,11 +95,20 @@ function bestOwnMark(indoor){
 // actually have data for - anyone below OUR list's bottom "necessarily" scored under it too, so
 // nothing beyond that point is missing. Below our list's bottom, there could be any number of
 // unlisted finishers between the athlete and the marks we know about, so no place can honestly
-// be claimed.
-function placementFor(allMarks, mark){
+// be claimed. "Below"/"above" here means "worse"/"better" - for track events (ascending: lower
+// wins) that's the opposite direction on the number line from points/distance events.
+function placementFor(allMarks, mark, ascending){
   if (!Array.isArray(allMarks) || !allMarks.length || !Number.isFinite(mark)) return null;
+  if (ascending) {
+    if (mark > Math.max(...allMarks)) return null;
+    return allMarks.filter(m => m < mark).length + 1;
+  }
   if (mark < Math.min(...allMarks)) return null;
   return allMarks.filter(m => m > mark).length + 1;
+}
+function worstKnownMark(allMarks, ascending){
+  if (!Array.isArray(allMarks) || !allMarks.length) return null;
+  return ascending ? Math.max(...allMarks) : Math.min(...allMarks);
 }
 function ordinal(n){ return `${n}.`; }
 
@@ -87,20 +126,23 @@ function renderHtml(data, indoor){
   if (!data || !data.found) {
     return `<strong>Historiske resultater er ikke verifisert ennå.</strong><small>Fant ikke forrige utgave av stevnet i World Athletics-kalenderen.</small>${diagnosticsHtml(data)}`;
   }
-  const { mark: pb, diag: pbDiag } = bestOwnMark(indoor);
-  const place = pb != null ? placementFor(data.allMarks, pb) : null;
-  const belowKnownRange = pb != null && Array.isArray(data.allMarks) && data.allMarks.length && pb < Math.min(...data.allMarks);
+  const event = eventCode();
+  const ascending = !!data.ascending;
+  const { mark: pb, diag: pbDiag } = bestOwnMark(indoor, ascending);
+  const place = pb != null ? placementFor(data.allMarks, pb, ascending) : null;
+  const worst = worstKnownMark(data.allMarks, ascending);
+  const outsideKnownRange = pb != null && worst != null && (ascending ? pb > worst : pb < worst);
   const placeLine = place != null
-    ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste tellende prestasjon (${pb} p) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
-    : belowKnownRange
-      ? `<small style="display:block;color:#677585">Din beste tellende prestasjon (${pb} p) er lavere enn det svakeste resultatet vi har data på (${Math.min(...data.allMarks)} p) - nøyaktig plassering kan ikke fastslås med det datagrunnlaget som er verifisert for dette stevnet.</small>`
+    ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste tellende prestasjon (${formatMark(pb, event)}) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
+    : outsideKnownRange
+      ? `<small style="display:block;color:#677585">Din beste tellende prestasjon (${formatMark(pb, event)}) er svakere enn det svakeste resultatet vi har data på (${formatMark(worst, event)}) - nøyaktig plassering kan ikke fastslås med det datagrunnlaget som er verifisert for dette stevnet.</small>`
       : '';
   // Not every meet has a confirmed top 8 (or even top 3) - some sources only reported a
   // winner. Labelling the stat with however many marks actually went into it (instead of a
   // fixed "topp 3"/"topp 8") avoids implying more depth than what's actually verified.
-  const segments = [`vinner ${data.winnerMark} p`];
-  if (data.top3?.length > 1) segments.push(`topp ${data.top3.length} snitt ${avg(data.top3)} p`);
-  if (data.top8?.length > (data.top3?.length || 0)) segments.push(`topp ${data.top8.length} snitt ${avg(data.top8)} p`);
+  const segments = [`vinner ${formatMark(data.winnerMark, event)}`];
+  if (data.top3?.length > 1) segments.push(`topp ${data.top3.length} snitt ${formatMark(avg(data.top3), event)}`);
+  if (data.top8?.length > (data.top3?.length || 0)) segments.push(`topp ${data.top8.length} snitt ${formatMark(avg(data.top8), event)}`);
   return `<strong>${data.year}: ${segments.join(' · ')}</strong><small>Vinner: ${data.winner || 'ukjent'}. <a href="${data.source}" target="_blank" rel="noopener">Se offisielle WA-resultater</a></small>${placeLine}${diagnosticsHtml({ diagnostics: [{ source: 'own-mark', ...pbDiag }] })}`;
 }
 
