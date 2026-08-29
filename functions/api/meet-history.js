@@ -7,25 +7,11 @@
 // Smaller domestic/junior meets mostly aren't indexed anywhere searchable - those fall
 // through to the live lookup below, which correctly reports "not verified" rather than guess.
 const VERIFIED = [
-  { match: /d[ée]castar/i, event: 'Decathlon', year: 2025, winner: 'Ayden Owens-Delerme', winnerMark: 8478, top: [8478, 8236, 8177, 8123, 8102, 8020, 7994, 7903], source: 'https://worldathletics.org/competition/calendar-results/results/7196994?eventId=10229629' },
-  { match: /d[ée]castar/i, event: 'Heptathlon', year: 2025, winner: 'Martha Araujo', winnerMark: 6451, top: [6451, 6365, 6283, 6271, 6195, 6190, 6083, 6017], source: 'https://worldathletics.org/competition/calendar-results/results/7196994?eventId=10229536' },
   { match: /hypo-?meeting|g[öo]tzis/i, event: 'Decathlon', year: 2025, winner: 'Sander Skotheim', winnerMark: 8909, top: [8909, 8626, 8575, 8575, 8555, 8527], source: 'https://worldathletics.org/competitions/world-athletics-combined-events-tour/news/hypo-meeting-gotzis-2025' },
   { match: /hypo-?meeting|g[öo]tzis/i, event: 'Heptathlon', year: 2025, winner: 'Anna Hall', winnerMark: 7032, top: [7032, 6576, 6475], source: 'https://worldathletics.org/competitions/world-athletics-combined-events-tour/news/hypo-meeting-gotzis-2025' },
   { match: /multistars|brescia/i, event: 'Decathlon', year: 2025, winner: 'Lewis Church', winnerMark: 8067, top: [8067, 7899, 7885], source: 'https://www.watchathletics.com/article/13345/church-and-slocka-win-the-multistars' },
   { match: /multistars|brescia/i, event: 'Heptathlon', year: 2025, winner: 'Julia Slocka', winnerMark: 5840, top: [5840], source: 'https://www.watchathletics.com/article/13345/church-and-slocka-win-the-multistars' },
   { match: /ratingen/i, event: 'Decathlon', year: 2026, winner: 'Leo Neugebauer', winnerMark: 8573, top: [8573, 8458, 8402], source: 'https://worldathletics.org/news/report/stadtwerke-ratingen-mehrkampf-2026' },
-  { match: /arona|pruebas combinadas/i, event: 'Decathlon', year: 2025, winner: 'Antoine Ferranti', winnerMark: 8221, top: [8221, 7972, 7889, 7826, 7804, 7722, 7501, 7453], source: 'https://worldathletics.org/competition/calendar-results/results/7216692?day=2' },
-  // Deliberately excludes "U23" so it never matches the separate German U23 Combined Events
-  // Championships, whose result wasn't findable via search - that one falls through live.
-  { match: /^(?!.*u23)(?=.*german)(?=.*championships).*$/i, event: 'Decathlon', year: 2025, winner: 'Tim Nowak', winnerMark: 8140, top: [8140, 7579, 7510, 7338, 7226, 6998, 6907, 6872], source: 'https://worldathletics.org/competition/calendar-results/results/7229381?day=2' },
-  { match: /czapiewski/i, event: 'Decathlon', year: 2025, winner: 'Ondřej Kopecký', winnerMark: 8254, top: [8254, 8136, 8107], source: 'https://worldathletics.org/competition/calendar-results/results/7223230?eventId=10229629' },
-  { match: /czapiewski/i, event: 'Heptathlon', year: 2025, winner: 'Adrianna Sułek-Schubert', winnerMark: 6287, top: [6287, 6249, 6159], source: 'https://worldathletics.org/competition/calendar-results/results/7223230?eventId=10229536' },
-  // Indoor combined events - this app files men's indoor (also called Heptathlon in real WA
-  // terminology) under the same 'Decathlon' code it uses for men outdoors, and women's indoor
-  // Pentathlon under 'Heptathlon' - matching how target-score.js already picks the event code
-  // purely by sex, not by season.
-  // Kopecky's mark confirmed via ERR/Postimees reports of the meet; Hausenberg (2nd after day
-  // 1) withdrew injured before the competition finished, so he has no final total to include.
 ];
 
 // Meets whose exact WA competition ID is already known from manual research (this session's own
@@ -55,6 +41,18 @@ const EVENT_ID_CANDIDATES = {
   Heptathlon: [10229536, 10229581, 10229527],
 };
 const KNOWN_COMPETITION = [
+  // These already had a full/near-full hand-researched top8 (their competition ID was sitting
+  // right there in the old VERIFIED source URL), but a frozen snapshot from whatever a search
+  // happened to surface is worse than the live page once the live path actually works - it can
+  // only get MORE complete over time as WA's own page does, never less.
+  { match: /d[ée]castar/i, event: 'Decathlon', competitionId: 7196994, year: 2025, fallback: { winner: 'Ayden Owens-Delerme', winnerMark: 8478, top: [8478, 8236, 8177, 8123, 8102, 8020, 7994, 7903], source: 'https://worldathletics.org/competition/calendar-results/results/7196994?eventId=10229629' } },
+  { match: /d[ée]castar/i, event: 'Heptathlon', competitionId: 7196994, year: 2025, fallback: { winner: 'Martha Araujo', winnerMark: 6451, top: [6451, 6365, 6283, 6271, 6195, 6190, 6083, 6017], source: 'https://worldathletics.org/competition/calendar-results/results/7196994?eventId=10229536' } },
+  { match: /arona|pruebas combinadas/i, event: 'Decathlon', competitionId: 7216692, year: 2025, fallback: { winner: 'Antoine Ferranti', winnerMark: 8221, top: [8221, 7972, 7889, 7826, 7804, 7722, 7501, 7453], source: 'https://worldathletics.org/competition/calendar-results/results/7216692?day=2' } },
+  // Deliberately excludes "U23" so it never matches the separate German U23 Combined Events
+  // Championships, which is a different meet with its own results.
+  { match: /^(?!.*u23)(?=.*german)(?=.*championships).*$/i, event: 'Decathlon', competitionId: 7229381, year: 2025, fallback: { winner: 'Tim Nowak', winnerMark: 8140, top: [8140, 7579, 7510, 7338, 7226, 6998, 6907, 6872], source: 'https://worldathletics.org/competition/calendar-results/results/7229381?day=2' } },
+  { match: /czapiewski/i, event: 'Decathlon', competitionId: 7223230, year: 2025, fallback: { winner: 'Ondřej Kopecký', winnerMark: 8254, top: [8254, 8136, 8107], source: 'https://worldathletics.org/competition/calendar-results/results/7223230?eventId=10229629' } },
+  { match: /czapiewski/i, event: 'Heptathlon', competitionId: 7223230, year: 2025, fallback: { winner: 'Adrianna Sułek-Schubert', winnerMark: 6287, top: [6287, 6249, 6159], source: 'https://worldathletics.org/competition/calendar-results/results/7223230?eventId=10229536' } },
   { match: /tallinn/i, event: 'Decathlon', competitionId: 7230385, year: 2026, fallback: { winner: 'Rasmus Roosleht', winnerMark: 6045, top: [6045, 5812], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' } },
   { match: /tallinn/i, event: 'Heptathlon', competitionId: 7230385, year: 2026, fallback: { winner: 'Szabina Szucs', winnerMark: 4494, top: [4494, 4439, 4416], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' } },
   // Exact match only (not just "european athletics...championships") so this never matches
