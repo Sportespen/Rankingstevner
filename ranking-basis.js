@@ -40,7 +40,13 @@
   function group(code){if(code==='5000m'||code==='3000mSC')return'distance';if(code==='10000m')return'tenk';if(code==='Decathlon'||code==='Heptathlon')return'combined';return'standard';}
   function norm(s){return String(s||'').toLowerCase().replace(/metres?|meters?/g,'m').replace(/hurdles?/g,'h').replace(/steeplechase/g,'sc').replace(/[^a-z0-9]+/g,'');}
   const aliases={'100m':['100m'],'200m':['200m'],'400m':['400m'],'800m':['800m'],'1500m':['1500m'],'5000m':['5000m'],'10000m':['10000m'],'100mH':['100mh'],'110mH':['110mh'],'400mH':['400mh'],'3000mSC':['3000msc'],HJ:['highjump'],PV:['polevault'],LJ:['longjump'],TJ:['triplejump'],SP:['shotput'],DT:['discusthrow'],HT:['hammerthrow'],JT:['javelinthrow'],Decathlon:['decathlon'],Heptathlon:['heptathlon']};
-  function exactMatch(discipline,code){const n=norm(discipline);return (aliases[code]||[]).some(a=>n===a||n.startsWith(a));}
+  // norm() collapses "Hurdles"/"Steeplechase" down to a bare trailing "h"/"sc" with no
+  // separator, so "100 Metres Hurdles" normalizes to "100mh" - which STARTS WITH "100m", the
+  // plain 100m alias. Without the suffix check below, a 100 m Hurdles (or 400 m Hurdles) result
+  // would silently count as a flat 100m/400m result too - exactly the "wrong data" this app
+  // treats as worse than showing nothing, so a startsWith match is only accepted when what's
+  // left over isn't itself a real different discipline's own marker.
+  function exactMatch(discipline,code){const n=norm(discipline);return (aliases[code]||[]).some(a=>{if(n===a)return true;if(!n.startsWith(a))return false;const rest=n.slice(a.length);return rest!=='h'&&rest!=='sc';});}
   // Confirmed via a live raw-data dump: WA's actual data reports a man's indoor combined event
   // as plain "Heptathlon" (no "Short Track" suffix at all, despite that being the label WA's own
   // website displays it under) - requiring that suffix here silently dropped a real, legal
@@ -135,10 +141,16 @@
   // reconstruction) does that name matching without duplicating a second scheme.
   function exposeRawCombinedResults(){
     const code=eventSelect.value;
-    if(!code){window.__rankingstevnerOwnResults=null;renderRawCombinedDebug([],code);return;}
+    if(!code){window.__rankingstevnerOwnResults=null;renderRawDebug([],code,false);return;}
     const combined=code==='Decathlon'||code==='Heptathlon';
     if(!combined){
-      renderRawCombinedDebug([],code);
+      // Every one of the athlete's logged results, unfiltered - unlike combined events there's
+      // no cheap "mentions this event" text filter that generalizes across 19 different
+      // individual codes, so this shows the full list instead. Same reasoning as the combined-
+      // events debug table below: "why is X my best 100m mark" needs to see every candidate
+      // result and exactly which of the three gates (legal/date/discipline match) it passed or
+      // failed, not just the ones that already made it through.
+      renderRawDebug(allResults,code,false);
       const rows=allResults
         .filter(r=>r.legal!==false&&validDate(r,code)&&exactMatch(r.discipline,code))
         .map(r=>({date:r.date||null,competition:r.competition||null,discipline:r.discipline||null,mark:r.mark??null,type:'main'}));
@@ -151,16 +163,16 @@
     // whether the result is even present in allResults at all) is actually the blocker, visibly
     // in the page instead of needing a separate raw-JSON fetch.
     const allCombinedMentions=allResults.filter(r=>/decathlon|heptathlon|pentathlon/i.test(String(r.discipline||'')));
-    renderRawCombinedDebug(allCombinedMentions,code);
+    renderRawDebug(allCombinedMentions,code,true);
     const rows=allResults
       .filter(r=>r.legal!==false&&validDate(r,code)&&combinedType(r.discipline,code))
       .map(r=>({date:r.date||null,competition:r.competition||null,discipline:r.discipline||null,mark:r.mark??null,type:combinedType(r.discipline,code)}));
     window.__rankingstevnerOwnResults={event:code,rows};
   }
-  function renderRawCombinedDebug(entries,code){
+  function renderRawDebug(entries,code,isCombined){
     if(!waDetails||!waDetails.parentNode)return;
     const old=document.getElementById('rawCombinedDebugBox');if(old)old.remove();
-    if(!code||(code!=='Decathlon'&&code!=='Heptathlon'))return;
+    if(!code)return;
     const box=document.createElement('details');
     box.id='rawCombinedDebugBox';
     box.style.cssText='margin-top:10px;font-size:11px;color:#677585';
@@ -168,13 +180,15 @@
     const rows=entries.map(r=>{
       const legalOk=r.legal!==false;
       const dateOk=validDate(r,code);
-      const typeVal=combinedType(r.discipline,code);
+      const typeVal=isCombined?combinedType(r.discipline,code):(exactMatch(r.discipline,code)?'main':null);
       return `<tr><td ${cell}>${r.discipline||''}</td><td ${cell}>${r.mark??''}</td><td ${cell}>${r.date||''}</td><td ${cell}>${legalOk?'ja':'NEI'}</td><td ${cell}>${dateOk?'ja':'NEI'}</td><td ${cell}>${typeVal||'ingen'}</td></tr>`;
     }).join('');
-    box.innerHTML=`<summary style="cursor:pointer">Rådata: mangekamp-relaterte resultater (${entries.length})</summary>`+
+    const title=isCombined?`Rådata: mangekamp-relaterte resultater (${entries.length})`:`Rådata: alle registrerte resultater (${entries.length})`;
+    const emptyMsg=isCombined?'Ingen resultater i rådataene nevner decathlon/heptathlon/pentathlon i det hele tatt.':'Ingen resultater funnet for denne utøveren.';
+    box.innerHTML=`<summary style="cursor:pointer">${title}</summary>`+
       (entries.length
         ? `<table style="margin-top:6px;border-collapse:collapse;width:100%"><tr style="font-weight:700"><td ${cell}>Øvelse</td><td ${cell}>Mark</td><td ${cell}>Dato</td><td ${cell}>Lovlig</td><td ${cell}>Innenfor periode</td><td ${cell}>Klassifisert som</td></tr>${rows}</table>`
-        : `<div style="margin-top:6px">Ingen resultater i rådataene nevner decathlon/heptathlon/pentathlon i det hele tatt.</div>`);
+        : `<div style="margin-top:6px">${emptyMsg}</div>`);
     // Appended as a SIBLING right after waDetails, not a child inside it - waDetails itself gets
     // set to display:none whenever official-ranking.js already shows a matching official WA
     // ranking box (to avoid a duplicate), which would have hidden this debug box along with it.

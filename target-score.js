@@ -10,6 +10,6 @@
 // v0.20.4: synlig WA-ranking med diagnostikk dersom kilden feiler.
 (function(){
   function loadOfficialRanking(){if(document.querySelector('script[data-official-ranking-v210]'))return;const s=document.createElement('script');s.src='official-ranking.js?v=210';s.dataset.officialRankingV210='1';document.head.appendChild(s);s.addEventListener('load',()=>setTimeout(loadBasis,0));}
-  function loadBasis(){if(document.querySelector('script[data-ranking-basis-v206]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=206';s.dataset.rankingBasisV206='1';document.head.appendChild(s);}
+  function loadBasis(){if(document.querySelector('script[data-ranking-basis-v207]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=207';s.dataset.rankingBasisV207='1';document.head.appendChild(s);}
   setTimeout(loadOfficialRanking,0);
 })();
