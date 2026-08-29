@@ -61,9 +61,20 @@ const KNOWN_COMPETITION = [
   // Deliberately excludes "U23" so it never matches the separate German U23 Combined Events
   // Championships, which is a different meet with its own results.
   { match: /^(?!.*u23)(?=.*german)(?=.*championships).*$/i, event: 'Decathlon', competitionId: 7229381, year: 2025, fallback: { winner: 'Tim Nowak', winnerMark: 8140, top: [8140, 7579, 7510, 7338, 7226, 6998, 6907, 6872], source: 'https://worldathletics.org/competition/calendar-results/results/7229381?day=2' } },
-  // The U23-specific meet, found separately (competition ID 7229280) - no fallback data found
-  // via search for this one, so it depends entirely on the live fetch succeeding.
-  { match: /german.*u23.*combined events championships/i, event: 'Decathlon', competitionId: 7229280, year: 2025 },
+  // Competition id 7229280 ("German U23 Championships") was wrong - live diagnostics showed
+  // it's a completely different, general U23 track meet with no combined events at all (its
+  // event list across all 3 days never included Decathlon/Heptathlon). The senior "Deutsche
+  // Mehrkampf-Meisterschaften" in Hannover (competitionId 7229381, confirmed correct via its own
+  // WA results link) runs all age categories together in one meet ("DM Mehrkampf
+  // M/W/U23/U20/U18/U16", per the German federation's own announcement) - so U23 almost
+  // certainly lives in that SAME competition, under a different eventId/day than the senior
+  // heat, not a separate competition id.
+  // excludeWinnerMark guards against the exact bug this whole investigation started from: since
+  // eventId=10229629 on this same competitionId is confirmed to return the SENIOR heat's data
+  // (Tim Nowak, 8140), trying that same candidate here would return identical results silently
+  // mislabelled as U23 - rejecting a fetch that comes back with the known senior mark, treating
+  // it as not-found instead, is worse-case-safe until the actual U23-specific eventId is known.
+  { match: /german.*u23.*combined events championships/i, event: 'Decathlon', competitionId: 7229381, year: 2025, excludeWinnerMark: 8140 },
   // North Macedonian Championships intentionally NOT listed here: the competition id found
   // earlier this session (7187813) turned out via live diagnostics to be a stale 2022 edition,
   // not 2025 - pointing this app at it would eventually have shown 3-year-old results labelled
@@ -311,6 +322,10 @@ async function fetchStandingsForCompetition(competitionId, event) {
 // fetch fails there, same as if the ID had never been known at all.
 async function resolveKnownCompetition(known, event, name) {
   const fetched = await fetchStandingsForCompetition(known.competitionId, event);
+  if (fetched.rows.length && fetched.rows.some(r => r.mark === known.excludeWinnerMark)) {
+    fetched.diagnostics.push({ source: 'known-competition-excluded', reason: 'matched another age category\'s known result', excludeWinnerMark: known.excludeWinnerMark });
+    fetched.rows = [];
+  }
   if (fetched.rows.length) {
     fetched.rows.sort((a, b) => b.mark - a.mark);
     const marks = fetched.rows.map(r => r.mark);
