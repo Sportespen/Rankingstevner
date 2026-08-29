@@ -29,32 +29,45 @@ export async function onRequestGet(context){
   const slug=rankingSlug(event);
   const gender=sex==='W'?'women':'men';
 
+  // fetchOfficialRanking runs first: it already falls back to a full page scan when a seed
+  // guess misses, so it can find the athlete even off a bad starting rank. Confirmed live: for
+  // one athlete nimarion's own `knownRank` (from currentWorldRankings) reported 3532nd, but EA's
+  // real, currently-published list only has 18 pages (~1800 ranked athletes) and actually placed
+  // him around page 13 (~1250th) - a seed of 3532 pointed estimateNewRankPosition's cheaper
+  // radius-expanding search at a page number that doesn't exist, so it gave up immediately even
+  // though fetchOfficialRanking, run independently, found him fine. Seeding the position
+  // estimate from whatever fetchOfficialRanking actually confirmed - not nimarion's raw,
+  // sometimes-stale field - fixes that mismatch instead of trusting the less reliable source.
+  let official=null;
+  if(slug&&name){
+    official=await fetchOfficialRanking(slug,gender,name,athleteSlug,knownRank,diagnostics);
+  }
+  const officialRank=Number(official?.row?.worldPlace)||Number(official?.row?.place)||null;
+  const seedRank=validRank(officialRank)?officialRank:knownRank;
+
   let estimatedNewRank=null;
   if(slug&&name&&validScore(newScore)){
-    estimatedNewRank=await estimateNewRankPosition(slug,gender,newScore,name,athleteSlug,knownRank,diagnostics);
+    estimatedNewRank=await estimateNewRankPosition(slug,gender,newScore,name,athleteSlug,seedRank,diagnostics);
   }
 
-  if(slug&&name){
-    const official=await fetchOfficialRanking(slug,gender,name,athleteSlug,knownRank,diagnostics);
-    if(official){
-      const calc=await fetchOfficialCalculation(official.row.id,diagnostics);
-      const basis=Array.isArray(calc?.results)?calc.results.map(normalizeBasis).filter(Boolean):[];
-      return json({
-        ok:true,id:Number(id),event,name,
-        rank:Number(official.row.worldPlace)||Number(official.row.place)||knownRank,
-        score:Number(official.row.rankingScore),
-        rankDate:official.rankDate||null,
-        source:'World Athletics official ranking data',
-        sourceUrl:`https://worldathletics.org/world-rankings/${slug}/${sex==='W'?'m':'men'}`,
-        verifiedPublished:true,
-        basisVerified:basis.length>0,
-        averagePerformanceScore:Number(calc?.averagePerformanceScore)||null,
-        calculationId:Number(official.row.id)||null,
-        basis,
-        estimatedNewRank,
-        diagnostics
-      });
-    }
+  if(official){
+    const calc=await fetchOfficialCalculation(official.row.id,diagnostics);
+    const basis=Array.isArray(calc?.results)?calc.results.map(normalizeBasis).filter(Boolean):[];
+    return json({
+      ok:true,id:Number(id),event,name,
+      rank:Number(official.row.worldPlace)||Number(official.row.place)||knownRank,
+      score:Number(official.row.rankingScore),
+      rankDate:official.rankDate||null,
+      source:'World Athletics official ranking data',
+      sourceUrl:`https://worldathletics.org/world-rankings/${slug}/${sex==='W'?'m':'men'}`,
+      verifiedPublished:true,
+      basisVerified:basis.length>0,
+      averagePerformanceScore:Number(calc?.averagePerformanceScore)||null,
+      calculationId:Number(official.row.id)||null,
+      basis,
+      estimatedNewRank,
+      diagnostics
+    });
   }
 
   return json({ok:true,id:Number(id),event,name,rank:knownRank,score:null,verifiedPublished:false,basisVerified:false,basis:[],estimatedNewRank,diagnostics});
