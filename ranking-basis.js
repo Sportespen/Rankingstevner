@@ -98,20 +98,23 @@
     window.dispatchEvent(new CustomEvent('rankingbasisupdated'));
   }
 
-  // This box's own Ranking Score is already computed entirely from real WA data (allResults
-  // comes from /api/wa-results, a direct nimarion/WA source - see basisFor()/candidate() above),
-  // using WA's own published Result Score + Placing Score formula - it doesn't need a second,
-  // separate "official" box to confirm it. official-ranking.js used to render exactly that
-  // second box (sourced partly from api.european-athletics.com) and this function hid itself
-  // whenever that one succeeded, to avoid showing the same score twice - removed once live
-  // diagnostics showed that EA source's rank is actually a different, smaller population
-  // (Europe-only) than the real World Athletics rank, not just a "more official" duplicate.
-  // official-ranking.js now only fetches the one number that's genuinely WA-direct (the real
-  // world rank, via nimarion) and this box shows it inline instead of hiding for it.
+  // official-ranking.js renders the full verified Ranking Score + basis table straight from WA/EA
+  // data (its own #officialWaRankingDetails mount) whenever it finds one - showing the locally
+  // reconstructed version too would just duplicate the same score right above it, so this skips
+  // rendering entirely in that case (sameOfficial). When it ISN'T found (athlete not verified in
+  // that lookup), this box is the only source of a Ranking Score, so it needs to actually be
+  // visible - NOT waDetails.appendChild + waDetails.style.display='block' (tried previously):
+  // index.html has `#waProfileDetails{display:none!important}`, an author-stylesheet !important
+  // rule that no plain inline style set from JS can ever override, which made this fallback
+  // silently invisible even before this session. Inserted as a sibling right after waDetails
+  // instead - the same technique the raw-results debug box below it already uses successfully.
   function renderBasis(basis){
     exposeBasis(basis);
     if(!waDetails||!waDetails.parentNode)return;
     const old=document.getElementById('autoRankingBasisAllEvents');if(old)old.remove();
+    const official=window.__rankingstevnerOfficialRanking;
+    const sameOfficial=official&&official.event===eventSelect.value&&Number(official.score)>0;
+    if(sameOfficial)return;
     const box=document.createElement('div');box.id='autoRankingBasisAllEvents';
     box.style.cssText='margin-top:14px;padding:14px;border:1px solid #d9e5e1;border-radius:10px;background:#fff';
     const label=eventSelect.options[eventSelect.selectedIndex]?.textContent||eventSelect.value;
@@ -124,19 +127,8 @@
       leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br>${rows}${status}`;
     }
     let rightHtml='';
-    if(basis.complete){
-      const official=window.__rankingstevnerOfficialRanking;
-      const hasWorldRank=official&&official.event===eventSelect.value&&Number.isFinite(official.rank)&&official.rank>0;
-      const rankLine=hasWorldRank?`<div style="font-size:16px;font-weight:800;color:#0b5f58;margin-top:4px">#${official.rank} i verden</div>`:'';
-      rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">BEREGNET RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div>${rankLine}<div class="ranking-score-note">Beregnet fra egne resultater med WA sine offisielle Result Score/Placing Score-tabeller.</div></div>`;
-    }
+    if(basis.complete){rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">BEREGNET RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div><div class="ranking-score-note">Midlertidig beregning. Ingen offisiell WA Ranking Score funnet.</div></div>`;}
     box.innerHTML=`<div class="ranking-basis-left">${leftHtml}</div>${rightHtml}`;
-    // NOT waDetails.appendChild - index.html has `#waProfileDetails{display:none!important}`,
-    // an author-stylesheet !important rule that no inline style set from JS (waDetails.style.
-    // display='block', tried here previously) can ever override. That's exactly what made this
-    // box invisible the moment official-ranking.js stopped rendering its own separate, non-hidden
-    // mount element for the same content. Inserted as a sibling right after waDetails instead -
-    // the same technique renderRawDebug already uses successfully for the raw-results box below it.
     waDetails.insertAdjacentElement('afterend',box);
   }
   // "Historisk nivå" only needs the athlete's best raw mark in a given discipline (indoor
