@@ -121,11 +121,41 @@
   // no ranking-score reconstruction required.
   function exposeRawCombinedResults(){
     const code=eventSelect.value;
-    if(code!=='Decathlon'&&code!=='Heptathlon'){window.__rankingstevnerCombinedResults=null;return;}
+    if(code!=='Decathlon'&&code!=='Heptathlon'){window.__rankingstevnerCombinedResults=null;renderRawCombinedDebug([],code);return;}
+    // Every result whose discipline text even mentions decathlon/heptathlon/pentathlon,
+    // completely unfiltered by legal/date/type - three straight fixes to the filtered version
+    // below all still came up short on live data, so this shows which of the three gates (or
+    // whether the result is even present in allResults at all) is actually the blocker, visibly
+    // in the page instead of needing a separate raw-JSON fetch.
+    const allCombinedMentions=allResults.filter(r=>/decathlon|heptathlon|pentathlon/i.test(String(r.discipline||'')));
+    renderRawCombinedDebug(allCombinedMentions,code);
     const rows=allResults
       .filter(r=>r.legal!==false&&validDate(r,code)&&combinedType(r.discipline,code))
       .map(r=>({date:r.date||null,competition:r.competition||null,discipline:r.discipline||null,mark:r.mark??null,type:combinedType(r.discipline,code)}));
     window.__rankingstevnerCombinedResults={event:code,rows};
+  }
+  function renderRawCombinedDebug(entries,code){
+    if(!waDetails||!waDetails.parentNode)return;
+    const old=document.getElementById('rawCombinedDebugBox');if(old)old.remove();
+    if(!code||(code!=='Decathlon'&&code!=='Heptathlon'))return;
+    const box=document.createElement('details');
+    box.id='rawCombinedDebugBox';
+    box.style.cssText='margin-top:10px;font-size:11px;color:#677585';
+    const cell='style="border:1px solid #d8e0e6;padding:3px 6px"';
+    const rows=entries.map(r=>{
+      const legalOk=r.legal!==false;
+      const dateOk=validDate(r,code);
+      const typeVal=combinedType(r.discipline,code);
+      return `<tr><td ${cell}>${r.discipline||''}</td><td ${cell}>${r.mark??''}</td><td ${cell}>${r.date||''}</td><td ${cell}>${legalOk?'ja':'NEI'}</td><td ${cell}>${dateOk?'ja':'NEI'}</td><td ${cell}>${typeVal||'ingen'}</td></tr>`;
+    }).join('');
+    box.innerHTML=`<summary style="cursor:pointer">Rådata: mangekamp-relaterte resultater (${entries.length})</summary>`+
+      (entries.length
+        ? `<table style="margin-top:6px;border-collapse:collapse;width:100%"><tr style="font-weight:700"><td ${cell}>Øvelse</td><td ${cell}>Mark</td><td ${cell}>Dato</td><td ${cell}>Lovlig</td><td ${cell}>Innenfor periode</td><td ${cell}>Klassifisert som</td></tr>${rows}</table>`
+        : `<div style="margin-top:6px">Ingen resultater i rådataene nevner decathlon/heptathlon/pentathlon i det hele tatt.</div>`);
+    // Appended as a SIBLING right after waDetails, not a child inside it - waDetails itself gets
+    // set to display:none whenever official-ranking.js already shows a matching official WA
+    // ranking box (to avoid a duplicate), which would have hidden this debug box along with it.
+    waDetails.insertAdjacentElement('afterend',box);
   }
   function refresh(){exposeRawCombinedResults();if(!allResults.length){window.__rankingstevnerReconstructedBasis={event:eventSelect.value,selected:[],needed:req[group(eventSelect.value)],complete:false,rankingScore:null};window.dispatchEvent(new CustomEvent('rankingbasisupdated'));return;}const b=basisFor(eventSelect.value);fillScores(b);setTimeout(()=>renderBasis(b),180);}
   async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){await ensureScoring();refresh();return;}loading=true;try{const [res]=await Promise.all([fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=213`,{cache:'no-store'}),ensureScoring()]);const data=await res.json();if(data?.ok&&Array.isArray(data.results)){currentId=String(id);allResults=data.results;refresh();}}catch(_){}finally{loading=false;}}
