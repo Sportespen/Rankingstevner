@@ -98,16 +98,20 @@
     window.dispatchEvent(new CustomEvent('rankingbasisupdated'));
   }
 
+  // This box's own Ranking Score is already computed entirely from real WA data (allResults
+  // comes from /api/wa-results, a direct nimarion/WA source - see basisFor()/candidate() above),
+  // using WA's own published Result Score + Placing Score formula - it doesn't need a second,
+  // separate "official" box to confirm it. official-ranking.js used to render exactly that
+  // second box (sourced partly from api.european-athletics.com) and this function hid itself
+  // whenever that one succeeded, to avoid showing the same score twice - removed once live
+  // diagnostics showed that EA source's rank is actually a different, smaller population
+  // (Europe-only) than the real World Athletics rank, not just a "more official" duplicate.
+  // official-ranking.js now only fetches the one number that's genuinely WA-direct (the real
+  // world rank, via nimarion) and this box shows it inline instead of hiding for it.
   function renderBasis(basis){
     exposeBasis(basis);
     if(!waDetails)return;
-    const official=window.__rankingstevnerOfficialRanking;
-    const sameOfficial=official&&official.event===eventSelect.value&&Number(official.score)>0;
     const old=document.getElementById('autoRankingBasisAllEvents');if(old)old.remove();
-    // official-ranking.js already renders the full Ranking Score card and basis table straight
-    // from WA data once a verified ranking is found - showing the locally reconstructed version
-    // too would just duplicate the same box right above it.
-    if(sameOfficial){waDetails.style.display='none';return;}
     const box=document.createElement('div');box.id='autoRankingBasisAllEvents';
     const label=eventSelect.options[eventSelect.selectedIndex]?.textContent||eventSelect.value;
     let leftHtml='';
@@ -119,7 +123,12 @@
       leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br>${rows}${status}`;
     }
     let rightHtml='';
-    if(basis.complete){rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">BEREGNET RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div><div class="ranking-score-note">Midlertidig beregning. Ingen offisiell WA Ranking Score funnet.</div></div>`;}
+    if(basis.complete){
+      const official=window.__rankingstevnerOfficialRanking;
+      const hasWorldRank=official&&official.event===eventSelect.value&&Number.isFinite(official.rank)&&official.rank>0;
+      const rankLine=hasWorldRank?`<div style="font-size:16px;font-weight:800;color:#0b5f58;margin-top:4px">#${official.rank} i verden</div>`:'';
+      rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">BEREGNET RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div>${rankLine}<div class="ranking-score-note">Beregnet fra egne resultater med WA sine offisielle Result Score/Placing Score-tabeller.</div></div>`;
+    }
     box.innerHTML=`<div class="ranking-basis-left">${leftHtml}</div>${rightHtml}`;waDetails.appendChild(box);waDetails.style.display='block';
   }
   // "Historisk nivå" only needs the athlete's best raw mark in a given discipline (indoor

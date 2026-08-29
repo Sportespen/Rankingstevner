@@ -1,8 +1,20 @@
-// Rankingstevner v0.22.2 – offisiell WA-ranking + offisielt rankinggrunnlag + korrekt hekk per kjønn
+// Rankingstevner - fetches the athlete's real World Athletics world rank (see
+// functions/api/wa-official-ranking.js) and exposes it for ranking-basis.js's own box to show
+// alongside its already-WA-sourced Ranking Score reconstruction. Used to run its own separate
+// "Offisiell WA Ranking Score" box sourced partly from api.european-athletics.com - removed
+// entirely once live diagnostics showed that source's rank/score is a different, smaller
+// population (Europe-only, not the world) despite its proc being named "worldAthletics.getRanking".
+// This file no longer renders anything itself - just fetches the one number that's genuinely
+// WA-direct (the rank) and lets ranking-basis.js's box display it.
 (function(){'use strict';
-const eventSelect=document.getElementById('event'),sex=document.getElementById('sex'),waInput=document.getElementById('waProfileId'),waStatus=document.getElementById('waProfileStatus'),legacy=document.getElementById('waProfileDetails');if(!eventSelect||!sex||!waInput||!legacy)return;
-let mount=document.getElementById('officialWaRankingDetails');if(!mount){mount=document.createElement('div');mount.id='officialWaRankingDetails';mount.style.cssText='display:block;margin-top:14px;margin-bottom:8px;padding:14px;border:1px solid #d9e5e1;border-radius:10px;background:#fff';legacy.insertAdjacentElement('afterend',mount);}let requestSeq=0;
-const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));const label=()=>eventSelect.options[eventSelect.selectedIndex]?.textContent||eventSelect.value;const validScore=v=>Number.isFinite(Number(v))&&Number(v)>0;
+const eventSelect=document.getElementById('event'),sex=document.getElementById('sex'),waInput=document.getElementById('waProfileId'),waStatus=document.getElementById('waProfileStatus');if(!eventSelect||!sex||!waInput)return;
+let requestSeq=0;
+
+// Unrelated to the WA-vs-EA ranking fix above - kept as-is from the original file. Rebuilding
+// the #event dropdown on a sex change (app.js's populateEvents) drops whichever hurdle option
+// doesn't apply to the new sex, but doesn't auto-select its equivalent - this swaps the
+// selection itself (110mH<->100mH) so switching sex doesn't silently fall back to some other
+// event entirely.
 function ensureSexSpecificHurdle(){
   const women=sex.value==='W',want=women?'100mH':'110mH',wrong=women?'110mH':'100mH',wantLabel=women?'100 m hekk':'110 m hekk';
   const wasWrong=eventSelect.value===wrong;
@@ -15,29 +27,33 @@ function ensureSexSpecificHurdle(){
   }else wanted.textContent=wantLabel;
   if(wasWrong){eventSelect.value=want;setTimeout(()=>eventSelect.dispatchEvent(new Event('change',{bubbles:true})),0);}
 }
-function fmtDate(v){if(!v)return'–';const d=new Date(v);if(Number.isNaN(d.getTime()))return esc(v);return d.toLocaleDateString('no-NO',{day:'2-digit',month:'2-digit',year:'numeric'});}
-function renderLoading(){mount.innerHTML=`<strong>Rankinggrunnlag for ${label()}:</strong><br><span class="muted">Henter offisiell ranking fra World Athletics …</span>`;}
-function renderNone(d){const diag=esc(JSON.stringify(d?.diagnostics??d??{},null,2));mount.innerHTML=`<strong>Rankinggrunnlag for ${label()}:</strong><br><span class="muted">Ingen verifisert WA-ranking funnet for denne øvelsen.</span><details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">WA-diagnostikk</summary><pre style="white-space:pre-wrap;word-break:break-word;font-size:12px;background:#f7f9fb;padding:10px;border-radius:8px;margin-top:8px">${diag}</pre></details>`;window.__rankingstevnerOfficialRanking=null;}
-function basisHtml(data,heading){const rows=Array.isArray(data?.basis)?data.basis:[];if(!rows.length)return `<div class="muted">Offisiell Ranking Score er hentet, men WA leverte ikke detaljert rankinggrunnlag i dette oppslaget.</div>`;return `<div><strong>Tellende rankinggrunnlag i ${esc(heading)} fra World Athletics:</strong><div style="overflow-x:auto;margin-top:7px"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left;padding:6px">Dato</th><th style="text-align:left;padding:6px">Stevne</th><th style="text-align:left;padding:6px">Kat.</th><th style="text-align:left;padding:6px">Resultat</th><th style="text-align:right;padding:6px">Result Score</th><th style="text-align:right;padding:6px">Placing Score</th><th style="text-align:right;padding:6px">Performance Score</th></tr></thead><tbody>${rows.map(r=>`<tr style="border-top:1px solid #e5ecea"><td style="padding:6px">${fmtDate(r.date)}</td><td style="padding:6px">${esc(r.competition||'–')}</td><td style="padding:6px">${esc(r.category||'–')}</td><td style="padding:6px">${esc(r.result??r.mark??'–')}</td><td style="padding:6px;text-align:right">${r.resultScore??'–'}</td><td style="padding:6px;text-align:right">${r.placingScore??'–'}</td><td style="padding:6px;text-align:right;font-weight:700">${r.performanceScore??'–'}</td></tr>`).join('')}</tbody></table></div></div>`;}
-// `rank`/`rankScope` and `europeanRank` are genuinely different populations, not the same number
-// from two sources (see functions/api/wa-official-ranking.js) - nimarion's own athlete lookup
-// (rankScope:'world') is sourced directly from World Athletics' GraphQL backend, while
-// europeanRank only reflects standing among European athletes. Showing a European number
-// labelled "i verden" was reporting a real figure under the wrong scope, so each is only ever
-// shown under its own correct label - "i verden" requires rankScope==='world", the European
-// figure (when it exists and differs from the world one) gets its own line.
-function render(data){
-  const score=Number(data.score),heading=label();
-  const rank=Number(data.rank),hasWorldRank=data.rankScope==='world'&&Number.isFinite(rank)&&rank>0;
-  const euroRank=Number(data.europeanRank),hasEuroRank=Number.isFinite(euroRank)&&euroRank>0&&euroRank!==(hasWorldRank?rank:null);
-  const rankLines=[
-    hasWorldRank?`<div style="font-size:20px;font-weight:800;color:#0b5f58;margin-bottom:6px">#${rank} i verden</div>`:'',
-    hasEuroRank?`<div style="font-size:14px;font-weight:700;color:#526170;margin-bottom:6px">#${euroRank} i Europa</div>`:''
-  ].join('');
-  mount.innerHTML=`<div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:18px;align-items:stretch"><div>${basisHtml(data,heading)}</div><div style="background:#f7fbfa;border:1px solid #cfe2dc;border-radius:14px;padding:22px 18px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center"><div style="font-size:13px;letter-spacing:.12em;font-weight:900;color:#0b5f58">OFFISIELL WA RANKING SCORE</div><div style="font-size:52px;line-height:1;font-weight:900;color:#0b4f4a;margin:14px 0 10px">${score}</div>${rankLines}</div></div>`;
-  window.__rankingstevnerOfficialRanking={event:eventSelect.value,score,rank:hasWorldRank?rank:null,europeanRank:hasEuroRank?euroRank:null,basis:Array.isArray(data.basis)?data.basis:[],source:'World Athletics official ranking calculation'};
+
+async function load(){
+  ensureSexSpecificHurdle();
+  const id=waInput.value.trim().match(/(\d{7,9})/)?.[1]||'';
+  if(!id){ window.__rankingstevnerOfficialRanking=null; window.dispatchEvent(new CustomEvent('rankingofficialloaded')); return; }
+  const seq=++requestSeq;
+  const event=eventSelect.value;
+  let data=null;
+  try{
+    const res=await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(id)}&event=${encodeURIComponent(event)}&v=230`,{cache:'no-store'});
+    data=await res.json();
+  }catch(e){ data={ok:false,error:String(e?.message||e)}; }
+  if(seq!==requestSeq)return;
+  const hasRank=data?.ok&&Number.isFinite(Number(data?.rank))&&Number(data.rank)>0;
+  window.__rankingstevnerOfficialRanking={
+    event,
+    rank:hasRank?Number(data.rank):null,
+    name:data?.name||null,
+    source:'World Athletics (via nimarion)',
+    diagnostics:data?.diagnostics||(data?.error?[{source:'fetch',error:data.error}]:[])
+  };
   window.dispatchEvent(new CustomEvent('rankingofficialloaded'));
 }
-async function fetchOnce(id,seq){const res=await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(id)}&event=${encodeURIComponent(eventSelect.value)}&sex=${encodeURIComponent(sex.value)}&v=222&t=${Date.now()}`,{cache:'no-store'}),data=await res.json();if(seq!==requestSeq)return null;return data;}
-async function load(){ensureSexSpecificHurdle();const id=waInput.value.trim().match(/(\d{7,9})/)?.[1]||'';if(!id){mount.innerHTML='';return;}const seq=++requestSeq;renderLoading();let last=null;for(let a=0;a<3;a++){try{const d=await fetchOnce(id,seq);last=d;if(seq!==requestSeq)return;if(d?.ok&&d?.verifiedPublished===true&&validScore(d?.score)){render(d);return;}}catch(e){last={ok:false,error:String(e?.message||e)};}if(a<2)await new Promise(r=>setTimeout(r,350*(a+1)));}if(seq===requestSeq)renderNone(last);}
-eventSelect.addEventListener('change',()=>setTimeout(load,80));sex.addEventListener('change',()=>{setTimeout(()=>{ensureSexSpecificHurdle();load();},120);});waInput.addEventListener('change',()=>setTimeout(load,20));if(waStatus)new MutationObserver(()=>{if(waInput.value.trim())setTimeout(()=>{ensureSexSpecificHurdle();load();},60);}).observe(waStatus,{childList:true,subtree:true,characterData:true});setTimeout(()=>{ensureSexSpecificHurdle();load();},500);})();
+
+eventSelect.addEventListener('change',()=>setTimeout(load,80));
+sex.addEventListener('change',()=>setTimeout(load,120));
+waInput.addEventListener('change',()=>setTimeout(load,20));
+if(waStatus)new MutationObserver(()=>{if(waInput.value.trim())setTimeout(load,60);}).observe(waStatus,{childList:true,subtree:true,characterData:true});
+setTimeout(load,500);
+})();
