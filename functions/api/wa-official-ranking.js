@@ -53,31 +53,27 @@ export async function onRequestGet(context){
   if(slug&&name){
     official=await fetchOfficialRanking(slug,gender,name,athleteSlug,knownRank,diagnostics);
   }
-  // `europeanRank` (this athlete's position within the EA_TRPC list) is NOT the same figure as
-  // `knownRank` (nimarion's `worldRankings.current.place`, sourced directly from World
-  // Athletics' own GraphQL backend - confirmed by reading nimarion's own source, see
-  // athlete.query.ts's getSingleCompetitor query). Live diagnostics proved these are genuinely
-  // different populations, not just noise: one athlete's real WA world rank (knownRank) was
-  // 3532nd, yet the EA_TRPC list - despite its proc being misleadingly named
-  // "worldAthletics.getRanking" - only has ~1800 rows total and still found him on page 13
-  // (~1250th). A European sprinter placing far better among Europeans only than among the
-  // entire world is exactly what you'd expect if that list is Europe-scoped - which is also
-  // what the "european-athletics.com" domain itself is. Labelling that list's rank/position as
-  // "i verden" (world rank) was therefore reporting a real number under the wrong scope - not a
-  // guess, an actually different ranking population. `europeanRank` is kept and exposed
-  // separately (still genuinely useful - it IS this athlete's real European standing), but the
-  // GLOBAL claim now comes from `knownRank` (nimarion/WA) whenever available.
-  const europeanRank=Number(official?.row?.worldPlace)||Number(official?.row?.place)||null;
+  // A raw row dump (2026-08) settled what two earlier guesses got wrong: each row carries TWO
+  // distinct fields, not one. `place` is this athlete's real, sequential position within the
+  // EA_TRPC list itself (confirmed: five rows on page 13 read place 1201-1205, exactly matching
+  // (page-1)*pageSize+1..+5). `worldPlace` is a separate field that mirrors their actual WA world
+  // rank (nimarion's knownRank and a row's worldPlace agree, e.g. both 3532 for one athlete) -
+  // it has nothing to do with this list's own ordering. The earlier code read worldPlace first,
+  // which is why `europeanRank` kept coming out identical to the world rank and looked like a
+  // dead/redundant field instead of a real, different number. And every sampled row's
+  // `nationality` was a European country (GER/POR/GBR/SLO/FRA on the same page) - confirming
+  // this list genuinely is Europe-scoped, not a guess from indirect page-depth evidence like the
+  // first attempt at this. `europeanRank` now reads `place` - the field that's actually this
+  // list's position - so it can genuinely differ from the real world rank (knownRank) instead of
+  // just echoing it.
+  const europeanRank=Number(official?.row?.place)||null;
 
-  // Live diagnostics disproved the original assumption here: official.row.place/worldPlace is
-  // NOT this athlete's position within the EA_TRPC list at all - it's just a copy of their real
-  // WA world rank (one athlete showed identically 3532 from BOTH nimarion's knownRank and this
-  // field), while fetchOfficialRanking's own fullscan actually found that same athlete's row on
-  // page 13 of 18 - nowhere near the page ~36 that a rank of 3532 would imply for an ~100-per-
-  // page list. Seeding from that field was therefore never going to land near the right page,
-  // in any scope. The one number that IS a real, confirmed position in this list is which PAGE
-  // fetchOfficialRanking actually found the row on - so that page (not any rank/pageSize guess)
-  // is what seeds the walk below.
+  // The `place`/`worldPlace` mixup above also explains why estimateNewRankPosition's original
+  // seed (derived from whichever of those two fields came out non-zero) missed so badly: a
+  // seed built from `worldPlace` (the global rank) has no relationship to a page number in a
+  // list ordered by `place`. The one number that IS a real, confirmed position in this list is
+  // which PAGE fetchOfficialRanking actually found the row on - so that page (not any rank/field
+  // guess) is what seeds the walk below.
   let estimatedNewEuropeanRank=null;
   if(slug&&name&&official?.page&&validScore(newScore)){
     estimatedNewEuropeanRank=await estimateNewRankPosition(slug,gender,newScore,name,athleteSlug,official.page,diagnostics);
