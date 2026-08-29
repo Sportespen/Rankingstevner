@@ -45,8 +45,14 @@ const VERIFIED = [
 // each known candidate in turn and use whichever one's results page actually has standings,
 // rather than assuming a single fixed ID.
 const EVENT_ID_CANDIDATES = {
-  Decathlon: [10229629, 10229571], // outdoor Decathlon, indoor Heptathlon Short Track
-  Heptathlon: [10229536], // outdoor Heptathlon (women) - no confirmed indoor Pentathlon id yet
+  Decathlon: [10229629, 10229571], // outdoor Decathlon, indoor Heptathlon Short Track (confirmed live)
+  // outdoor Heptathlon (women, confirmed), then two unconfirmed candidates for indoor Pentathlon
+  // Short Track (WA's own toplist naming confirms that discipline exists, "Pentathlon Short
+  // Track - women", but not yet which numeric id it uses) - trying an extra wrong id here is
+  // low-risk: extractCombinedEventStandings only ever accepts rows shaped like real combined-
+  // event standings (a place plus a 2000-9999 point total), so an unrelated event's page won't
+  // get mistaken for the right one.
+  Heptathlon: [10229536, 10229581, 10229527],
 };
 const KNOWN_COMPETITION = [
   { match: /tallinn/i, event: 'Decathlon', competitionId: 7230385, year: 2026, fallback: { winner: 'Rasmus Roosleht', winnerMark: 6045, top: [6045, 5812], source: 'https://www.european-athletics.com/home/news/roosleht-and-szucs-win-at-tallinn-combined-event-meeting' } },
