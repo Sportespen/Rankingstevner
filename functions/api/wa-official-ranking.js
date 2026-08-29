@@ -1,5 +1,23 @@
 const EA_TRPC='https://api.european-athletics.com/trpc';
 
+// Nothing in this file previously bounded how long a single external call could take - a slow or
+// hanging request to nimarion or EA had no fallback, leaving the frontend's "…" loading state up
+// indefinitely instead of ever resolving to a real number or an honest "–". This wraps every
+// external fetch with a hard deadline so a stuck call fails fast (with a real error in
+// diagnostics) instead of stalling the whole lookup chain - fetchOfficialRanking alone can make
+// several sequential calls, and estimateNewRankPosition up to 12 more on top of that, so one slow
+// request without a timeout could block the entire response for a long time.
+const FETCH_TIMEOUT_MS=6000;
+async function fetchWithTimeout(url,options){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),FETCH_TIMEOUT_MS);
+  try{
+    return await fetch(url,{...options,signal:controller.signal});
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
 export async function onRequestGet(context){
   const url=new URL(context.request.url);
   const raw=(url.searchParams.get('id')||'').trim();
@@ -14,7 +32,7 @@ export async function onRequestGet(context){
   const diagnostics=[];
   let profile=null,name='',knownRank=null,athleteSlug='';
   try{
-    const r=await fetch(`https://worldathletics.nimarion.de/athletes/${id}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.22.1','Accept':'application/json'}});
+    const r=await fetchWithTimeout(`https://worldathletics.nimarion.de/athletes/${id}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.22.1','Accept':'application/json'}});
     if(r.ok){
       profile=await r.json();
       name=`${profile?.firstname||profile?.firstName||''} ${profile?.lastname||profile?.lastName||''}`.trim();
@@ -150,7 +168,7 @@ async function estimateNewRankPosition(slug,gender,newScore,name,athleteSlug,kno
 
 async function trpc(proc,input){
   const q=encodeURIComponent(JSON.stringify({json:input}));
-  const r=await fetch(`${EA_TRPC}/${proc}?input=${q}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.22.1','Accept':'application/json'}});
+  const r=await fetchWithTimeout(`${EA_TRPC}/${proc}?input=${q}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.22.1','Accept':'application/json'}});
   const text=await r.text(); let body=null; try{body=JSON.parse(text);}catch(_){}
   if(!r.ok||body?.error)throw new Error(`${proc}: ${r.status} ${body?.error?.json?.message||text.slice(0,120)}`);
   return body?.result?.data?.json;

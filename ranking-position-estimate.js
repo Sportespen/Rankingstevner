@@ -55,15 +55,25 @@
       const newScore=Number(newRankingOut.textContent);
       if(!id||!Number.isFinite(newScore)||newScore<=0){ out.textContent='–'; showDiag({reason:!id?'mangler-wa-id':'mangler-gyldig-ny-score',id:id||null,newScore}); return; }
       out.textContent='…';
+      // The backend chains several sequential external calls (athlete profile, then the
+      // ranking-list lookup, then this estimate's own page-walk) - each now has its own timeout
+      // server-side, but nothing previously bounded the OVERALL request from here, so a slow
+      // chain left "…" showing with no way to know it had actually stalled. This forces a
+      // resolution either way within 20s, same "always ends in a real number or an honest '–',
+      // never a stuck spinner" rule already applied server-side.
+      const controller=new AbortController();
+      const timeoutId=setTimeout(()=>controller.abort(),20000);
       try{
-        const res=await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(id)}&event=${encodeURIComponent(eventSelect.value)}&sex=${encodeURIComponent(sex.value)}&newScore=${encodeURIComponent(newScore)}&v=1`,{cache:'no-store'});
+        const res=await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(id)}&event=${encodeURIComponent(eventSelect.value)}&sex=${encodeURIComponent(sex.value)}&newScore=${encodeURIComponent(newScore)}&v=1`,{cache:'no-store',signal:controller.signal});
         const data=await res.json();
         if(mySeq!==seq)return;
         const ok=Number.isFinite(data?.estimatedNewEuropeanRank)&&data.estimatedNewEuropeanRank>0;
         out.textContent=ok?`#${data.estimatedNewEuropeanRank}`:'–';
         showDiag({status:res.status,estimatedNewEuropeanRank:data?.estimatedNewEuropeanRank??null,name:data?.name||null,worldRank:data?.rankScope==='world'?data?.rank:null,europeanRank:data?.europeanRank??null,diagnostics:data?.diagnostics||[]});
       }catch(e){
-        if(mySeq===seq){ out.textContent='–'; showDiag({source:'fetch',error:String(e?.message||e)}); }
+        if(mySeq===seq){ out.textContent='–'; showDiag({source:'fetch',timedOut:e?.name==='AbortError',error:String(e?.message||e)}); }
+      }finally{
+        clearTimeout(timeoutId);
       }
     }
 
