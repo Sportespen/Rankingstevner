@@ -292,6 +292,12 @@ async function fetchStandingsForCompetition(competitionId, event) {
     }
     const rows = extractCombinedEventStandings(html);
     if (rows.length) return { rows, eventId: null, resultsUrl: resultsUrl.toString(), diagnostics };
+    // A day page can be huge (hundreds of KB, every discipline held that day) - dumping a raw
+    // text sample like the eventId loop does would be unreadable. Pulling out just the distinct
+    // "event" name strings shows directly whether Decathlon/Heptathlon is even on that day at
+    // all, which is the actual question, without needing the full payload.
+    const eventNames = [...new Set([...html.matchAll(/"event"\s*:\s*"([^"]+)"/g)].map(m => m[1]))];
+    diagnostics.push({ source: 'wa-results-day-shape', day, eventNamesFound: eventNames.slice(0, 40) });
   }
   return { rows: [], eventId: null, resultsUrl: null, diagnostics };
 }
