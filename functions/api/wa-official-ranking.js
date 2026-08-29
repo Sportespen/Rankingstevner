@@ -68,16 +68,19 @@ export async function onRequestGet(context){
   // separately (still genuinely useful - it IS this athlete's real European standing), but the
   // GLOBAL claim now comes from `knownRank` (nimarion/WA) whenever available.
   const europeanRank=Number(official?.row?.worldPlace)||Number(official?.row?.place)||null;
-  const seedRank=validRank(europeanRank)?europeanRank:knownRank;
 
-  // The estimated NEW position for a hypothetical result can only ever be computed by walking
-  // the EA_TRPC list (nimarion exposes no full ranking list to walk, only a single current-place
-  // snapshot per athlete) - so this is unavoidably a European-scoped estimate too, seeded from
-  // the athlete's already-confirmed position within that SAME list (seedRank), never nimarion's
-  // global rank, which wouldn't correspond to a page number in this list at all.
+  // Live diagnostics disproved the original assumption here: official.row.place/worldPlace is
+  // NOT this athlete's position within the EA_TRPC list at all - it's just a copy of their real
+  // WA world rank (one athlete showed identically 3532 from BOTH nimarion's knownRank and this
+  // field), while fetchOfficialRanking's own fullscan actually found that same athlete's row on
+  // page 13 of 18 - nowhere near the page ~36 that a rank of 3532 would imply for an ~100-per-
+  // page list. Seeding from that field was therefore never going to land near the right page,
+  // in any scope. The one number that IS a real, confirmed position in this list is which PAGE
+  // fetchOfficialRanking actually found the row on - so that page (not any rank/pageSize guess)
+  // is what seeds the walk below.
   let estimatedNewEuropeanRank=null;
-  if(slug&&name&&validScore(newScore)){
-    estimatedNewEuropeanRank=await estimateNewRankPosition(slug,gender,newScore,name,athleteSlug,seedRank,diagnostics);
+  if(slug&&name&&official?.page&&validScore(newScore)){
+    estimatedNewEuropeanRank=await estimateNewRankPosition(slug,gender,newScore,name,athleteSlug,official.page,diagnostics);
   }
 
   if(official){
@@ -106,11 +109,12 @@ export async function onRequestGet(context){
 }
 
 // A single simulated result won't jump an athlete across the whole ranking list, so start
-// looking near their current position (like fetchOfficialRanking's byWorldRank guess) and
-// walk outward page by page until the page whose score range straddles newScore is found.
-// Pages are strictly descending in score, so every page walked past is fully "better than
-// newScore" without needing to fetch it - only the crossover page's exact rows matter.
-async function estimateNewRankPosition(slug,gender,newScore,name,athleteSlug,knownRank,diagnostics){
+// looking near their CONFIRMED current page (seedPage, from fetchOfficialRanking's own fullscan
+// - not derived from any rank number, see the comment where this is called) and walk outward
+// page by page until the page whose score range straddles newScore is found. Pages are strictly
+// descending in score, so every page walked past is fully "better than newScore" without needing
+// to fetch it - only the crossover page's exact rows matter.
+async function estimateNewRankPosition(slug,gender,newScore,name,athleteSlug,seedPage,diagnostics){
   let first;
   try{ first=await trpc('worldAthletics.getRanking',{eventGroup:slug,gender,page:1}); }
   catch(e){ diagnostics.push({source:'ea-ranking-estimate',page:1,error:String(e?.message||e)}); return null; }
@@ -132,7 +136,7 @@ async function estimateNewRankPosition(slug,gender,newScore,name,athleteSlug,kno
     }catch(e){diagnostics.push({source:'ea-ranking-estimate',page:p,error:String(e?.message||e)});return null;}
   }
 
-  const seed=validRank(knownRank)?Math.max(1,Math.ceil(knownRank/pageSize)):1;
+  const seed=Number.isFinite(seedPage)&&seedPage>=1?seedPage:1;
   const visited=new Set();
   const budget=12;
   let fetches=0,crossoverPage=null;
@@ -192,7 +196,7 @@ async function fetchOfficialRanking(slug,gender,name,athleteSlug,knownRank,diagn
   const pageSize=Math.max(1,firstRows.length||100);
   let row=firstRows.find(r=>athleteMatches(r,name,athleteSlug));
   diagnostics.push({source:'ea-ranking',slug,gender,page:1,count:firstRows.length,pages:maxPages,pageSize,knownRank,found:!!row});
-  if(row&&validScore(row.rankingScore))return {row,rankDate:first?.rankDate||null};
+  if(row&&validScore(row.rankingScore))return {row,page:1,rankDate:first?.rankDate||null};
 
   const targets=[];
   if(validRank(knownRank)){
@@ -208,7 +212,7 @@ async function fetchOfficialRanking(slug,gender,name,athleteSlug,knownRank,diagn
       const rows=Array.isArray(data?.rankings)?data.rankings:[];
       row=rows.find(r=>athleteMatches(r,name,athleteSlug));
       diagnostics.push({source:'ea-ranking-targeted',slug,gender,page,count:rows.length,found:!!row});
-      if(row&&validScore(row.rankingScore))return {row,rankDate:data?.rankDate||first?.rankDate||null};
+      if(row&&validScore(row.rankingScore))return {row,page,rankDate:data?.rankDate||first?.rankDate||null};
     }catch(e){diagnostics.push({source:'ea-ranking-targeted',slug,gender,page,error:String(e?.message||e)});}
   }
 
@@ -222,7 +226,7 @@ async function fetchOfficialRanking(slug,gender,name,athleteSlug,knownRank,diagn
       row=rows.find(r=>athleteMatches(r,name,athleteSlug));
       if(row&&validScore(row.rankingScore)){
         diagnostics.push({source:'ea-ranking-fullscan',slug,gender,page,found:true});
-        return {row,rankDate:data?.rankDate||first?.rankDate||null};
+        return {row,page,rankDate:data?.rankDate||first?.rankDate||null};
       }
     }catch(e){diagnostics.push({source:'ea-ranking-fullscan',slug,gender,page,error:String(e?.message||e)});break;}
   }
