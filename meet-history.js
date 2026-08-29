@@ -56,8 +56,19 @@ function bestOwnMark(indoor){
   const marks = relevant.map(r => Number(r.mark)).filter(Number.isFinite);
   return { mark: marks.length ? Math.max(...marks) : null, diag };
 }
+// allMarks is only ever the marks a source actually reported - sometimes the full field, often
+// just the winner, or a top3/top8. Reported live: two meets whose VERIFIED entry only records
+// the winner's mark (Tallinn: [6045], European Indoor Champs: [6558]) both claimed "2. plass"
+// for an athlete scoring well below the winner - the arithmetic (count marks above yours, +1)
+// mechanically produces "2nd" against a 1-mark list regardless of how big the real field was.
+// The count is only trustworthy once the athlete's own mark reaches down to the weakest mark we
+// actually have data for - anyone below OUR list's bottom "necessarily" scored under it too, so
+// nothing beyond that point is missing. Below our list's bottom, there could be any number of
+// unlisted finishers between the athlete and the marks we know about, so no place can honestly
+// be claimed.
 function placementFor(allMarks, mark){
   if (!Array.isArray(allMarks) || !allMarks.length || !Number.isFinite(mark)) return null;
+  if (mark < Math.min(...allMarks)) return null;
   return allMarks.filter(m => m > mark).length + 1;
 }
 function ordinal(n){ return `${n}.`; }
@@ -78,9 +89,12 @@ function renderHtml(data, indoor){
   }
   const { mark: pb, diag: pbDiag } = bestOwnMark(indoor);
   const place = pb != null ? placementFor(data.allMarks, pb) : null;
+  const belowKnownRange = pb != null && Array.isArray(data.allMarks) && data.allMarks.length && pb < Math.min(...data.allMarks);
   const placeLine = place != null
     ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste tellende prestasjon (${pb} p) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
-    : '';
+    : belowKnownRange
+      ? `<small style="display:block;color:#677585">Din beste tellende prestasjon (${pb} p) er lavere enn det svakeste resultatet vi har data på (${Math.min(...data.allMarks)} p) - nøyaktig plassering kan ikke fastslås med det datagrunnlaget som er verifisert for dette stevnet.</small>`
+      : '';
   // Not every meet has a confirmed top 8 (or even top 3) - some sources only reported a
   // winner. Labelling the stat with however many marks actually went into it (instead of a
   // fixed "topp 3"/"topp 8") avoids implying more depth than what's actually verified.
