@@ -24,7 +24,10 @@ function ensureSexSpecificHurdle(){
 }
 function fmtDate(v){if(!v)return'–';const d=new Date(v);if(Number.isNaN(d.getTime()))return esc(v);return d.toLocaleDateString('no-NO',{day:'2-digit',month:'2-digit',year:'numeric'});}
 function renderLoading(){mount.innerHTML=`<strong>Rankinggrunnlag for ${label()}:</strong><br><span class="muted">Henter offisiell ranking fra World Athletics …</span>`;}
-function renderNone(d){const diag=esc(JSON.stringify(d?.diagnostics??d??{},null,2));mount.innerHTML=`<strong>Rankinggrunnlag for ${label()}:</strong><br><span class="muted">Ingen verifisert WA-ranking funnet for denne øvelsen.</span><details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">WA-diagnostikk</summary><pre style="white-space:pre-wrap;word-break:break-word;font-size:12px;background:#f7f9fb;padding:10px;border-radius:8px;margin-top:8px">${diag}</pre></details>`;window.__rankingstevnerOfficialRanking=null;window.__rankingstevnerOfficialPending=false;window.dispatchEvent(new CustomEvent('rankingofficialloaded'));}
+// When there's no verified official ranking to show, ranking-basis.js's local reconstruction box
+// already shows the real, useful information below this one - a "not found" message plus
+// diagnostics here was just noise on top of that, so this box simply stays empty in that case.
+function renderNone(){mount.innerHTML='';window.__rankingstevnerOfficialRanking=null;window.__rankingstevnerOfficialPending=false;window.dispatchEvent(new CustomEvent('rankingofficialloaded'));}
 // Same Main/Similar Event classification ranking-basis.js's local reconstruction table already
 // shows, so both boxes present the same information the same way. A plain individual event's
 // rows will always come back "Main Event" (WA's own lookup only returns rows for that exact
@@ -72,7 +75,7 @@ async function load(){ensureSexSpecificHurdle();const id=waInput.value.trim().ma
   // current one, so its (stale, previous-athlete) result would land AFTER this reset and
   // silently repopulate the box - looking like the reset needed a second click to actually stick.
   ++requestSeq;window.__rankingstevnerOfficialPending=false;mount.innerHTML='';return;
-}const seq=++requestSeq;window.__rankingstevnerOfficialPending=true;renderLoading();let last=null;for(let a=0;a<3;a++){try{const d=await fetchOnce(id,seq);last=d;if(seq!==requestSeq)return;if(d?.ok&&d?.verifiedPublished===true&&validScore(d?.score)){render(d);return;}}catch(e){last={ok:false,error:String(e?.message||e)};}if(a<2)await new Promise(r=>setTimeout(r,350*(a+1)));}if(seq===requestSeq)renderNone(last);}
+}const seq=++requestSeq;window.__rankingstevnerOfficialPending=true;renderLoading();for(let a=0;a<3;a++){try{const d=await fetchOnce(id,seq);if(seq!==requestSeq)return;if(d?.ok&&d?.verifiedPublished===true&&validScore(d?.score)){render(d);return;}}catch(_){}if(a<2)await new Promise(r=>setTimeout(r,350*(a+1)));}if(seq===requestSeq)renderNone();}
 eventSelect.addEventListener('change',()=>setTimeout(load,80));sex.addEventListener('change',()=>{setTimeout(()=>{ensureSexSpecificHurdle();load();},120);});waInput.addEventListener('change',()=>setTimeout(load,20));
 // Selecting an athlete from the search dropdown sets the WA-ID directly (no 'change' event) and
 // instead relies on this observer reacting to waStatus's text - but athlete-profile.js's own
