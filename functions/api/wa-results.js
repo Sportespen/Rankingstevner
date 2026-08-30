@@ -1,3 +1,21 @@
+// Nothing here bounded how long a single external call could take, and the year-by-year and
+// competition-by-competition lookups below ran one after another instead of at the same time -
+// with up to 4 sequential athlete/results fetches followed by up to 12 MORE sequential
+// competition/results fetches, this was the dominant source of latency after picking an athlete
+// and event (far more than the ranking-score lookup in wa-official-ranking.js). Both loops now
+// fire concurrently via Promise.all, and every fetch has a hard deadline so one slow call can't
+// stall the whole response.
+const FETCH_TIMEOUT_MS = 6000;
+async function fetchWithTimeout(url, options) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const raw = (url.searchParams.get('id') || '').trim();
@@ -12,17 +30,17 @@ export async function onRequestGet(context) {
 
   const normalizeRecords = value => Array.isArray(value) ? value.map(String) : (value == null ? [] : [String(value)]);
 
-  for (const year of years) {
+  await Promise.all(years.map(async year => {
     const endpoint = `https://worldathletics.nimarion.de/athletes/${id}/results?year=${year}`;
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetchWithTimeout(endpoint, {
         headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.2','Accept':'application/json'}
       });
       const text = await res.text();
       let data = null;
       try { data = JSON.parse(text); } catch (_) {}
       attempts.push({year,status:res.status,count:Array.isArray(data)?data.length:null});
-      if (!res.ok || !Array.isArray(data)) continue;
+      if (!res.ok || !Array.isArray(data)) return;
 
       for (const r of data) {
         const discipline = String(r.discipline || r.event || '').trim();
@@ -48,7 +66,7 @@ export async function onRequestGet(context) {
     } catch (e) {
       attempts.push({year,error:String(e?.message || e)});
     }
-  }
+  }));
 
   const cutoff18 = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth()-18, now.getUTCDate(), 0,0,0));
   const threeYearStart = new Date(Date.UTC(now.getUTCFullYear()-3,0,1,0,0,0));
@@ -114,16 +132,16 @@ export async function onRequestGet(context) {
   }
 
   const enrichedAttempts = [];
-  for (const [competitionId, parent] of [...competitionMap.entries()].slice(0,12)) {
+  await Promise.all([...competitionMap.entries()].slice(0,12).map(async ([competitionId, parent]) => {
     try {
-      const res = await fetch(`https://worldathletics.nimarion.de/competitions/${competitionId}/results`, {
+      const res = await fetchWithTimeout(`https://worldathletics.nimarion.de/competitions/${competitionId}/results`, {
         headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.2','Accept':'application/json'}
       });
       const text = await res.text();
       let data = null;
       try { data = JSON.parse(text); } catch (_) {}
       enrichedAttempts.push({competitionId,status:res.status,events:Array.isArray(data?.events)?data.events.length:null});
-      if (!res.ok || !Array.isArray(data?.events)) continue;
+      if (!res.ok || !Array.isArray(data?.events)) return;
 
       for (const event of data.events) {
         const discipline = String(event?.discipline || event?.name || '').trim();
@@ -155,7 +173,7 @@ export async function onRequestGet(context) {
     } catch (e) {
       enrichedAttempts.push({competitionId,error:String(e?.message || e)});
     }
-  }
+  }));
 
   const seen = new Set();
   const deduped = results.filter(r => {
