@@ -45,35 +45,41 @@ export async function onRequestGet(context){
   const slug=rankingSlug(event);
   const gender=sex==='W'?'women':'men';
 
-  // The score/rank display used to depend entirely on finding the athlete's row in EA's
-  // ranking-calculation lookup, which could fall through to a sequential scan of every
-  // remaining page (slow - dozens of fetches in the worst case). Since `knownRank` already
-  // gives the athlete's exact, real position, their score can now be read directly off ONE
-  // deterministic page of World Athletics' own public world-rankings list - fast, and
-  // independent of whether EA's search (kept below, but no longer allowed to fall back to a
-  // full scan) finds a row at all. Both run concurrently; EA's row (if found) still supplies
-  // the calculationId used for the basis breakdown.
-  const eaSearchPromise=(slug&&name)?fetchRankingRow(slug,gender,name,athleteSlug,knownRank,diagnostics):Promise.resolve(null);
+  // The score/rank used to depend entirely on finding the athlete's row in EA's ranking-
+  // calculation lookup - even bounded (page 1 + a few targeted guesses), that's still up to 6
+  // SEQUENTIAL fetches gating every response, whether or not it actually turns out to be
+  // needed. Since `knownRank` already gives the athlete's exact, real position, the score now
+  // comes from ONE deterministic World Athletics page fetch - and its own row id (the same
+  // data-id its page uses for this exact detail view) also usually already resolves the
+  // calculation/basis lookup directly, genuinely WA-sourced. EA's search is now only ever run
+  // lazily, as a last resort - when WA's own row can't be found at all (score), or when WA's
+  // own id doesn't resolve a calculation (basis) - instead of unconditionally on every request.
   const waRowPromise=slug?fetchWorldRankingRowByRank(slug,gender,knownRank,diagnostics):Promise.resolve(null);
   const estimatePromise=(slug&&validScore(newScore))?estimateNewWorldRank(slug,gender,newScore,knownRank,diagnostics):Promise.resolve(null);
-  const [eaRow,waRow,estimatedNewRank]=await Promise.all([eaSearchPromise,waRowPromise,estimatePromise]);
+  const [waRow,estimatedNewRank]=await Promise.all([waRowPromise,estimatePromise]);
 
-  const score=waRow?waRow.row.score:(eaRow?Number(eaRow.row.rankingScore):null);
-
-  // The calculation/basis breakdown needs a row id to look up. World Athletics' own
-  // world-rankings row already carries its own real id (the same data-id its page uses
-  // for this exact detail view) - tried first, genuinely WA-sourced, no dependency on
-  // EA's (now-bounded, sometimes-empty) search finding a row at all. EA's row id is only
-  // tried as a fallback if WA's own id comes up empty.
+  let score=waRow?waRow.row.score:null;
   const waCalcId=waRow?.row?.id||null;
-  const eaCalcId=eaRow?(Number(eaRow.row.id)||null):null;
+  let eaRow=null;
+  async function ensureEaRow(){
+    if(!eaRow&&slug&&name)eaRow=await fetchRankingRow(slug,gender,name,athleteSlug,knownRank,diagnostics);
+    return eaRow;
+  }
+  if(!validScore(score)){
+    const fallback=await ensureEaRow();
+    if(fallback)score=Number(fallback.row.rankingScore);
+  }
 
   if(validScore(score)){
     let calc=waCalcId?await fetchRankingCalculation(waCalcId,diagnostics):null;
     let calculationId=Array.isArray(calc?.results)&&calc.results.length?waCalcId:null;
-    if(!calculationId&&eaCalcId&&eaCalcId!==waCalcId){
-      calc=await fetchRankingCalculation(eaCalcId,diagnostics);
-      if(Array.isArray(calc?.results)&&calc.results.length)calculationId=eaCalcId;
+    if(!calculationId){
+      const fallback=await ensureEaRow();
+      const eaCalcId=fallback?(Number(fallback.row.id)||null):null;
+      if(eaCalcId&&eaCalcId!==waCalcId){
+        calc=await fetchRankingCalculation(eaCalcId,diagnostics);
+        if(Array.isArray(calc?.results)&&calc.results.length)calculationId=eaCalcId;
+      }
     }
     const basis=Array.isArray(calc?.results)?calc.results.map(normalizeBasis).filter(Boolean):[];
     return json({
