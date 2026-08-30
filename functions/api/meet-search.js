@@ -1,3 +1,17 @@
+// Nothing here bounded how long a single external call could take, and the 10 calendar-page
+// fetches below ran one after another instead of at the same time - up to 11 sequential
+// external fetches with no per-fetch deadline. If their cumulative wait ever crossed
+// Cloudflare's own request duration limit, Cloudflare terminates the request itself and
+// returns ITS OWN HTML error page - which the frontend then tried to JSON.parse(), producing
+// "Unexpected token '<', <!DOCTYPE..." instead of an actual result (even an empty one).
+const FETCH_TIMEOUT_MS=8000;
+async function fetchWithTimeout(url,options){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),FETCH_TIMEOUT_MS);
+  try{return await fetch(url,{...options,signal:controller.signal});}
+  finally{clearTimeout(timer);}
+}
+
 export async function onRequestGet(context){
   const url=new URL(context.request.url);
   const event=(url.searchParams.get('event')||'').trim();
@@ -8,18 +22,22 @@ export async function onRequestGet(context){
   const seen=new Set();
 
   // 1) Existing proxy feed – useful when it contains the competition.
-  try{
-    const res=await fetch('https://worldathletics.nimarion.de/competitions',{headers:{'Accept':'application/json','User-Agent':'Rankingstevner/0.22.0'}});
-    if(res.ok){
-      const data=await res.json();
-      for(const x of Array.isArray(data)?data:[]){add(results,seen,normaliseProxy(x));}
-    }
-  }catch(_){}
+  const proxyPromise=(async()=>{
+    try{
+      const res=await fetchWithTimeout('https://worldathletics.nimarion.de/competitions',{headers:{'Accept':'application/json','User-Agent':'Rankingstevner/0.22.0'}});
+      if(res.ok){
+        const data=await res.json();
+        return Array.isArray(data)?data.map(normaliseProxy):[];
+      }
+    }catch(_){}
+    return [];
+  })();
 
   // 2) Official World Athletics Global Calendar.
-  // We scan more result pages than before so future meetings are not silently missed.
+  // We scan more result pages than before so future meetings are not silently missed - now
+  // fetched concurrently instead of one after another, since each page is independent.
   const disciplineId=combined?'1':'';
-  for(const offset of [0,100,200,300,400,500,600,700,800,900]){
+  const pagePromises=[0,100,200,300,400,500,600,700,800,900].map(async offset=>{
     const wa=new URL('https://worldathletics.org/competition/calendar-results');
     wa.searchParams.set('isSearchReset','true');
     wa.searchParams.set('startDate',startDate);
@@ -33,12 +51,16 @@ export async function onRequestGet(context){
     if(disciplineId)wa.searchParams.set('disciplineId',disciplineId);
     if(offset)wa.searchParams.set('offset',String(offset));
     try{
-      const r=await fetch(wa.toString(),{headers:{'Accept':'text/html','User-Agent':'Mozilla/5.0 Rankingstevner/0.22.0'}});
-      if(!r.ok)continue;
+      const r=await fetchWithTimeout(wa.toString(),{headers:{'Accept':'text/html','User-Agent':'Mozilla/5.0 Rankingstevner/0.22.0'}});
+      if(!r.ok)return [];
       const html=await r.text();
-      for(const x of extractCalendarObjects(html)) add(results,seen,x);
-    }catch(_){}
-  }
+      return extractCalendarObjects(html);
+    }catch(_){return [];}
+  });
+
+  const [proxyResults,...pageResults]=await Promise.all([proxyPromise,...pagePromises]);
+  for(const x of proxyResults)add(results,seen,x);
+  for(const page of pageResults)for(const x of page)add(results,seen,x);
 
   // Verified official-calendar fallback rows. These are only used to prevent a false zero
   // when WA changes page serialisation before the parser is updated.
