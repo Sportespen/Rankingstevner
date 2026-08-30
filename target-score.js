@@ -8,8 +8,8 @@
 (function(){function removeDuplicateCombinedBox(){document.querySelectorAll('#waProfileDetails div').forEach(el=>{const strong=el.querySelector(':scope > strong');if(strong&&strong.textContent.trim().startsWith('Tellende Performance Scores:'))el.remove();});}const details=document.getElementById('waProfileDetails');if(details)new MutationObserver(removeDuplicateCombinedBox).observe(details,{childList:true,subtree:true});setTimeout(removeDuplicateCombinedBox,200);})();
 // v0.20.4: synlig WA-ranking med diagnostikk dersom kilden feiler.
 (function(){
-  function loadOfficialRanking(){if(document.querySelector('script[data-official-ranking-v308]'))return;const s=document.createElement('script');s.src='official-ranking.js?v=308';s.dataset.officialRankingV308='1';document.head.appendChild(s);s.addEventListener('load',()=>setTimeout(loadBasis,0));}
-  function loadBasis(){if(document.querySelector('script[data-ranking-basis-v216]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=216';s.dataset.rankingBasisV216='1';document.head.appendChild(s);}
+  function loadOfficialRanking(){if(document.querySelector('script[data-official-ranking-v309]'))return;const s=document.createElement('script');s.src='official-ranking.js?v=309';s.dataset.officialRankingV309='1';document.head.appendChild(s);s.addEventListener('load',()=>setTimeout(loadBasis,0));}
+  function loadBasis(){if(document.querySelector('script[data-ranking-basis-v217]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=217';s.dataset.rankingBasisV217='1';document.head.appendChild(s);}
   setTimeout(loadOfficialRanking,0);
 })();
 // v0.24.0: ekte WA-basert estimat for ny rankingplassering (worldathletics.org sin egen

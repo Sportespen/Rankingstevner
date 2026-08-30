@@ -65,5 +65,12 @@ function render(data){
   window.dispatchEvent(new CustomEvent('rankingofficialloaded'));
 }
 async function fetchOnce(id,seq){const res=await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(id)}&event=${encodeURIComponent(eventSelect.value)}&sex=${encodeURIComponent(sex.value)}&v=222&t=${Date.now()}`,{cache:'no-store'}),data=await res.json();if(seq!==requestSeq)return null;return data;}
-async function load(){ensureSexSpecificHurdle();const id=waInput.value.trim().match(/(\d{7,9})/)?.[1]||'';if(!id){window.__rankingstevnerOfficialPending=false;mount.innerHTML='';return;}const seq=++requestSeq;window.__rankingstevnerOfficialPending=true;renderLoading();let last=null;for(let a=0;a<3;a++){try{const d=await fetchOnce(id,seq);last=d;if(seq!==requestSeq)return;if(d?.ok&&d?.verifiedPublished===true&&validScore(d?.score)){render(d);return;}}catch(e){last={ok:false,error:String(e?.message||e)};}if(a<2)await new Promise(r=>setTimeout(r,350*(a+1)));}if(seq===requestSeq)renderNone(last);}
+async function load(){ensureSexSpecificHurdle();const id=waInput.value.trim().match(/(\d{7,9})/)?.[1]||'';if(!id){
+  // Bumping requestSeq here too - not just when there's a real id to look up - matters because
+  // clearing the WA-ID while an EARLIER lookup is still in flight (its own retries can take a
+  // couple seconds) used to leave that in-flight request's captured seq still matching the
+  // current one, so its (stale, previous-athlete) result would land AFTER this reset and
+  // silently repopulate the box - looking like the reset needed a second click to actually stick.
+  ++requestSeq;window.__rankingstevnerOfficialPending=false;mount.innerHTML='';return;
+}const seq=++requestSeq;window.__rankingstevnerOfficialPending=true;renderLoading();let last=null;for(let a=0;a<3;a++){try{const d=await fetchOnce(id,seq);last=d;if(seq!==requestSeq)return;if(d?.ok&&d?.verifiedPublished===true&&validScore(d?.score)){render(d);return;}}catch(e){last={ok:false,error:String(e?.message||e)};}if(a<2)await new Promise(r=>setTimeout(r,350*(a+1)));}if(seq===requestSeq)renderNone(last);}
 eventSelect.addEventListener('change',()=>setTimeout(load,80));sex.addEventListener('change',()=>{setTimeout(()=>{ensureSexSpecificHurdle();load();},120);});waInput.addEventListener('change',()=>setTimeout(load,20));if(waStatus)new MutationObserver(()=>{if(waInput.value.trim())setTimeout(()=>{ensureSexSpecificHurdle();load();},60);}).observe(waStatus,{childList:true,subtree:true,characterData:true});setTimeout(()=>{ensureSexSpecificHurdle();load();},500);})();
