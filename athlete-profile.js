@@ -255,6 +255,20 @@
   });
   clearProfileBtn.addEventListener('click',()=>{
     localStorage.removeItem(STORAGE_KEY); profileName.value=''; if(nameSearch) nameSearch.value=''; if(waInput) waInput.value=''; setWaStatus('Ingen WA-profil valgt.'); if(waDetails){waDetails.innerHTML='';waDetails.style.display='none';} clearScores();
+    // "Nullstill profil" only cleared the profile fields themselves - the øvelse dropdown and
+    // the official/local ranking boxes below (owned by official-ranking.js/ranking-basis.js,
+    // separate scripts) kept showing whatever was last selected. Those two scripts' own 'change'
+    // handlers no-op on an empty WA-ID (there's nothing to look up), so their boxes have to be
+    // cleared here directly rather than relying on the dispatched events below alone.
+    if(eventSelect.options.length)eventSelect.selectedIndex=0;
+    const officialMount=document.getElementById('officialWaRankingDetails');if(officialMount)officialMount.innerHTML='';
+    document.getElementById('autoRankingBasisAllEvents')?.remove();
+    document.getElementById('rawCombinedDebugBox')?.remove();
+    window.__rankingstevnerOfficialRanking=null;
+    window.__rankingstevnerOfficialPending=false;
+    window.__rankingstevnerReconstructedBasis=null;
+    eventSelect.dispatchEvent(new Event('change',{bubbles:true}));
+    if(waInput)waInput.dispatchEvent(new Event('change',{bubbles:true}));
   });
 
   function restoreProfile(){
