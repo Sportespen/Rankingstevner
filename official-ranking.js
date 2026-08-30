@@ -30,15 +30,28 @@ function renderNone(d){const diag=esc(JSON.stringify(d?.diagnostics??d??{},null,
 // rows will always come back "Main Event" (WA's own lookup only returns rows for that exact
 // event) - the badge only actually varies for combined events, where a Heptathlon result can
 // legally count toward a Decathlon ranking (and vice versa) as a "Similar Event".
-function normEvt(s){return String(s||'').toLowerCase().replace(/metres?|meters?/g,'m').replace(/hurdles?/g,'h').replace(/steeplechase/g,'sc').replace(/[^a-z0-9]+/g,'');}
+function normEvt(s){return String(s||'').toLowerCase().replace(/kilometres?|kilometers?/g,'km').replace(/metres?|meters?/g,'m').replace(/hurdles?/g,'h').replace(/steeplechase/g,'sc').replace(/[^a-z0-9]+/g,'');}
 const eventAliases={'100m':['100m'],'200m':['200m'],'400m':['400m'],'800m':['800m'],'1500m':['1500m'],'5000m':['5000m'],'10000m':['10000m'],'100mH':['100mh'],'110mH':['110mh'],'400mH':['400mh'],'3000mSC':['3000msc'],HJ:['highjump'],PV:['polevault'],LJ:['longjump'],TJ:['triplejump'],SP:['shotput'],DT:['discusthrow'],HT:['hammerthrow'],JT:['javelinthrow'],Decathlon:['decathlon'],Heptathlon:['heptathlon']};
 function exactMatchEvt(discipline,code){const n=normEvt(discipline);return (eventAliases[code]||[]).some(a=>{if(n===a)return true;if(!n.startsWith(a))return false;const rest=n.slice(a.length);return rest!=='h'&&rest!=='sc';});}
-// WA's ranking rules also treat the short indoor sprint/hurdles distances as a "Similar Event"
-// for their outdoor counterpart (60m for 100m, 60m Hurdles for 100mH/110mH) - the same concept
-// as Heptathlon counting for Decathlon below, just for individual events. Confirmed live: two
-// 8.1x-second "110 m hekk" rows (far too fast to be 110mH itself) came from WA's own basis as
-// genuinely counting results - they were just falling through unclassified.
-const similarEventAliases={'100m':['60m'],'100mH':['60mh'],'110mH':['60mh']};
+// WA's ranking rules group each Main Event with one or more "Similar Events" that also count
+// toward the same ranking - confirmed directly from WA's own world-rankings page titles (not
+// guessed): "Men's 110mH (50mH-55mH-60mH)", "Men's 400m (300m-500m)", "Men's 800m (600m-1000m)",
+// "Men's 1500m (Mile-2000m-Mile Road)", "Men's 3000mSC (2000mSC)", "Men's 5000m (3000m-2 Miles-
+// 5km)", "Women's 10000m (10km)". Plain 200m, 400mH, and every jump/throw have no parenthetical
+// on their own page titles - no Similar Events for those. The road-distance variants (Mile Road,
+// 5km, 10km) are a best-effort match on normalized text; not yet confirmed against the exact raw
+// discipline string this endpoint returns for those specific cases (see debug-raw-basis.js).
+const similarEventAliases={
+  '100m':['50m','55m','60m'],
+  '100mH':['50mh','55mh','60mh'],
+  '110mH':['50mh','55mh','60mh'],
+  '400m':['300m','500m'],
+  '800m':['600m','1000m'],
+  '1500m':['mile','2000m'],
+  '3000mSC':['2000msc'],
+  '5000m':['3000m','2miles','5km'],
+  '10000m':['10km']
+};
 function eventTypeOf(discipline,code){const n=normEvt(discipline);if(code==='Decathlon'){if(n.startsWith('decathlon'))return'main';if(n.startsWith('heptathlon'))return'similar';return null;}if(code==='Heptathlon'){if(n.startsWith('heptathlon'))return'main';if(n.startsWith('pentathlon'))return'similar';return null;}if(exactMatchEvt(discipline,code))return'main';return (similarEventAliases[code]||[]).some(a=>n===a||n.startsWith(a))?'similar':null;}
 function typeBadge(t){if(t==='similar')return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;background:#eef2f7;color:#526170;white-space:nowrap">Similar Event</span>';if(t==='main')return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;background:#e7f6f2;color:#087f5b;white-space:nowrap">Main Event</span>';return '–';}
 function basisHtml(data,heading){const rows=Array.isArray(data?.basis)?data.basis:[];if(!rows.length)return `<div class="muted">Offisiell Ranking Score er hentet, men WA leverte ikke detaljert rankinggrunnlag i dette oppslaget.</div>`;return `<div><strong>Tellende rankinggrunnlag i ${esc(heading)} fra World Athletics:</strong><div style="overflow-x:auto;margin-top:7px"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left;padding:6px">Dato</th><th style="text-align:left;padding:6px">Stevne</th><th style="text-align:left;padding:6px">Kat.</th><th style="text-align:left;padding:6px">Resultat</th><th style="text-align:right;padding:6px">Result Score</th><th style="text-align:right;padding:6px">Placing Score</th><th style="text-align:right;padding:6px">Performance Score</th><th style="text-align:left;padding:6px">Type</th></tr></thead><tbody>${rows.map(r=>`<tr style="border-top:1px solid #e5ecea"><td style="padding:6px">${fmtDate(r.date)}</td><td style="padding:6px">${esc(r.competition||'–')}</td><td style="padding:6px">${esc(r.category||'–')}</td><td style="padding:6px">${esc(r.result??r.mark??'–')}</td><td style="padding:6px;text-align:right">${r.resultScore??'–'}</td><td style="padding:6px;text-align:right">${r.placingScore??'–'}</td><td style="padding:6px;text-align:right;font-weight:700">${r.performanceScore??'–'}</td><td style="padding:6px">${typeBadge(eventTypeOf(r.discipline,data.event))}</td></tr>`).join('')}</tbody></table></div></div>`;}

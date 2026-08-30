@@ -38,7 +38,7 @@
   let currentId='',allResults=[],loading=false,scoringData=null;
 
   function group(code){if(code==='5000m'||code==='3000mSC')return'distance';if(code==='10000m')return'tenk';if(code==='Decathlon'||code==='Heptathlon')return'combined';return'standard';}
-  function norm(s){return String(s||'').toLowerCase().replace(/metres?|meters?/g,'m').replace(/hurdles?/g,'h').replace(/steeplechase/g,'sc').replace(/[^a-z0-9]+/g,'');}
+  function norm(s){return String(s||'').toLowerCase().replace(/kilometres?|kilometers?/g,'km').replace(/metres?|meters?/g,'m').replace(/hurdles?/g,'h').replace(/steeplechase/g,'sc').replace(/[^a-z0-9]+/g,'');}
   const aliases={'100m':['100m'],'200m':['200m'],'400m':['400m'],'800m':['800m'],'1500m':['1500m'],'5000m':['5000m'],'10000m':['10000m'],'100mH':['100mh'],'110mH':['110mh'],'400mH':['400mh'],'3000mSC':['3000msc'],HJ:['highjump'],PV:['polevault'],LJ:['longjump'],TJ:['triplejump'],SP:['shotput'],DT:['discusthrow'],HT:['hammerthrow'],JT:['javelinthrow'],Decathlon:['decathlon'],Heptathlon:['heptathlon']};
   // norm() collapses "Hurdles"/"Steeplechase" down to a bare trailing "h"/"sc" with no
   // separator, so "100 Metres Hurdles" normalizes to "100mh" - which STARTS WITH "100m", the
@@ -47,12 +47,26 @@
   // treats as worse than showing nothing, so a startsWith match is only accepted when what's
   // left over isn't itself a real different discipline's own marker.
   function exactMatch(discipline,code){const n=norm(discipline);return (aliases[code]||[]).some(a=>{if(n===a)return true;if(!n.startsWith(a))return false;const rest=n.slice(a.length);return rest!=='h'&&rest!=='sc';});}
-  // WA's ranking rules also treat the short indoor sprint/hurdles distances as a "Similar Event"
-  // for their outdoor counterpart (60m for 100m, 60m Hurdles for 100mH/110mH) - without this, a
-  // real, legal 60mH result WA itself counts toward a 110mH ranking would be silently excluded
-  // here (type null -> candidate() rejects it), undercounting an indoor-heavy hurdler/sprinter's
-  // basis exactly like the earlier "Fant 2 av 5" undercounting concern.
-  const similarAliases={'100m':['60m'],'100mH':['60mh'],'110mH':['60mh']};
+  // WA's ranking rules group each Main Event with one or more "Similar Events" that also count
+  // toward the same ranking - confirmed directly from WA's own world-rankings page titles (not
+  // guessed): "Men's 110mH (50mH-55mH-60mH)", "Men's 400m (300m-500m)", "Men's 800m (600m-
+  // 1000m)", "Men's 1500m (Mile-2000m-Mile Road)", "Men's 3000mSC (2000mSC)", "Men's 5000m
+  // (3000m-2 Miles-5km)", "Women's 10000m (10km)". Plain 200m, 400mH, and every jump/throw have
+  // no parenthetical on their own page titles - no Similar Events for those. Without this, a
+  // real, legal similar-event result WA itself counts would be silently EXCLUDED here (type
+  // null -> candidate() rejects it), undercounting the athlete's basis whenever this local
+  // reconstruction is used - exactly like the earlier "Fant 2 av 5" undercounting concern.
+  const similarAliases={
+    '100m':['50m','55m','60m'],
+    '100mH':['50mh','55mh','60mh'],
+    '110mH':['50mh','55mh','60mh'],
+    '400m':['300m','500m'],
+    '800m':['600m','1000m'],
+    '1500m':['mile','2000m'],
+    '3000mSC':['2000msc'],
+    '5000m':['3000m','2miles','5km'],
+    '10000m':['10km']
+  };
   function individualType(discipline,code){if(exactMatch(discipline,code))return'main';const n=norm(discipline);return (similarAliases[code]||[]).some(a=>n===a||n.startsWith(a))?'similar':null;}
   // Confirmed via a live raw-data dump: WA's actual data reports a man's indoor combined event
   // as plain "Heptathlon" (no "Short Track" suffix at all, despite that being the label WA's own
