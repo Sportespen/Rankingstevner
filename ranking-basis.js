@@ -112,6 +112,14 @@
     exposeBasis(basis);
     if(!waDetails||!waDetails.parentNode)return;
     const old=document.getElementById('autoRankingBasisAllEvents');if(old)old.remove();
+    // official-ranking.js and this box run on separate, uncoordinated timers - deciding whether
+    // to show this fallback based on whatever __rankingstevnerOfficialRanking happens to hold
+    // RIGHT NOW meant this could render before the official lookup had even finished for the
+    // current event, then never get told to remove itself again (nothing used to signal a
+    // genuine "official search came up empty", only a match did). Waiting for
+    // __rankingstevnerOfficialPending to clear means this only ever renders once there's a real
+    // answer either way - at most one of the two boxes is ever shown.
+    if(window.__rankingstevnerOfficialPending)return;
     const official=window.__rankingstevnerOfficialRanking;
     const sameOfficial=official&&official.event===eventSelect.value&&Number(official.score)>0;
     if(sameOfficial)return;
