@@ -291,7 +291,22 @@
   // here means a reset actually stays reset.
   function resetLoadedResults(){currentId='';allResults=[];document.getElementById('autoRankingBasisAllEvents')?.remove();document.getElementById('rawCombinedDebugBox')?.remove();window.__rankingstevnerReconstructedBasis=null;window.__rankingstevnerOwnResults=null;}
   function idFromInput(){return waInput.value.trim().match(/(\d{7,9})/)?.[1]||'';}
-  eventSelect.addEventListener('change',()=>setTimeout(refresh,220));sex.addEventListener('change',()=>setTimeout(refresh,260));waInput.addEventListener('change',()=>{const id=idFromInput();if(id)load(id);else resetLoadedResults();});if(waStatus){new MutationObserver(()=>{const id=idFromInput();if(id)setTimeout(()=>load(id),50);}).observe(waStatus,{childList:true,subtree:true,characterData:true});}window.addEventListener('rankingofficialloaded',()=>setTimeout(refresh,40));const initial=idFromInput();if(initial)setTimeout(()=>load(initial),400);
+  eventSelect.addEventListener('change',()=>setTimeout(refresh,220));sex.addEventListener('change',()=>setTimeout(refresh,260));waInput.addEventListener('change',()=>{const id=idFromInput();if(id)load(id);else resetLoadedResults();});
+  // Same fix as official-ranking.js's observer: athlete-profile.js sets waStatus's text TWICE for
+  // one athlete selection ("Søker …" then "Koblet til World Athletics"), and treating every
+  // mutation as a fresh trigger meant load() ran twice for the same id - normally a harmless
+  // no-op here (load() already short-circuits on an unchanged id with results loaded), but not
+  // when the first call was still in flight, where it wastes a second fetch. Only an actually
+  // different WA-ID counts as a real trigger.
+  let lastObservedId='';
+  if(waStatus){new MutationObserver(()=>{
+    const id=idFromInput();
+    if(!id){lastObservedId='';return;}
+    if(id===lastObservedId)return;
+    lastObservedId=id;
+    setTimeout(()=>load(id),50);
+  }).observe(waStatus,{childList:true,subtree:true,characterData:true});}
+  window.addEventListener('rankingofficialloaded',()=>setTimeout(refresh,40));const initial=idFromInput();if(initial)setTimeout(()=>load(initial),400);
 })();
 
 (function(){function hideDuplicateScoreEditor(){const scoreInputs=document.getElementById('scoreInputs');const block=scoreInputs?.closest('.existing');if(block)block.style.display='none';}hideDuplicateScoreEditor();setTimeout(hideDuplicateScoreEditor,300);})();

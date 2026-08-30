@@ -73,4 +73,20 @@ async function load(){ensureSexSpecificHurdle();const id=waInput.value.trim().ma
   // silently repopulate the box - looking like the reset needed a second click to actually stick.
   ++requestSeq;window.__rankingstevnerOfficialPending=false;mount.innerHTML='';return;
 }const seq=++requestSeq;window.__rankingstevnerOfficialPending=true;renderLoading();let last=null;for(let a=0;a<3;a++){try{const d=await fetchOnce(id,seq);last=d;if(seq!==requestSeq)return;if(d?.ok&&d?.verifiedPublished===true&&validScore(d?.score)){render(d);return;}}catch(e){last={ok:false,error:String(e?.message||e)};}if(a<2)await new Promise(r=>setTimeout(r,350*(a+1)));}if(seq===requestSeq)renderNone(last);}
-eventSelect.addEventListener('change',()=>setTimeout(load,80));sex.addEventListener('change',()=>{setTimeout(()=>{ensureSexSpecificHurdle();load();},120);});waInput.addEventListener('change',()=>setTimeout(load,20));if(waStatus)new MutationObserver(()=>{if(waInput.value.trim())setTimeout(()=>{ensureSexSpecificHurdle();load();},60);}).observe(waStatus,{childList:true,subtree:true,characterData:true});setTimeout(()=>{ensureSexSpecificHurdle();load();},500);})();
+eventSelect.addEventListener('change',()=>setTimeout(load,80));sex.addEventListener('change',()=>{setTimeout(()=>{ensureSexSpecificHurdle();load();},120);});waInput.addEventListener('change',()=>setTimeout(load,20));
+// Selecting an athlete from the search dropdown sets the WA-ID directly (no 'change' event) and
+// instead relies on this observer reacting to waStatus's text - but athlete-profile.js's own
+// lookup sets that text TWICE for the same athlete ("Søker …" then "Koblet til World Athletics"),
+// and this used to treat every mutation as "the athlete changed", restarting load() from scratch
+// each time. The second restart abandoned whatever the first one was doing mid-flight - wasted
+// work, and the visible ranking box kept "loading" far longer than a single lookup needs. Only
+// treating an actually-different WA-ID as a real trigger fixes that.
+let lastObservedId='';
+if(waStatus)new MutationObserver(()=>{
+  const id=waInput.value.trim().match(/(\d{7,9})/)?.[1]||'';
+  if(!id){lastObservedId='';return;}
+  if(id===lastObservedId)return;
+  lastObservedId=id;
+  setTimeout(()=>{ensureSexSpecificHurdle();load();},60);
+}).observe(waStatus,{childList:true,subtree:true,characterData:true});
+setTimeout(()=>{ensureSexSpecificHurdle();load();},500);})();
