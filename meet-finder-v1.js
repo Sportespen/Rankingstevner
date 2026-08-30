@@ -145,7 +145,39 @@ function dedupeMeets(list){
 // if the specific event were confirmed when it wasn't.
 function isGenericTrackAndFieldMeet(m){const s=disciplineBlob(m);return !!s&&s.includes('track and field');}
 function eventConfirmed(m,code){if(code==='Decathlon'||code==='Heptathlon')return true;return eventMatches(m,code);}
-function baseMatches(){const c=eventCode();const combined=c==='Decathlon'||c==='Heptathlon';return dedupeMeets(allMeets.filter(m=>isFutureThrough2027(m)&&isEurope(m)&&isEligibleAgeMeet(m)&&(combined?eventMatches(m,c):(eventMatches(m,c)||isGenericTrackAndFieldMeet(m)))));}
+// A national championship only awards WA ranking points to athletes representing that country -
+// a Norwegian athlete can't score ranking points at, say, the German Championships. WA's
+// calendar names this competitionGroup value the same way it names "Area Indoor Championships"
+// (confirmed real value in meet-search.js) - "National Championships" - so that field is the
+// reliable signal, not the meet's own name (which for area/world/combined meets often also
+// contains the word "Championships").
+function isNationalChampionship(m){return norm(m?.competitionGroup||'').includes('national championship');}
+// Read directly from the shared profile store (same localStorage key athlete-profile.js writes)
+// rather than wiring up another cross-script live trigger - this file only needs a fresh read
+// each time it filters, not to be notified the instant the athlete changes.
+function athleteCountryCode(){
+  try{
+    const store=JSON.parse(localStorage.getItem('rankingstevner.profile.v1')||'{}');
+    const code=String(store?.waData?.country||'').toUpperCase().trim();
+    return code||null;
+  }catch(_){return null;}
+}
+function baseMatches(){
+  const c=eventCode();const combined=c==='Decathlon'||c==='Heptathlon';
+  const athleteCountry=athleteCountryCode();
+  return dedupeMeets(allMeets.filter(m=>{
+    if(!isFutureThrough2027(m)||!isEurope(m)||!isEligibleAgeMeet(m))return false;
+    if(!(combined?eventMatches(m,c):(eventMatches(m,c)||isGenericTrackAndFieldMeet(m))))return false;
+    // Only filter by nationality once we actually know it - with no athlete selected, or a
+    // country WA's calendar didn't give a code for, showing every national championship is
+    // still correct (better than silently hiding all of them on a guess).
+    if(athleteCountry&&isNationalChampionship(m)){
+      const meetCountry=countryCode(m);
+      if(meetCountry&&meetCountry!==athleteCountry)return false;
+    }
+    return true;
+  }));
+}
 // Every combined-events search gets a hand-verified fallback list (see functions/api/
 // meet-search.js's `verified` array) precisely because the live WA-calendar scrape has a known
 // history of coming back thin or empty before the parser catches up with a page-format change -
@@ -353,5 +385,13 @@ function render(){const host=$('meetList');if(!host)return;const base=baseMatche
   const individualNote=combined?'':' Programmet er ofte ikke offentliggjort ennå - stevner der øvelsen ikke er bekreftet er merket «ikke bekreftet», sjekk stevnets eget program.';
   const summary=`<div class="finder-summary"><div><span class="eyebrow">FREMTIDIGE WA-STEVNER</span><h4>${esc(eventLabel())}</h4><p class="muted">Kun senior- og U23-stevner i Europa.${combinedNote}${individualNote}${loadedAt?` Sist oppdatert ${stamp()}.`:''}</p></div><div class="finder-count">${loading?'…':matches.length}<small>${loading?'henter':'aktuelle stevner'}</small></div></div>`;if(loading&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Henter fremtidige stevner…</strong></div>`;return;}if(loadError&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Kunne ikke hente stevnekalenderen.</strong><p class="muted">${esc(loadError)}</p></div>`;return;}const controls=filterBar()+championshipStripHTML();if(!matches.length){const emptyBody=base.length?`<strong>Ingen treff med valgte filtre.</strong><p class="muted">Prøv å utvide dato eller velge Alle i filtrene.</p>`:`<strong>Fant ingen ${esc(eventLabel())}-stevner i den offentlige WA-kalenderen akkurat nå.</strong><p class="muted">Kan skyldes en reell pause i terminlisten, eller at færre stevner har publisert fullt program denne langt frem i tid - se diagnostikken under.</p>${eventDiagnosticsHtml()}`;host.innerHTML=summary+controls+`<div class="finder-empty">${emptyBody}</div>`;bindFilters();return;}host.innerHTML=summary+controls+matches.map(m=>{const confirmed=eventConfirmed(m,code);const eventNote=confirmed?'':' <span class="muted" style="font-weight:400;font-size:11px">(ikke bekreftet)</span>';return `<article class="meet-card meet-card-v1" data-meet-start="${esc(m.start||'')}" data-meet-indoor="${venueType(m)==='indoor'?'1':'0'}"><div class="meet-top"><div><h4>${esc(m.name||'Stevne')}</h4><div class="meta">${esc(locationText(m)||'Sted ikke publisert')} <a href="${esc(mapUrl(m))}" target="_blank" rel="noopener">Vis i kart</a></div></div><span class="cat">${esc(m.rankingCategory||'WA')}</span></div><div class="meet-facts"><div><span>Dato</span>${dateBoxHTML(m)}</div><div><span>Land</span><strong>${esc(countryLabel(m))}</strong></div><div><span>Øvelse</span><strong>${esc(perMeetEventLabel(m))}${eventNote}</strong></div><div><span>Arena</span><strong>${esc(venueLabel(m))}</strong></div></div><div class="meet-insight"><span>Historisk nivå</span><strong>Historiske resultater kobles inn senere.</strong></div>${m.id?`<div class="meet-insight" data-meet-contact="${esc(m.id)}"><span>Kontakt og premier</span><strong class="muted">Henter kontakt- og premieinfo …</strong></div>`:''}</article>`;}).join('');bindFilters();loadAllMeetDetails(host);}
 async function load(){if(loading)return;loading=true;loadError='';render();try{const params=new URLSearchParams({v:'58',event:eventCode(),startDate:new Date().toISOString().slice(0,10),endDate:'2027-12-31'});const res=await fetch(`/api/meet-search?${params}`,{cache:'no-store'});const data=await res.json();if(!res.ok||!data?.ok)throw new Error(data?.error||`Kalenderkilde svarte ${res.status}`);allMeets=Array.isArray(data.results)?data.results:[];loadedAt=new Date();}catch(e){loadError=String(e?.message||e);}finally{loading=false;render();}}
-function install(){const panel=$('meetList')?.closest('.panel');if(panel){const h=panel.querySelector('h3');if(h)h.textContent='Finn aktuelle rankingstevner';const status=panel.querySelector('.section-head>.muted');if(status)status.textContent='World Athletics-kalender';}$('meetCategoryFilter')?.closest('.filters')?.setAttribute('style','display:none!important');$('event')?.addEventListener('change',()=>setTimeout(load,0));$('sex')?.addEventListener('change',()=>setTimeout(load,0));load();setInterval(load,15*60*1000);}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
+function install(){const panel=$('meetList')?.closest('.panel');if(panel){const h=panel.querySelector('h3');if(h)h.textContent='Finn aktuelle rankingstevner';const status=panel.querySelector('.section-head>.muted');if(status)status.textContent='World Athletics-kalender';}$('meetCategoryFilter')?.closest('.filters')?.setAttribute('style','display:none!important');$('event')?.addEventListener('change',()=>setTimeout(load,0));$('sex')?.addEventListener('change',()=>setTimeout(load,0));
+  // The national-championship filter depends on which athlete is selected, not just event/sex -
+  // without this, switching to a different athlete wouldn't re-apply it until event or sex also
+  // happened to change. render() alone (no new fetch) is enough since baseMatches() re-reads the
+  // athlete's country fresh every time it runs.
+  const waStatus=$('waProfileStatus');
+  if(waStatus)new MutationObserver(()=>render()).observe(waStatus,{childList:true,subtree:true,characterData:true});
+  load();setInterval(load,15*60*1000);
+}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
 })();

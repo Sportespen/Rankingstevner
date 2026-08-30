@@ -212,7 +212,7 @@
       const rankData=await rankRes.json(), resultsData=await resultsRes.json();
       if(!rankData.ok) throw new Error(rankData.error||'Profiloppslag feilet');
 
-      const data={id:rankData.id,name:rankData.name,sex:rankData.sex,url:`https://worldathletics.org/athletes/-/${rankData.id}`};
+      const data={id:rankData.id,name:rankData.name,sex:rankData.sex,country:rankData.country||null,url:`https://worldathletics.org/athletes/-/${rankData.id}`};
       if(Array.isArray(rankData.currentWorldRankings)){
         data.rankings=rankData.currentWorldRankings.map(r=>({rank:Number(r.place),event:normalizeProxyEventGroup(r.eventGroup)})).filter(r=>Number.isFinite(r.rank)&&r.event);
       }
