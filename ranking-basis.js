@@ -81,7 +81,13 @@
   async function ensureScoring(){if(scoringData)return scoringData;try{const res=await fetch(SCORING_URL,{cache:'force-cache'});if(res.ok)scoringData=await res.json();}catch(_){}return scoringData;}
   function parseMark(raw,unit){const s=String(raw??'').trim().replace(',','.');if(!s)return NaN;if(unit==='seconds'&&s.includes(':')){const p=s.split(':').map(Number);if(p.some(v=>!Number.isFinite(v)))return NaN;if(p.length===2)return p[0]*60+p[1];if(p.length===3)return p[0]*3600+p[1]*60+p[2];}return Number(s.replace(/[^0-9.+-]/g,''));}
   function scoreFromTable(code,mark){const evt=scoringData?.[sex.value]?.[code];if(!evt)return null;const perf=parseMark(mark,evt.unit);if(!Number.isFinite(perf))return null;for(const [pts,tableMark] of evt.data){if(evt.direction==='min'&&tableMark>=perf)return pts;if(evt.direction==='max'&&tableMark<=perf)return pts;}return null;}
-  function candidate(r,code){const g=group(code),type=g==='combined'?combinedType(r.discipline,code):individualType(r.discipline,code);if(!type||r.legal===false||!validDate(r,code))return null;let rs=Number(r.resultScore);if((!Number.isFinite(rs)||rs<=0)&&g!=='combined')rs=scoreFromTable(code,r.mark);const place=Number(r.place),cat=String(r.category||'').toUpperCase();const ps=placingTables[g]?.[cat]?.[place-1];if(!Number.isFinite(rs)||rs<=0||!Number.isFinite(place)||ps==null)return null;return {...r,type,resultScore:rs,placingScore:ps,score:rs+ps};}
+  // A placing outside a category's scoring positions (e.g. 12th in category F, whose table only
+  // defines places 1-3) earns zero Placing Score under WA's real rules - the result still counts
+  // with Performance Score = Result Score alone. Treating a missing table entry as "reject the
+  // whole result" (confirmed live: it silently dropped a real, legal, in-period Shot Put result)
+  // was wrong - it's "no bonus", not "invalid".
+  function placingScoreFor(g,cat,place){if(!Number.isFinite(place)||place<1)return null;const ps=placingTables[g]?.[cat]?.[place-1];return Number.isFinite(ps)?ps:0;}
+  function candidate(r,code){const g=group(code),type=g==='combined'?combinedType(r.discipline,code):individualType(r.discipline,code);if(!type||r.legal===false||!validDate(r,code))return null;let rs=Number(r.resultScore);if((!Number.isFinite(rs)||rs<=0)&&g!=='combined')rs=scoreFromTable(code,r.mark);const place=Number(r.place),cat=String(r.category||'').toUpperCase();const ps=placingScoreFor(g,cat,place);if(!Number.isFinite(rs)||rs<=0||!Number.isFinite(place)||ps==null)return null;return {...r,type,resultScore:rs,placingScore:ps,score:rs+ps};}
   function basisFor(code){const needed=req[group(code)];const candidates=allResults.map(r=>candidate(r,code)).filter(Boolean).sort((a,b)=>b.score-a.score);if(group(code)==='combined'){const validPairs=[];for(let i=0;i<candidates.length;i++)for(let j=i+1;j<candidates.length;j++){const pair=[candidates[i],candidates[j]];if(pair.some(x=>x.type==='main'))validPairs.push(pair);}if(!validPairs.length)return {selected:candidates.slice(0,needed),candidates,needed,complete:false};validPairs.sort((a,b)=>(b[0].score+b[1].score)-(a[0].score+a[1].score));const selected=validPairs[0].sort((a,b)=>b.score-a.score);return {selected,candidates,needed,complete:true,rankingScore:Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed)};}const selected=candidates.slice(0,needed);return {selected,candidates,needed,complete:selected.length>=needed,rankingScore:selected.length>=needed?Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed):null};}
   function fillScores(basis){setTimeout(()=>{const scores=[...document.querySelectorAll('.existingScore')],types=[...document.querySelectorAll('.existingType')];if(!scores.length)return;scores.forEach(el=>el.value='');types.forEach(el=>el.value='main');basis.selected.slice(0,scores.length).forEach((x,i)=>{scores[i].value=String(x.score);if(types[i])types[i].value=x.type;});scores.forEach(el=>el.dispatchEvent(new Event('input',{bubbles:true})));},140);}
   const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -248,7 +254,7 @@
       let rs=Number(r.resultScore);
       if((!Number.isFinite(rs)||rs<=0)&&g!=='combined')rs=scoreFromTable(code,r.mark);
       const rsOk=Number.isFinite(rs)&&rs>0;
-      const ps=g==='combined'?null:placingTables[g]?.[cat]?.[place-1];
+      const ps=g==='combined'?0:placingScoreFor(g,cat,place);
       const psOk=g==='combined'?true:(ps!=null);
       const included=typeVal&&legalOk&&dateOk&&rsOk&&psOk;
       let verdict='Med i grunnlag';
@@ -256,7 +262,7 @@
       else if(!legalOk)verdict='ikke lovlig';
       else if(!dateOk)verdict='utenfor periode';
       else if(!rsOk)verdict='mangler Result Score';
-      else if(!psOk)verdict=`ukjent plassering (${cat||'kat.mangler'}/${Number.isFinite(place)?place:'plass mangler'})`;
+      else if(!psOk)verdict=`mangler plassering (${Number.isFinite(place)?place:'plass mangler'})`;
       return `<tr><td ${cell}>${r.discipline||''}</td><td ${cell}>${r.mark??''}</td><td ${cell}>${r.date||''}</td><td ${cell}>${legalOk?'ja':'NEI'}</td><td ${cell}>${dateOk?'ja':'NEI'}</td><td ${cell}>${typeVal||'ingen'}</td><td ${cell}>${cat||'–'}</td><td ${cell}>${Number.isFinite(place)?place:'–'}</td><td ${cell}>${included?'Med i grunnlag':verdict}</td></tr>`;
     }).join('');
     const title=isCombined?`Rådata: mangekamp-relaterte resultater (${entries.length})`:`Rådata: alle registrerte resultater (${entries.length})`;
