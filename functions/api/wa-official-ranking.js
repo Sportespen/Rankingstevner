@@ -22,6 +22,8 @@ export async function onRequestGet(context){
   const id=raw.match(/(\d{7,9})/)?.[1];
   const event=(url.searchParams.get('event')||'').trim();
   const sex=(url.searchParams.get('sex')||'').trim().toUpperCase();
+  const newScoreRaw=(url.searchParams.get('newScore')||'').trim();
+  const newScore=newScoreRaw?Number(newScoreRaw):null;
   if(!id)return json({ok:false,error:'Ugyldig World Athletics-ID'},400);
   if(!event)return json({ok:false,error:'Mangler øvelse'},400);
 
@@ -53,6 +55,16 @@ export async function onRequestGet(context){
     official=await fetchRankingRow(slug,gender,name,athleteSlug,knownRank,diagnostics);
   }
 
+  // Estimates where a hypothetical new score would place in World Athletics' own
+  // public world-rankings list (worldathletics.org/world-rankings/{slug}/{gender}),
+  // scraped directly - real, global rows, nothing from EA. Independent of the
+  // score/basis lookup above, so it runs regardless of whether that lookup found
+  // the athlete's own row.
+  let estimatedNewRank=null;
+  if(slug&&validScore(newScore)){
+    estimatedNewRank=await estimateNewWorldRank(slug,gender,newScore,knownRank,diagnostics);
+  }
+
   if(official){
     const calc=await fetchRankingCalculation(official.row.id,diagnostics);
     const basis=Array.isArray(calc?.results)?calc.results.map(normalizeBasis).filter(Boolean):[];
@@ -68,11 +80,12 @@ export async function onRequestGet(context){
       averagePerformanceScore:Number(calc?.averagePerformanceScore)||null,
       calculationId:Number(official.row.id)||null,
       basis,
+      estimatedNewRank,
       diagnostics
     });
   }
 
-  return json({ok:true,id:Number(id),event,name,rank:knownRank,rankScope:knownRank?'world':null,score:null,verifiedPublished:false,basisVerified:false,basis:[],diagnostics});
+  return json({ok:true,id:Number(id),event,name,rank:knownRank,rankScope:knownRank?'world':null,score:null,verifiedPublished:false,basisVerified:false,basis:[],estimatedNewRank,diagnostics});
 }
 
 async function rankingApi(proc,input){
@@ -136,6 +149,69 @@ async function fetchRankingRow(slug,gender,name,athleteSlug,knownRank,diagnostic
     }catch(e){diagnostics.push({source:'wa-ranking-fullscan',slug,gender,page,error:String(e?.message||e)});break;}
   }
   return null;
+}
+
+// Real, global World Athletics world-rankings pages render their table directly
+// into the page HTML (confirmed live: data-th="Rank"/"Competitor"/"score" per row,
+// 100 rows/page, strictly descending by score) - no AJAX call, no API key, nothing
+// from EA. This walks that list with a binary search over pages to find exactly
+// where a hypothetical score would land.
+async function fetchWorldRankingPage(slug,genderPath,page,diagnostics){
+  const pageUrl=`https://worldathletics.org/world-rankings/${slug}/${genderPath}?page=${page}`;
+  let html;
+  try{
+    const r=await fetchWithTimeout(pageUrl,{headers:{Accept:'text/html','User-Agent':'Mozilla/5.0 Rankingstevner/1.0'}});
+    if(!r.ok){diagnostics.push({source:'wa-world-rankings',slug,genderPath,page,status:r.status});return null;}
+    html=await r.text();
+  }catch(e){diagnostics.push({source:'wa-world-rankings',slug,genderPath,page,error:String(e?.message||e)});return null;}
+
+  const rows=[];
+  const rowRe=/<tr[^>]*data-id="(\d+)"[^>]*data-athlete-url="([^"]*)"[^>]*>([\s\S]*?)<\/tr>/gi;
+  let m;
+  while((m=rowRe.exec(html))){
+    const cellRe=/<td[^>]*data-th="([^"]*)"[^>]*>([\s\S]*?)<\/td>/gi;
+    const cells={};
+    let c;
+    while((c=cellRe.exec(m[3])))cells[c[1]]=c[2].replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim();
+    const rank=Number(cells.Rank),score=Number(cells.score??cells.Score);
+    if(Number.isFinite(rank)&&Number.isFinite(score))rows.push({rank,score});
+  }
+  const maxPage=Math.max(1,...[...html.matchAll(/data-page="(\d+)"/gi)].map(x=>Number(x[1])),1);
+  diagnostics.push({source:'wa-world-rankings',slug,genderPath,page,rows:rows.length,maxPage});
+  return {rows,maxPage};
+}
+
+async function estimateNewWorldRank(slug,genderPath,targetScore,knownRank,diagnostics){
+  const pageSize=100;
+  const first=await fetchWorldRankingPage(slug,genderPath,1,diagnostics);
+  if(!first||!first.rows.length)return null;
+  const maxPage=first.maxPage;
+  if(targetScore>=first.rows[0].score)return 1;
+
+  let lo=1,hi=maxPage,foundPage=null;
+  const pageData={1:first};
+  const budget=10;
+  let fetches=1;
+  while(lo<=hi&&fetches<budget){
+    const mid=Math.ceil((lo+hi)/2);
+    let data=pageData[mid];
+    if(!data){data=await fetchWorldRankingPage(slug,genderPath,mid,diagnostics);fetches++;pageData[mid]=data;}
+    if(!data||!data.rows.length){hi=mid-1;continue;}
+    const top=data.rows[0].score,bottom=data.rows[data.rows.length-1].score;
+    if(targetScore>top)hi=mid-1;
+    else if(targetScore<bottom)lo=mid+1;
+    else{foundPage=mid;break;}
+  }
+  if(foundPage==null){
+    foundPage=Math.min(maxPage,Math.max(1,lo));
+    if(!pageData[foundPage]){pageData[foundPage]=await fetchWorldRankingPage(slug,genderPath,foundPage,diagnostics);fetches++;}
+  }
+  const data=pageData[foundPage];
+  if(!data||!data.rows.length)return null;
+  if(foundPage===maxPage&&targetScore<data.rows[data.rows.length-1].score)return null;
+  let idx=data.rows.findIndex(r=>r.score<=targetScore);
+  if(idx===-1)idx=data.rows.length;
+  return (foundPage-1)*pageSize+idx+1;
 }
 
 async function fetchRankingCalculation(calculationId,diagnostics){

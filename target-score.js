@@ -13,3 +13,9 @@
   function loadBasis(){if(document.querySelector('script[data-ranking-basis-v210]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=210';s.dataset.rankingBasisV210='1';document.head.appendChild(s);}
   setTimeout(loadOfficialRanking,0);
 })();
+// v0.24.0: ekte WA-basert estimat for ny rankingplassering (worldathletics.org sin egen
+// offentlige rangeringsliste, ikke EA).
+(function(){
+  function loadRankPosition(){if(document.querySelector('script[data-rank-position-v1]'))return;const s=document.createElement('script');s.src='ranking-position-estimate.js?v=1';s.dataset.rankPositionV1='1';document.head.appendChild(s);}
+  setTimeout(loadRankPosition,0);
+})();
