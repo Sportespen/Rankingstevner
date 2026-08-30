@@ -1,7 +1,7 @@
 // Rankingstevner v0.22.2 – offisiell WA-ranking + offisielt rankinggrunnlag + korrekt hekk per kjønn
 (function(){'use strict';
 const eventSelect=document.getElementById('event'),sex=document.getElementById('sex'),waInput=document.getElementById('waProfileId'),waStatus=document.getElementById('waProfileStatus'),legacy=document.getElementById('waProfileDetails');if(!eventSelect||!sex||!waInput||!legacy)return;
-let mount=document.getElementById('officialWaRankingDetails');if(!mount){mount=document.createElement('div');mount.id='officialWaRankingDetails';mount.style.cssText='display:block;margin-top:14px;margin-bottom:8px;padding:14px;border:1px solid #d9e5e1;border-radius:10px;background:#fff';legacy.insertAdjacentElement('afterend',mount);}let requestSeq=0;
+let mount=document.getElementById('officialWaRankingDetails');if(!mount){mount=document.createElement('div');mount.id='officialWaRankingDetails';mount.style.cssText='display:none;margin-top:14px;margin-bottom:8px;padding:14px;border:1px solid #d9e5e1;border-radius:10px;background:#fff';legacy.insertAdjacentElement('afterend',mount);}let requestSeq=0;
 // ranking-basis.js's local reconstruction box is only meant to show when this official lookup
 // comes up empty - but the two run on separate, uncoordinated timers, so it used to sometimes
 // render its own box before this one had finished, then never get told to remove it (the
@@ -23,11 +23,14 @@ function ensureSexSpecificHurdle(){
   if(wasWrong){eventSelect.value=want;setTimeout(()=>eventSelect.dispatchEvent(new Event('change',{bubbles:true})),0);}
 }
 function fmtDate(v){if(!v)return'–';const d=new Date(v);if(Number.isNaN(d.getTime()))return esc(v);return d.toLocaleDateString('no-NO',{day:'2-digit',month:'2-digit',year:'numeric'});}
-function renderLoading(){mount.innerHTML=`<strong>Rankinggrunnlag for ${label()}:</strong><br><span class="muted">Henter offisiell ranking fra World Athletics …</span>`;}
+function renderLoading(){mount.style.display='block';mount.innerHTML=`<strong>Rankinggrunnlag for ${label()}:</strong><br><span class="muted">Henter offisiell ranking fra World Athletics …</span>`;}
 // When there's no verified official ranking to show, ranking-basis.js's local reconstruction box
 // already shows the real, useful information below this one - a "not found" message plus
-// diagnostics here was just noise on top of that, so this box simply stays empty in that case.
-function renderNone(){mount.innerHTML='';window.__rankingstevnerOfficialRanking=null;window.__rankingstevnerOfficialPending=false;window.dispatchEvent(new CustomEvent('rankingofficialloaded'));}
+// diagnostics here was just noise on top of that, so this box has nothing to show in that case.
+// Clearing innerHTML alone still left an empty bordered/padded box visible (the mount's own
+// styling), so it's hidden outright instead - shown again by renderLoading()/render() once
+// there's actually something to display.
+function renderNone(){mount.style.display='none';mount.innerHTML='';window.__rankingstevnerOfficialRanking=null;window.__rankingstevnerOfficialPending=false;window.dispatchEvent(new CustomEvent('rankingofficialloaded'));}
 // Same Main/Similar Event classification ranking-basis.js's local reconstruction table already
 // shows, so both boxes present the same information the same way. A plain individual event's
 // rows will always come back "Main Event" (WA's own lookup only returns rows for that exact
@@ -62,6 +65,7 @@ function render(data){
   const score=Number(data.score),heading=label();
   const rank=Number(data.rank),hasWorldRank=data.rankScope==='world'&&Number.isFinite(rank)&&rank>0;
   const rankLine=hasWorldRank?`<div style="font-size:20px;font-weight:800;color:#0b5f58;margin-bottom:6px">#${rank} i verden</div>`:'';
+  mount.style.display='block';
   mount.innerHTML=`<div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:18px;align-items:stretch"><div>${basisHtml(data,heading)}</div><div style="background:#f7fbfa;border:1px solid #cfe2dc;border-radius:14px;padding:22px 18px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center"><div style="font-size:13px;letter-spacing:.12em;font-weight:900;color:#0b5f58">OFFISIELL WA RANKING SCORE</div><div style="font-size:52px;line-height:1;font-weight:900;color:#0b4f4a;margin:14px 0 10px">${score}</div>${rankLine}</div></div>`;
   window.__rankingstevnerOfficialRanking={event:eventSelect.value,score,rank:hasWorldRank?rank:null,basis:Array.isArray(data.basis)?data.basis:[],source:'World Athletics official ranking calculation'};
   window.__rankingstevnerOfficialPending=false;
@@ -74,7 +78,7 @@ async function load(){ensureSexSpecificHurdle();const id=waInput.value.trim().ma
   // couple seconds) used to leave that in-flight request's captured seq still matching the
   // current one, so its (stale, previous-athlete) result would land AFTER this reset and
   // silently repopulate the box - looking like the reset needed a second click to actually stick.
-  ++requestSeq;window.__rankingstevnerOfficialPending=false;mount.innerHTML='';return;
+  ++requestSeq;window.__rankingstevnerOfficialPending=false;mount.style.display='none';mount.innerHTML='';return;
 }const seq=++requestSeq;window.__rankingstevnerOfficialPending=true;renderLoading();for(let a=0;a<3;a++){try{const d=await fetchOnce(id,seq);if(seq!==requestSeq)return;if(d?.ok&&d?.verifiedPublished===true&&validScore(d?.score)){render(d);return;}}catch(_){}if(a<2)await new Promise(r=>setTimeout(r,350*(a+1)));}if(seq===requestSeq)renderNone();}
 eventSelect.addEventListener('change',()=>setTimeout(load,80));sex.addEventListener('change',()=>{setTimeout(()=>{ensureSexSpecificHurdle();load();},120);});waInput.addEventListener('change',()=>setTimeout(load,20));
 // Selecting an athlete from the search dropdown sets the WA-ID directly (no 'change' event) and
