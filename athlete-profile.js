@@ -196,17 +196,25 @@
     if(waBtn) waBtn.disabled=true;
     setWaStatus('Søker …');
     try{
-      const [profileRes,rankRes,resultsRes]=await Promise.all([
-        fetch(`/api/athlete?id=${encodeURIComponent(id)}&v=081`,{cache:'no-store'}),
+      // /api/athlete used to also be fetched here - a legacy scraper doing dozens of sequential
+      // fetches per athlete (up to 6 events x 7 pages x 2 sexes, each retrying through a
+      // third-party r.jina.ai proxy on top) that was almost single-handedly why "Søker …" stayed
+      // up long after the real ranking box (official-ranking.js, via the fast nimarion-backed
+      // endpoints below) had already finished. Its own visible output went into #waProfileDetails,
+      // which index.html permanently hides via `display:none!important` - confirmed dead, and its
+      // one real side effect (auto-filling combined-event scores) is already duplicated by
+      // ranking-basis.js's own faster fillScores(). Worse, a failure in that scraper threw here
+      // and showed "Fant ikke WA-profil" even when the real data sources had succeeded.
+      const [rankRes,resultsRes]=await Promise.all([
         fetch(`/api/wa-rank?id=${encodeURIComponent(id)}&v=081`,{cache:'no-store'}),
         fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=081`,{cache:'no-store'})
       ]);
-      const data=await profileRes.json(), rankData=await rankRes.json(), resultsData=await resultsRes.json();
-      if(!data.ok) throw new Error(data.error||'Profiloppslag feilet');
+      const rankData=await rankRes.json(), resultsData=await resultsRes.json();
+      if(!rankData.ok) throw new Error(rankData.error||'Profiloppslag feilet');
 
-      if(rankData?.ok&&Array.isArray(rankData.currentWorldRankings)){
+      const data={id:rankData.id,name:rankData.name,sex:rankData.sex,url:`https://worldathletics.org/athletes/-/${rankData.id}`};
+      if(Array.isArray(rankData.currentWorldRankings)){
         data.rankings=rankData.currentWorldRankings.map(r=>({rank:Number(r.place),event:normalizeProxyEventGroup(r.eventGroup)})).filter(r=>Number.isFinite(r.rank)&&r.event);
-        if(!data.sex&&rankData.sex) data.sex=rankData.sex;
       }
       if(resultsData?.ok&&Array.isArray(resultsData.combined)){
         const basis=buildCombinedRankingBasis(resultsData.combined,data.sex);
