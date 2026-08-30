@@ -63,7 +63,15 @@
   function candidate(r,code){const g=group(code),type=g==='combined'?combinedType(r.discipline,code):(exactMatch(r.discipline,code)?'main':null);if(!type||r.legal===false||!validDate(r,code))return null;let rs=Number(r.resultScore);if((!Number.isFinite(rs)||rs<=0)&&g!=='combined')rs=scoreFromTable(code,r.mark);const place=Number(r.place),cat=String(r.category||'').toUpperCase();const ps=placingTables[g]?.[cat]?.[place-1];if(!Number.isFinite(rs)||rs<=0||!Number.isFinite(place)||ps==null)return null;return {...r,type,resultScore:rs,placingScore:ps,score:rs+ps};}
   function basisFor(code){const needed=req[group(code)];const candidates=allResults.map(r=>candidate(r,code)).filter(Boolean).sort((a,b)=>b.score-a.score);if(group(code)==='combined'){const validPairs=[];for(let i=0;i<candidates.length;i++)for(let j=i+1;j<candidates.length;j++){const pair=[candidates[i],candidates[j]];if(pair.some(x=>x.type==='main'))validPairs.push(pair);}if(!validPairs.length)return {selected:candidates.slice(0,needed),candidates,needed,complete:false};validPairs.sort((a,b)=>(b[0].score+b[1].score)-(a[0].score+a[1].score));const selected=validPairs[0].sort((a,b)=>b.score-a.score);return {selected,candidates,needed,complete:true,rankingScore:Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed)};}const selected=candidates.slice(0,needed);return {selected,candidates,needed,complete:selected.length>=needed,rankingScore:selected.length>=needed?Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed):null};}
   function fillScores(basis){setTimeout(()=>{const scores=[...document.querySelectorAll('.existingScore')],types=[...document.querySelectorAll('.existingType')];if(!scores.length)return;scores.forEach(el=>el.value='');types.forEach(el=>el.value='main');basis.selected.slice(0,scores.length).forEach((x,i)=>{scores[i].value=String(x.score);if(types[i])types[i].value=x.type;});scores.forEach(el=>el.dispatchEvent(new Event('input',{bubbles:true})));},140);}
-  function rowHtml(x){const badge=x.type==='similar'?'<span class="event-type-badge event-type-similar">Similar Event</span>':'<span class="event-type-badge event-type-main">Main Event</span>';const sub=x.source==='combined-event-subevent'?'<span class="subevent-note">fra mangekamp</span>':'';const meta=[x.date,x.competition].filter(Boolean).join(' · ');return `${x.mark??''} ${x.discipline} · ${x.resultScore} Result Score + ${x.placingScore} Placing Score = <strong>${x.score} Performance Score</strong>${badge}${sub}${meta?`<div class="basis-note">${meta}</div>`:''}`;}
+  const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  function fmtDate(v){if(!v)return'–';const d=new Date(v);if(Number.isNaN(d.getTime()))return esc(v);return d.toLocaleDateString('no-NO',{day:'2-digit',month:'2-digit',year:'numeric'});}
+  // Same table shape as official-ranking.js's basisHtml() (Dato/Stevne/Kat./Resultat/scores) so
+  // this box looks the same whether the ranking grunnlag came from WA directly or was
+  // reconstructed locally - only the heading and the right-side card differ.
+  function rowsTableHtml(list){
+    if(!list.length)return `<span class="muted">Ingen gyldige WA-resultater funnet innenfor gjeldende rankingperiode.</span>`;
+    return `<div style="overflow-x:auto;margin-top:7px"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left;padding:6px">Dato</th><th style="text-align:left;padding:6px">Stevne</th><th style="text-align:left;padding:6px">Kat.</th><th style="text-align:left;padding:6px">Resultat</th><th style="text-align:right;padding:6px">Result Score</th><th style="text-align:right;padding:6px">Placing Score</th><th style="text-align:right;padding:6px">Performance Score</th></tr></thead><tbody>${list.map(x=>{const badge=x.type==='similar'?' <span class="event-type-badge event-type-similar">Similar Event</span>':'';const sub=x.source==='combined-event-subevent'?' <span class="subevent-note">fra mangekamp</span>':'';return `<tr style="border-top:1px solid #e5ecea"><td style="padding:6px">${fmtDate(x.date)}</td><td style="padding:6px">${esc(x.competition||'–')}${badge}${sub}</td><td style="padding:6px">${esc(String(x.category||'').toUpperCase()||'–')}</td><td style="padding:6px">${esc(x.mark??'–')}</td><td style="padding:6px;text-align:right">${x.resultScore??'–'}</td><td style="padding:6px;text-align:right">${x.placingScore??'–'}</td><td style="padding:6px;text-align:right;font-weight:700">${x.score??'–'}</td></tr>`;}).join('')}</tbody></table></div>`;
+  }
 
   function exposeBasis(basis){
     window.__rankingstevnerReconstructedBasis={
@@ -129,20 +137,22 @@
     const box=document.createElement('div');box.id='autoRankingBasisAllEvents';
     box.style.cssText='margin-top:14px;padding:14px;border:1px solid #d9e5e1;border-radius:10px;background:#fff';
     const label=eventSelect.options[eventSelect.selectedIndex]?.textContent||eventSelect.value;
-    let leftHtml='';
-    if(!basis.selected.length){
-      leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br><span class="muted">Ingen gyldige WA-resultater funnet innenfor gjeldende rankingperiode.</span>`;
-    }else{
-      const rows=basis.selected.map(rowHtml).join('<br><br>');
-      const status=basis.complete?'':`<br><span class="muted">Fant ${basis.selected.length} av ${basis.needed} nødvendige tellende resultater innenfor rankingperioden. Ingen gyldig Ranking Score ennå.</span>`;
-      leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br>${rows}${status}`;
-    }
+    // Same table shape as the official box (rowsTableHtml), so the layout looks the same whether
+    // enough results were found or not - only the status note and the right-side card differ.
+    const status=(!basis.selected.length||basis.complete)?'':`<div class="basis-note">Fant ${basis.selected.length} av ${basis.needed} nødvendige tellende resultater innenfor rankingperioden. Ingen gyldig Ranking Score ennå.</div>`;
+    const leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong>${rowsTableHtml(basis.selected)}${status}`;
     // Only shown when there's no official score at all - if official already found one, it's
     // authoritative, and a second, possibly-different self-calculated number right next to the
     // breakdown rows this box is supplementing would just be confusing.
     const hasOfficialScore=official&&official.event===eventSelect.value&&Number(official.score)>0;
     let rightHtml='';
-    if(basis.complete&&!hasOfficialScore){rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">BEREGNET RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div><div class="ranking-score-note">Midlertidig beregning. Ingen offisiell WA Ranking Score funnet.</div></div>`;}
+    if(hasOfficialScore){
+      // covered above - basis is present here only when official's own basis was empty.
+    }else if(basis.complete){
+      rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">BEREGNET RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div><div class="ranking-score-note">Midlertidig beregning. Ingen offisiell WA Ranking Score funnet.</div></div>`;
+    }else{
+      rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">RANKINGGRUNNLAG</div><div class="ranking-score-value" style="font-size:34px">${basis.selected.length} / ${basis.needed}</div><div class="ranking-score-note">Nødvendige tellende resultater funnet. Ingen gyldig Ranking Score ennå.</div></div>`;
+    }
     box.innerHTML=`<div class="ranking-basis-left">${leftHtml}</div>${rightHtml}`;
     waDetails.insertAdjacentElement('afterend',box);
   }
