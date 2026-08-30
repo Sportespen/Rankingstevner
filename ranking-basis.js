@@ -230,8 +230,14 @@
   }
   function refresh(){exposeRawCombinedResults();if(!allResults.length){window.__rankingstevnerReconstructedBasis={event:eventSelect.value,selected:[],needed:req[group(eventSelect.value)],complete:false,rankingScore:null};window.dispatchEvent(new CustomEvent('rankingbasisupdated'));return;}const b=basisFor(eventSelect.value);fillScores(b);setTimeout(()=>renderBasis(b),180);}
   async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){await ensureScoring();refresh();return;}loading=true;try{const [res]=await Promise.all([fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=213`,{cache:'no-store'}),ensureScoring()]);const data=await res.json();if(data?.ok&&Array.isArray(data.results)){currentId=String(id);allResults=data.results;refresh();}}catch(_){}finally{loading=false;}}
+  // A cleared WA-ID used to just no-op here (load() returns immediately with no id), leaving
+  // currentId/allResults holding the PREVIOUS athlete's data - so the very next refresh() (e.g.
+  // from the eventSelect 'change' this same reset dispatches) recomputed the basis from that
+  // stale data and re-rendered the box that had just been removed. Clearing the cached results
+  // here means a reset actually stays reset.
+  function resetLoadedResults(){currentId='';allResults=[];document.getElementById('autoRankingBasisAllEvents')?.remove();document.getElementById('rawCombinedDebugBox')?.remove();window.__rankingstevnerReconstructedBasis=null;window.__rankingstevnerOwnResults=null;}
   function idFromInput(){return waInput.value.trim().match(/(\d{7,9})/)?.[1]||'';}
-  eventSelect.addEventListener('change',()=>setTimeout(refresh,220));sex.addEventListener('change',()=>setTimeout(refresh,260));waInput.addEventListener('change',()=>load(idFromInput()));if(waStatus){new MutationObserver(()=>{const id=idFromInput();if(id)setTimeout(()=>load(id),50);}).observe(waStatus,{childList:true,subtree:true,characterData:true});}window.addEventListener('rankingofficialloaded',()=>setTimeout(refresh,40));const initial=idFromInput();if(initial)setTimeout(()=>load(initial),400);
+  eventSelect.addEventListener('change',()=>setTimeout(refresh,220));sex.addEventListener('change',()=>setTimeout(refresh,260));waInput.addEventListener('change',()=>{const id=idFromInput();if(id)load(id);else resetLoadedResults();});if(waStatus){new MutationObserver(()=>{const id=idFromInput();if(id)setTimeout(()=>load(id),50);}).observe(waStatus,{childList:true,subtree:true,characterData:true});}window.addEventListener('rankingofficialloaded',()=>setTimeout(refresh,40));const initial=idFromInput();if(initial)setTimeout(()=>load(initial),400);
 })();
 
 (function(){function hideDuplicateScoreEditor(){const scoreInputs=document.getElementById('scoreInputs');const block=scoreInputs?.closest('.existing');if(block)block.style.display='none';}hideDuplicateScoreEditor();setTimeout(hideDuplicateScoreEditor,300);})();
