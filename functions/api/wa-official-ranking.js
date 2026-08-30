@@ -59,10 +59,22 @@ export async function onRequestGet(context){
   const [eaRow,waRow,estimatedNewRank]=await Promise.all([eaSearchPromise,waRowPromise,estimatePromise]);
 
   const score=waRow?waRow.row.score:(eaRow?Number(eaRow.row.rankingScore):null);
-  const calculationId=eaRow?(Number(eaRow.row.id)||null):null;
+
+  // The calculation/basis breakdown needs a row id to look up. World Athletics' own
+  // world-rankings row already carries its own real id (the same data-id its page uses
+  // for this exact detail view) - tried first, genuinely WA-sourced, no dependency on
+  // EA's (now-bounded, sometimes-empty) search finding a row at all. EA's row id is only
+  // tried as a fallback if WA's own id comes up empty.
+  const waCalcId=waRow?.row?.id||null;
+  const eaCalcId=eaRow?(Number(eaRow.row.id)||null):null;
 
   if(validScore(score)){
-    const calc=calculationId?await fetchRankingCalculation(calculationId,diagnostics):null;
+    let calc=waCalcId?await fetchRankingCalculation(waCalcId,diagnostics):null;
+    let calculationId=Array.isArray(calc?.results)&&calc.results.length?waCalcId:null;
+    if(!calculationId&&eaCalcId&&eaCalcId!==waCalcId){
+      calc=await fetchRankingCalculation(eaCalcId,diagnostics);
+      if(Array.isArray(calc?.results)&&calc.results.length)calculationId=eaCalcId;
+    }
     const basis=Array.isArray(calc?.results)?calc.results.map(normalizeBasis).filter(Boolean):[];
     return json({
       ok:true,id:Number(id),event,name,
@@ -180,8 +192,8 @@ async function fetchWorldRankingPage(slug,genderPath,page,diagnostics){
     const cells={};
     let c;
     while((c=cellRe.exec(m[3])))cells[c[1]]=c[2].replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim();
-    const rank=Number(cells.Rank),score=Number(cells.score??cells.Score);
-    if(Number.isFinite(rank)&&Number.isFinite(score))rows.push({rank,score});
+    const rank=Number(cells.Rank),score=Number(cells.score??cells.Score),id=Number(m[1]);
+    if(Number.isFinite(rank)&&Number.isFinite(score))rows.push({rank,score,id:Number.isFinite(id)?id:null});
   }
   const maxPage=Math.max(1,...[...html.matchAll(/data-page="(\d+)"/gi)].map(x=>Number(x[1])),1);
   diagnostics.push({source:'wa-world-rankings',slug,genderPath,page,rows:rows.length,maxPage});

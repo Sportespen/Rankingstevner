@@ -121,7 +121,10 @@
     // answer either way - at most one of the two boxes is ever shown.
     if(window.__rankingstevnerOfficialPending)return;
     const official=window.__rankingstevnerOfficialRanking;
-    const sameOfficial=official&&official.event===eventSelect.value&&Number(official.score)>0;
+    // The official score/rank can be found even when WA didn't return a detailed basis
+    // breakdown for that lookup - in that case this box still supplements with the real
+    // underlying results, rather than leaving the athlete with no breakdown at all.
+    const sameOfficial=official&&official.event===eventSelect.value&&Number(official.score)>0&&Array.isArray(official.basis)&&official.basis.length>0;
     if(sameOfficial)return;
     const box=document.createElement('div');box.id='autoRankingBasisAllEvents';
     box.style.cssText='margin-top:14px;padding:14px;border:1px solid #d9e5e1;border-radius:10px;background:#fff';
@@ -134,8 +137,12 @@
       const status=basis.complete?'':`<br><span class="muted">Fant ${basis.selected.length} av ${basis.needed} nødvendige tellende resultater innenfor rankingperioden. Ingen gyldig Ranking Score ennå.</span>`;
       leftHtml=`<strong>Automatisk rankinggrunnlag for ${label}:</strong><br>${rows}${status}`;
     }
+    // Only shown when there's no official score at all - if official already found one, it's
+    // authoritative, and a second, possibly-different self-calculated number right next to the
+    // breakdown rows this box is supplementing would just be confusing.
+    const hasOfficialScore=official&&official.event===eventSelect.value&&Number(official.score)>0;
     let rightHtml='';
-    if(basis.complete){rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">BEREGNET RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div><div class="ranking-score-note">Midlertidig beregning. Ingen offisiell WA Ranking Score funnet.</div></div>`;}
+    if(basis.complete&&!hasOfficialScore){rightHtml=`<div class="ranking-score-card"><div class="ranking-score-label">BEREGNET RANKING SCORE</div><div class="ranking-score-value">${basis.rankingScore}</div><div class="ranking-score-note">Midlertidig beregning. Ingen offisiell WA Ranking Score funnet.</div></div>`;}
     box.innerHTML=`<div class="ranking-basis-left">${leftHtml}</div>${rightHtml}`;
     waDetails.insertAdjacentElement('afterend',box);
   }
