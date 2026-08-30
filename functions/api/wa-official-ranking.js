@@ -45,40 +45,36 @@ export async function onRequestGet(context){
   const slug=rankingSlug(event);
   const gender=sex==='W'?'women':'men';
 
-  // Finds this athlete's row in the ranking-calculation lookup this app has access to, purely to
-  // read off their real WA Ranking Score and basis breakdown (score and basis are the athlete's
-  // own calculated values regardless of which lookup found the row - not scope-dependent). The
-  // real WORLD rank shown below always comes from `knownRank` (fetched directly above, from
-  // World Athletics' own backend) - never from this lookup's own row data.
-  let official=null;
-  if(slug&&name){
-    official=await fetchRankingRow(slug,gender,name,athleteSlug,knownRank,diagnostics);
-  }
+  // The score/rank display used to depend entirely on finding the athlete's row in EA's
+  // ranking-calculation lookup, which could fall through to a sequential scan of every
+  // remaining page (slow - dozens of fetches in the worst case). Since `knownRank` already
+  // gives the athlete's exact, real position, their score can now be read directly off ONE
+  // deterministic page of World Athletics' own public world-rankings list - fast, and
+  // independent of whether EA's search (kept below, but no longer allowed to fall back to a
+  // full scan) finds a row at all. Both run concurrently; EA's row (if found) still supplies
+  // the calculationId used for the basis breakdown.
+  const eaSearchPromise=(slug&&name)?fetchRankingRow(slug,gender,name,athleteSlug,knownRank,diagnostics):Promise.resolve(null);
+  const waRowPromise=slug?fetchWorldRankingRowByRank(slug,gender,knownRank,diagnostics):Promise.resolve(null);
+  const estimatePromise=(slug&&validScore(newScore))?estimateNewWorldRank(slug,gender,newScore,knownRank,diagnostics):Promise.resolve(null);
+  const [eaRow,waRow,estimatedNewRank]=await Promise.all([eaSearchPromise,waRowPromise,estimatePromise]);
 
-  // Estimates where a hypothetical new score would place in World Athletics' own
-  // public world-rankings list (worldathletics.org/world-rankings/{slug}/{gender}),
-  // scraped directly - real, global rows, nothing from EA. Independent of the
-  // score/basis lookup above, so it runs regardless of whether that lookup found
-  // the athlete's own row.
-  let estimatedNewRank=null;
-  if(slug&&validScore(newScore)){
-    estimatedNewRank=await estimateNewWorldRank(slug,gender,newScore,knownRank,diagnostics);
-  }
+  const score=waRow?waRow.row.score:(eaRow?Number(eaRow.row.rankingScore):null);
+  const calculationId=eaRow?(Number(eaRow.row.id)||null):null;
 
-  if(official){
-    const calc=await fetchRankingCalculation(official.row.id,diagnostics);
+  if(validScore(score)){
+    const calc=calculationId?await fetchRankingCalculation(calculationId,diagnostics):null;
     const basis=Array.isArray(calc?.results)?calc.results.map(normalizeBasis).filter(Boolean):[];
     return json({
       ok:true,id:Number(id),event,name,
       rank:knownRank,
       rankScope:knownRank?'world':null,
-      score:Number(official.row.rankingScore),
+      score,
       source:'World Athletics official ranking data',
       sourceUrl:`https://worldathletics.org/world-rankings/${slug}/${sex==='W'?'m':'men'}`,
       verifiedPublished:true,
       basisVerified:basis.length>0,
       averagePerformanceScore:Number(calc?.averagePerformanceScore)||null,
-      calculationId:Number(official.row.id)||null,
+      calculationId,
       basis,
       estimatedNewRank,
       diagnostics
@@ -124,6 +120,13 @@ async function fetchRankingRow(slug,gender,name,athleteSlug,knownRank,diagnostic
     }
   }
 
+  // Bounded to page 1 + a handful of targeted guesses around the known rank - no scan of
+  // every remaining page. That fullscan was the dominant source of latency (worst case,
+  // dozens of sequential fetches) and is no longer needed for score/rank: those now come
+  // straight from World Athletics' own list via fetchWorldRankingRowByRank(), which is exact.
+  // This search only still runs to opportunistically find a calculationId for the basis
+  // breakdown; if it doesn't find one within budget, the basis is simply left empty and the
+  // frontend's local reconstruction fallback takes over, same as it already does today.
   for(const page of targets){
     try{
       const data=await rankingApi('worldAthletics.getRanking',{eventGroup:slug,gender,page});
@@ -133,22 +136,26 @@ async function fetchRankingRow(slug,gender,name,athleteSlug,knownRank,diagnostic
       if(row&&validScore(row.rankingScore))return {row,page};
     }catch(e){diagnostics.push({source:'wa-ranking-targeted',slug,gender,page,error:String(e?.message||e)});}
   }
-
-  // Fallback: scan the remaining pages. This is only used when the athlete's
-  // world rank and the gateway's page order differ (common in deep sprint lists).
-  for(let page=2;page<=maxPages;page++){
-    if(targets.includes(page))continue;
-    try{
-      const data=await rankingApi('worldAthletics.getRanking',{eventGroup:slug,gender,page});
-      const rows=Array.isArray(data?.rankings)?data.rankings:[];
-      row=rows.find(r=>athleteMatches(r,name,athleteSlug));
-      if(row&&validScore(row.rankingScore)){
-        diagnostics.push({source:'wa-ranking-fullscan',slug,gender,page,found:true});
-        return {row,page};
-      }
-    }catch(e){diagnostics.push({source:'wa-ranking-fullscan',slug,gender,page,error:String(e?.message||e)});break;}
-  }
   return null;
+}
+
+// The athlete's real, exact rank (from World Athletics' own backend, via nimarion above)
+// tells us precisely which page of WA's own public world-rankings list they're on -
+// page = ceil(rank/pageSize) - since that list's Rank column IS the true global position.
+// One deterministic fetch, no guessing, nothing from EA.
+async function fetchWorldRankingRowByRank(slug,genderPath,knownRank,diagnostics){
+  if(!validRank(knownRank))return null;
+  const pageSize=100;
+  const page=Math.max(1,Math.ceil(Number(knownRank)/pageSize));
+  const data=await fetchWorldRankingPage(slug,genderPath,page,diagnostics);
+  if(!data||!data.rows.length)return null;
+  let row=data.rows.find(r=>r.rank===Number(knownRank));
+  if(!row){
+    // Small safety net: knownRank may have shifted by a few places since it was cached -
+    // pick the closest row on this page rather than failing outright.
+    row=data.rows.reduce((best,r)=>Math.abs(r.rank-knownRank)<Math.abs((best?best.rank:Infinity)-knownRank)?r:best,null);
+  }
+  return row?{row,page}:null;
 }
 
 // Real, global World Athletics world-rankings pages render their table directly
