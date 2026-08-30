@@ -22,21 +22,18 @@ export async function onRequestGet(context) {
     if (score > 0) merged.set(String(a.id), {...a,_score:score});
   }
 
+  // This used to search WA with just the first word first, and only if THAT came up empty,
+  // search again with the full string - a second sequential round trip (up to ~2.6s more) on
+  // top of the first, whenever the first-name-only search didn't happen to also match the last
+  // name. That fallback is redundant now: athlete-search-fast.js on the frontend already fires
+  // the last name, first name, and full query as three SEPARATE, PARALLEL requests to this same
+  // endpoint - whichever of those finds the athlete surfaces it, without any single request
+  // needing to retry internally. Searching once, with exactly what was asked, is both simpler
+  // and never slower than the fastest of those three parallel calls.
   try {
-    const primaryQuery = parts.length > 1 && parts[0].length >= 2 ? parts[0] : q;
-    const primary = await searchWaFast(primaryQuery);
-    mergeAthletes(merged,primary,qNorm,qTokens);
-
-    let ranked = rankedResults(merged);
-    if (ranked.length) return json({ok:true,results:ranked,source:'wa-prefix-first'});
-
-    if (normalize(primaryQuery) !== qNorm) {
-      const exact = await searchWaFast(q);
-      mergeAthletes(merged,exact,qNorm,qTokens);
-      ranked = rankedResults(merged);
-    }
-
-    return json({ok:true,results:ranked,source:'wa-prefix-fallback'});
+    const raw = await searchWaFast(q);
+    mergeAthletes(merged,raw,qNorm,qTokens);
+    return json({ok:true,results:rankedResults(merged),source:'wa'});
   } catch (e) {
     return json({ok:true,results:rankedResults(merged),source:'fallback',warning:String(e?.message||e)});
   }
