@@ -225,6 +225,40 @@ export async function onRequestGet(context) {
   })();
   let nimarionLogged = false;
 
+  // WA's own calendar page has a real free-text search box - confirmed live by the user directly
+  // (searching "Ostrava" on https://worldathletics.org/competition/calendar-results produced
+  // ?query=ostrava in the address bar). Fired once here, in parallel with the per-year window
+  // search below, using the most distinctive word of the wanted name (longest meaningful token,
+  // e.g. "ostrava" out of "ostrava golden spike") - purely additive. Europe's calendar can hold
+  // far more meets in a single ±45-day window than the 500-per-year cap below scans (confirmed
+  // live: "66th Ostrava Golden Spike", a well-known annual Continental Tour meet, never appeared
+  // anywhere in 1500 paginated candidates across all 3 years), so a direct name search can surface
+  // a real match regardless of what page it would otherwise have fallen on. If it returns nothing
+  // useful, this adds nothing; if WA's own text index matches, the existing name-scoring below
+  // picks the result up like any other candidate.
+  const queryTokens = meaningfulTokens(wantedNorm);
+  const queryTerm = queryTokens.length ? queryTokens.reduce((a, b) => (b.length > a.length ? b : a)) : '';
+  const queryPromise = queryTerm ? (async () => {
+    const wa = new URL('https://worldathletics.org/competition/calendar-results');
+    wa.searchParams.set('isSearchReset', 'true');
+    wa.searchParams.set('query', queryTerm);
+    // Wide date span (not just one of the ±45-day windows below) - a single query search can
+    // surface every past edition of a recurring meet at once, so no need to repeat it per year.
+    wa.searchParams.set('startDate', new Date(refDate.getTime() - 4 * 365 * 24 * 3600 * 1000).toISOString().slice(0, 10));
+    wa.searchParams.set('endDate', refDate.toISOString().slice(0, 10));
+    wa.searchParams.set('regionId', '3');
+    wa.searchParams.set('regionType', 'area');
+    try {
+      const r = await fetchWithTimeout(wa.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
+      if (!r.ok) return [];
+      const html = await r.text();
+      return extractCalendarObjects(html).filter(row => row.id && row.name && row.start);
+    } catch (e) {
+      diagnostics.push({ source: 'query-search', queryTerm, error: String(e?.message || e) });
+      return [];
+    }
+  })() : Promise.resolve([]);
+
   // Small domestic/regional championships often don't run on a fixed weekend from year to
   // year (unlike GL Tour meets), so a ±30 day window missed some real editions. Widened to
   // ±45 days, and a 3rd yearsBack pass added for meets on a longer or irregular cycle.
@@ -318,6 +352,18 @@ export async function onRequestGet(context) {
     candidates = candidates.concat(windowCandidates);
     if (windowCandidates.some(c => nameScore(wantedNorm, normalizeMeetName(c.name)) > 0)) break;
   }
+
+  const queryResults = await queryPromise;
+  const seenIds = new Set(candidates.map(c => `${c.id}`));
+  const queryAdded = [];
+  for (const row of queryResults) {
+    const key = `${row.id}`;
+    if (seenIds.has(key)) continue;
+    seenIds.add(key);
+    candidates.push(row);
+    queryAdded.push(row);
+  }
+  diagnostics.push({ source: 'query-search', queryTerm, resultCount: queryResults.length, added: queryAdded.length, sampleNames: queryResults.slice(0, 5).map(c => c.name) });
 
   const scored = candidates
     .map(c => ({ c, score: nameScore(wantedNorm, normalizeMeetName(c.name)) }))
