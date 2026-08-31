@@ -146,12 +146,35 @@ function dedupeMeets(list){
 function isGenericTrackAndFieldMeet(m){const s=disciplineBlob(m);return !!s&&s.includes('track and field');}
 function eventConfirmed(m,code){if(code==='Decathlon'||code==='Heptathlon')return true;return eventMatches(m,code);}
 // A national championship only awards WA ranking points to athletes representing that country -
-// a Norwegian athlete can't score ranking points at, say, the German Championships. WA's
-// calendar names this competitionGroup value the same way it names "Area Indoor Championships"
-// (confirmed real value in meet-search.js) - "National Championships" - so that field is the
-// reliable signal, not the meet's own name (which for area/world/combined meets often also
-// contains the word "Championships").
-function isNationalChampionship(m){return norm(m?.competitionGroup||'').includes('national championship');}
+// a Norwegian athlete can't score ranking points at, say, the German Championships. Originally
+// this checked competitionGroup (confirmed populated as "Area Indoor Championships" for
+// continental-level meets), assuming WA named domestic championships the same way - but a live
+// diagnostic dump of the raw calendar objects for "Croatian U23 Championships"/"Swiss U23
+// Championships"/"Czech Team Championships" showed competitionGroup:null for all three, so that
+// field is simply not populated for domestic meets and can't be relied on alone.
+// Instead this matches by name: WA names domestic championships "<Demonym> [U23/Team/...]
+// Championships", one demonym per country - multi-country events (European/World/Balkan/Nordic
+// Championships etc.) never start with one of these, so this can't false-positive on those.
+const NATIONAL_DEMONYMS=[['NOR','Norwegian'],['SWE','Swedish'],['DEN','Danish'],['FIN','Finnish'],
+  ['ISL','Icelandic'],['GBR','British'],['IRL','Irish'],['FRA','French'],['GER','German'],
+  ['NED','Dutch'],['BEL','Belgian'],['LUX','Luxembourg'],['SUI','Swiss'],['AUT','Austrian'],
+  ['ESP','Spanish'],['POR','Portuguese'],['ITA','Italian'],['GRE','Greek'],['CYP','Cypriot'],
+  ['MLT','Maltese'],['POL','Polish'],['CZE','Czech'],['SVK','Slovak'],['HUN','Hungarian'],
+  ['SLO','Slovenian'],['CRO','Croatian'],['BIH','Bosnian'],['SRB','Serbian'],['MNE','Montenegrin'],
+  ['MKD','Macedonian'],['ALB','Albanian'],['KOS','Kosovan'],['BUL','Bulgarian'],['ROU','Romanian'],
+  ['MDA','Moldovan'],['UKR','Ukrainian'],['BLR','Belarusian'],['LTU','Lithuanian'],['LAT','Latvian'],
+  ['EST','Estonian'],['ARM','Armenian'],['GEO','Georgian'],['TUR','Turkish'],['AND','Andorran'],
+  ['MON','Monegasque'],['LIE','Liechtenstein'],['SMR','Sammarinese'],['GIB','Gibraltarian']];
+function nationalChampionshipCountryCode(m){
+  const name=norm(m?.name);
+  if(!name||!name.includes('championship'))return null;
+  const hit=NATIONAL_DEMONYMS.find(([,demonym])=>name.startsWith(norm(demonym)+' '));
+  if(hit)return hit[0];
+  // Fallback for the (still unconfirmed for any real domestic meet) case WA does populate
+  // competitionGroup for one named this way - trust it too, using the venue's own country.
+  if(norm(m?.competitionGroup||'').includes('national championship'))return countryCode(m)||null;
+  return null;
+}
 // Read directly from the shared profile store (same localStorage key athlete-profile.js writes)
 // rather than wiring up another cross-script live trigger - this file only needs a fresh read
 // each time it filters, not to be notified the instant the athlete changes.
@@ -171,8 +194,8 @@ function baseMatches(){
     // Only filter by nationality once we actually know it - with no athlete selected, or a
     // country WA's calendar didn't give a code for, showing every national championship is
     // still correct (better than silently hiding all of them on a guess).
-    if(athleteCountry&&isNationalChampionship(m)){
-      const meetCountry=countryCode(m);
+    if(athleteCountry){
+      const meetCountry=nationalChampionshipCountryCode(m);
       if(meetCountry&&meetCountry!==athleteCountry)return false;
     }
     return true;
