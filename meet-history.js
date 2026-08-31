@@ -143,9 +143,26 @@ function diagnosticsHtml(data){
   return `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px;color:#677585">Diagnostikk</summary><pre style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:#f7f9fb;padding:8px;border-radius:6px;margin-top:6px">${diag}</pre></details>`;
 }
 
+// "No previous edition found" and "found the previous edition but it didn't have this event"
+// look identical to a user if shown with the same text - live evidence showed a real, correctly
+// working case (a Danish club meet whose 2025 edition genuinely had no men's 100m) displaying
+// "fant ikke forrige utgave", which reads as a search failure even though the search worked
+// exactly right. Message now follows the actual `reason` the backend returns instead of one
+// generic fallback for every not-found case.
+function notFoundHtml(data){
+  const reason = data?.reason;
+  if (reason === 'no-standings-found' || reason === 'known-competition-no-standings') {
+    const editionBit = data?.matchedMeetName ? ` (${esc(data.matchedMeetName)}${data.year ? ', ' + data.year : ''})` : '';
+    return `<strong>Historiske resultater er ikke verifisert ennå.</strong><small>Fant forrige utgave av stevnet${editionBit}, men den har ikke registrert resultater i denne øvelsen.</small>`;
+  }
+  if (reason === 'unsupported-event') {
+    return `<strong>Historiske resultater er ikke verifisert ennå.</strong><small>Denne øvelsen støttes ikke for historiske resultater ennå.</small>`;
+  }
+  return `<strong>Historiske resultater er ikke verifisert ennå.</strong><small>Fant ikke forrige utgave av stevnet i World Athletics-kalenderen.</small>`;
+}
 function renderHtml(data, indoor){
   if (!data || !data.found) {
-    return `<strong>Historiske resultater er ikke verifisert ennå.</strong><small>Fant ikke forrige utgave av stevnet i World Athletics-kalenderen.</small>${diagnosticsHtml(data)}`;
+    return `${notFoundHtml(data)}${diagnosticsHtml(data)}`;
   }
   const event = eventCode();
   const ascending = !!data.ascending;

@@ -84,7 +84,13 @@ function individualEventNameCandidates(event, gender) {
 // (eventId/day candidates), and meet-search.js already showed live what happens when that many
 // sequential/untimed external calls run too long: Cloudflare kills the whole request and returns
 // its own HTML error page instead of a real response. Same fix here.
-const FETCH_TIMEOUT_MS = 8000;
+// Raised from 8000 after live diagnostics on a real lookup showed most of the calendar-page
+// fetches (13 of 15 across the 2nd/3rd yearsBack windows) aborting on this timeout under real
+// concurrent load - not because WA was down, since the ones that finished returned real data and
+// the lookup still succeeded overall on the fetches that got through in time. All these fetches
+// already run concurrently within their own batch (5 offsets at once, 3 years at once), so a
+// higher per-fetch ceiling only raises the worst case for one batch, not the sum of every fetch.
+const FETCH_TIMEOUT_MS = 12000;
 // Results pages are real, server-rendered Next.js pages (~85KB seen live) rather than the
 // calendar list's lighter pages, and now fetch concurrently (up to 4 day candidates at once) -
 // live diagnostics showed a real, data-bearing day page aborted at 8s ("The operation was
@@ -422,7 +428,11 @@ export async function onRequestGet(context) {
   // seems to be server-rendered on WA's own results page, so scrape that page directly instead.
   const fetched = await fetchStandingsForCompetition(best.id, event, sex);
   diagnostics.push(...fetched.diagnostics);
-  if (!fetched.rows.length) return json({ ok: true, found: false, reason: 'no-standings-found', diagnostics });
+  // matchedMeetName/year included here (not just on a found:true result) so the frontend can
+  // tell "we found last year's edition, it just didn't have this event" apart from "we never
+  // found a previous edition at all" - those mean very different things to a user deciding
+  // whether the app is broken or the meet genuinely lacks that event.
+  if (!fetched.rows.length) return json({ ok: true, found: false, reason: 'no-standings-found', matchedMeetName: best.name, year: parseDate(best.start)?.getUTCFullYear() || null, diagnostics });
 
   // fetchStandingsForCompetition already returns rows sorted best-first (it knows internally
   // whether this event's "better" is a higher or lower mark), so rows[0] is always the winner
