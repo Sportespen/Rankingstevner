@@ -105,12 +105,19 @@ function countryCode(m){
 }
 function isEurope(m){if(countryCode(m))return true;const raw=[locationText(m),m?.area,m?.country,m?.countryCode,m?.competitionGroup,m?.competitionSubgroup].filter(Boolean).join(' ');const s=norm(raw);return EUROPE_NAMES.some(name=>s.includes(norm(name)));}
 function countryLabel(m){const code=countryCode(m);if(code)return COUNTRY_NAMES[code]||code;const raw=norm(locationText(m));for(const [code,name] of Object.entries(COUNTRY_NAMES)){if(raw.includes(norm(name)))return name;}return 'Ukjent land';}
+// Word-boundary'd - a bare substring match (no \b) let "hallen" match inside World Athletics'
+// own "Continental Tour Challenger" tier label (c-HALLEN-ger), confirmed live via a Zagreb meet's
+// diagnostics: that meet's explicit source field happened to win first so it didn't change the
+// outcome there, but any OTHER meet without an explicit venueType field and "Challenger" in its
+// name/category would have been wrongly flagged indoor by this alone.
+const INDOOR_KEYWORDS_RE=/\bindoors?\b|\bshort track\b|\bhallen\b|\bhall meeting\b|\bvelodromo\b/;
+const OUTDOOR_KEYWORDS_RE=/\boutdoor\b|\bstadium\b|\bstadion\b|\bstade\b|\bsports ground\b|\bathletics track\b/;
 function venueType(m){
   const explicit=String(m?.venueType||m?.environment||'').toLowerCase();
   if(explicit==='indoor'||explicit==='outdoor')return explicit;
   const s=norm([m?.name,locationText(m),m?.competitionGroup,m?.competitionSubgroup,disciplineBlob(m)].filter(Boolean).join(' '));
-  if(/indoor|short track|indoors|hallen|hall meeting|velodromo/.test(s))return'indoor';
-  if(/outdoor|stadium|stadion|stade|sports ground|athletics track/.test(s))return'outdoor';
+  if(INDOOR_KEYWORDS_RE.test(s))return'indoor';
+  if(OUTDOOR_KEYWORDS_RE.test(s))return'outdoor';
   // WA calendar data almost always marks indoor meets explicitly but often omits "outdoor"
   // since it's the default case. When neither keyword is present, fall back to the European
   // indoor season (roughly desember-mars) by date rather than leaving Arena unanswered.
@@ -125,8 +132,8 @@ function venueType(m){
 function venueDiagHtml(m){
   const explicit=String(m?.venueType||m?.environment||'').toLowerCase();
   const s=norm([m?.name,locationText(m),m?.competitionGroup,m?.competitionSubgroup,disciplineBlob(m)].filter(Boolean).join(' '));
-  const kwIndoor=/indoor|short track|indoors|hallen|hall meeting|velodromo/.exec(s);
-  const kwOutdoor=/outdoor|stadium|stadion|stade|sports ground|athletics track/.exec(s);
+  const kwIndoor=INDOOR_KEYWORDS_RE.exec(s);
+  const kwOutdoor=OUTDOOR_KEYWORDS_RE.exec(s);
   const d=parseDate(m?.start)||parseDate(m?.end);
   const diag={
     rawVenueTypeField:m?.venueType??null,
