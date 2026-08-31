@@ -152,9 +152,11 @@ function eventConfirmed(m,code){if(code==='Decathlon'||code==='Heptathlon')retur
 // diagnostic dump of the raw calendar objects for "Croatian U23 Championships"/"Swiss U23
 // Championships"/"Czech Team Championships" showed competitionGroup:null for all three, so that
 // field is simply not populated for domestic meets and can't be relied on alone.
-// Instead this matches by name: WA names domestic championships "<Demonym> [U23/Team/...]
-// Championships", one demonym per country - multi-country events (European/World/Balkan/Nordic
-// Championships etc.) never start with one of these, so this can't false-positive on those.
+// Instead this matches by name: WA names domestic (and sub-national/regional, e.g. "Lower
+// Austrian Regional Championships") championships with a demonym somewhere in the name -
+// not always as the very first word, so this checks for the demonym as a whole word anywhere
+// in the name, not just a prefix. Multi-country events (European/World/Balkan/Nordic
+// Championships etc.) never contain any of these words, so this can't false-positive on those.
 const NATIONAL_DEMONYMS=[['NOR','Norwegian'],['SWE','Swedish'],['DEN','Danish'],['FIN','Finnish'],
   ['ISL','Icelandic'],['GBR','British'],['IRL','Irish'],['FRA','French'],['GER','German'],
   ['NED','Dutch'],['BEL','Belgian'],['LUX','Luxembourg'],['SUI','Swiss'],['AUT','Austrian'],
@@ -168,7 +170,8 @@ const NATIONAL_DEMONYMS=[['NOR','Norwegian'],['SWE','Swedish'],['DEN','Danish'],
 function nationalChampionshipCountryCode(m){
   const name=norm(m?.name);
   if(!name||!name.includes('championship'))return null;
-  const hit=NATIONAL_DEMONYMS.find(([,demonym])=>name.startsWith(norm(demonym)+' '));
+  const words=name.split(' ');
+  const hit=NATIONAL_DEMONYMS.find(([,demonym])=>words.includes(norm(demonym)));
   if(hit)return hit[0];
   // Fallback for the (still unconfirmed for any real domestic meet) case WA does populate
   // competitionGroup for one named this way - trust it too, using the venue's own country.
