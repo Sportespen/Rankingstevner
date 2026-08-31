@@ -212,9 +212,16 @@
       // result and exactly which of the three gates (legal/date/discipline match) it passed or
       // failed, not just the ones that already made it through.
       renderRawDebug(allResults,code,false);
+      // Includes 'similar' rows too (e.g. an athlete's own 60m results when code is '100m'), not
+      // just 'main' - meet-history.js's "Historisk nivå" needs these to compare an indoor 60m
+      // meet against the athlete's own 60m best, not just their 100m best (which isn't a valid
+      // comparison against a 60m field). bestOwnMark() there still only reads 'main' rows for
+      // the normal case, so this doesn't change any existing behaviour - it only makes more data
+      // available for that one specific lookup.
       const rows=allResults
-        .filter(r=>r.legal!==false&&validDate(r,code)&&exactMatch(r.discipline,code))
-        .map(r=>({date:r.date||null,competition:r.competition||null,discipline:r.discipline||null,mark:r.mark??null,type:'main'}));
+        .filter(r=>r.legal!==false&&validDate(r,code))
+        .map(r=>({date:r.date||null,competition:r.competition||null,discipline:r.discipline||null,mark:r.mark??null,type:individualType(r.discipline,code)}))
+        .filter(r=>r.type);
       window.__rankingstevnerOwnResults={event:code,rows};
       return;
     }

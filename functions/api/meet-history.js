@@ -55,6 +55,11 @@ const INDOOR_SPRINT_ALT_NAME = {
   '100mH': '60 Metres Hurdles',
   '110mH': '60 Metres Hurdles',
 };
+// Machine-readable version of the same substitution, in this app's own event-code convention -
+// lets the frontend look up the athlete's OWN best mark for the substitute distance (e.g. their
+// own 60m PB from other indoor meets) instead of only ever showing the substitute results as an
+// unattributed reference. See meet-history.js's `matchedEventCode` handling.
+const INDOOR_SPRINT_ALT_CODE = { '100m': '60m', '100mH': '60mH', '110mH': '60mH' };
 // These stay the SAME nominal distance indoors - WA just appends "Short Track" to note the
 // venue, not a shorter race (confirmed live on the same indoor day page: "Men's 400 Metres Short
 // Track", "...800 Metres Short Track", "...1500 Metres Short Track") - so a mark found this way
@@ -71,7 +76,7 @@ function individualEventNameCandidates(event, gender) {
   if (primary) out.push({ name: primary, comparable: true });
   if (primary && SHORT_TRACK_SUFFIX_EVENTS.has(event)) out.push({ name: `${primary} Short Track`, comparable: true });
   const alt = INDOOR_SPRINT_ALT_NAME[event];
-  if (alt) out.push({ name: `${gender === 'W' ? "Women's" : "Men's"} ${alt}`, comparable: false });
+  if (alt) out.push({ name: `${gender === 'W' ? "Women's" : "Men's"} ${alt}`, comparable: false, code: INDOOR_SPRINT_ALT_CODE[event] });
   return out;
 }
 // None of the fetches in this file had a per-request deadline - a single lookup can chain up to
@@ -325,6 +330,7 @@ export async function onRequestGet(context) {
     matchedMeetName: best.name,
     comparable: fetched.comparable !== false,
     matchedEventName: fetched.matchedEventName || null,
+    matchedEventCode: fetched.matchedEventCode || null,
     diagnostics
   });
 }
@@ -376,7 +382,7 @@ async function fetchStandingsForCompetition(competitionId, event, sex) {
     diagnostics.push(...dayAttempts[i].diagnostics);
     if (dayAttempts[i].rows.length) {
       const rows = isCombinedEvent(event) ? dayAttempts[i].rows.slice().sort((a, b) => b.mark - a.mark) : dayAttempts[i].rows;
-      return { rows, eventId: null, resultsUrl: dayAttempts[i].resultsUrl, comparable: dayAttempts[i].comparable !== false, matchedEventName: dayAttempts[i].matchedEventName || null, diagnostics };
+      return { rows, eventId: null, resultsUrl: dayAttempts[i].resultsUrl, comparable: dayAttempts[i].comparable !== false, matchedEventName: dayAttempts[i].matchedEventName || null, matchedEventCode: dayAttempts[i].matchedEventCode || null, diagnostics };
     }
   }
   return { rows: [], eventId: null, resultsUrl: null, diagnostics };
@@ -428,7 +434,7 @@ async function fetchDayCandidate(competitionId, day, gender, event, nameCandidat
     // network round trip per candidate.
     for (const candidate of nameCandidates) {
       const rows = extractIndividualEventStandings(html, candidate.name, isAscending(event));
-      if (rows.length) return { rows, resultsUrl: resultsUrl.toString(), comparable: candidate.comparable, matchedEventName: candidate.name, diagnostics: [base] };
+      if (rows.length) return { rows, resultsUrl: resultsUrl.toString(), comparable: candidate.comparable, matchedEventName: candidate.name, matchedEventCode: candidate.code || null, diagnostics: [base] };
     }
   }
   // A day page can be huge (hundreds of KB, every discipline held that day) - dumping a raw
@@ -460,7 +466,7 @@ async function resolveKnownCompetition(known, event, name) {
       ok: true, found: true, year: known.year, winner: winner.name || known.fallback?.winner || null, winnerMark: winner.mark,
       top3: marks.slice(0, 3), top8: marks.slice(0, 8), allMarks: marks, ascending: false,
       competitionId: known.competitionId, eventId: fetched.eventId, source: fetched.resultsUrl, matchedMeetName: name,
-      comparable: fetched.comparable !== false, matchedEventName: fetched.matchedEventName || null,
+      comparable: fetched.comparable !== false, matchedEventName: fetched.matchedEventName || null, matchedEventCode: fetched.matchedEventCode || null,
       diagnostics: [...fetched.diagnostics, { source: 'known-competition-live' }]
     });
   }

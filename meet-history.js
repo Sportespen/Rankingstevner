@@ -97,6 +97,27 @@ function bestOwnMark(indoor, ascending){
 // unlisted finishers between the athlete and the marks we know about, so no place can honestly
 // be claimed. "Below"/"above" here means "worse"/"better" - for track events (ascending: lower
 // wins) that's the opposite direction on the number line from points/distance events.
+// For a "not comparable" match (e.g. meet ran 60m instead of the selected 100m), this looks up
+// the athlete's OWN best mark for that exact substitute distance (from other indoor meets, via
+// ranking-basis.js's now-exposed 'similar'-type rows) - so a real placement comparison can still
+// be made using like-for-like data, instead of only ever showing the substitute results as an
+// unattributed reference. altCode is this app's own event-code convention ('60m','60mH'), from
+// the backend's `matchedEventCode`; discipline text is normalized the same lightweight way (WA's
+// raw text varies: "60 Metres", "60m", etc.) rather than requiring an exact string match.
+function normDiscipline(s){ return String(s||'').toLowerCase().replace(/metres?|meters?/g,'m').replace(/hurdles?/g,'h').replace(/[^a-z0-9]+/g,''); }
+function bestOwnMarkForCode(altCode, ascending){
+  const event = eventCode();
+  const own = window.__rankingstevnerOwnResults;
+  const rows = own?.event === event ? own.rows : null;
+  const wantDisc = normDiscipline(altCode);
+  const diag = { altCode, event, ascending, hasOwnResults: !!own, resultsEvent: own?.event || null, rowsIsArray: Array.isArray(rows), rowCount: Array.isArray(rows) ? rows.length : null };
+  if (!Array.isArray(rows) || !rows.length) return { mark: null, diag };
+  diag.rowEntries = rows.map(r => ({ discipline: r.discipline, mark: r.mark, type: r.type, normDiscipline: normDiscipline(r.discipline), matched: r.type === 'similar' && normDiscipline(r.discipline) === wantDisc }));
+  const relevant = rows.filter(r => r.type === 'similar' && normDiscipline(r.discipline) === wantDisc);
+  const marks = relevant.map(r => Number(r.mark)).filter(Number.isFinite);
+  if (!marks.length) return { mark: null, diag };
+  return { mark: ascending ? Math.min(...marks) : Math.max(...marks), diag };
+}
 function placementFor(allMarks, mark, ascending){
   if (!Array.isArray(allMarks) || !allMarks.length || !Number.isFinite(mark)) return null;
   if (ascending) {
@@ -149,7 +170,27 @@ function renderHtml(data, indoor){
         : '';
   } else {
     const eventLabel = document.getElementById('event')?.selectedOptions?.[0]?.textContent || event;
-    placeLine = `<small style="display:block;color:#677585">Stevnet var innendørs og kjørte ${esc(data.matchedEventName || 'en kortere distanse')} i stedet for ${esc(eventLabel)} - resultatene under viser stevnets nivå, men kan ikke sammenlignes direkte med din egen tid.</small>`;
+    const altLabel = data.matchedEventCode || data.matchedEventName || 'en kortere distanse';
+    // Try the athlete's own best mark for the SAME substitute distance the meet actually used
+    // (e.g. their own 60m PB from other indoor meets) before falling back to showing the
+    // substitute results as an unattributed reference - a like-for-like comparison is possible
+    // whenever the athlete has run that distance themselves, even though it isn't their main
+    // event's own distance.
+    const altOwn = data.matchedEventCode ? bestOwnMarkForCode(data.matchedEventCode, ascending) : { mark: null, diag: null };
+    pbDiag = altOwn.diag;
+    const altPb = altOwn.mark;
+    if (altPb != null) {
+      const place = placementFor(data.allMarks, altPb, ascending);
+      const worst = worstKnownMark(data.allMarks, ascending);
+      const outsideKnownRange = worst != null && (ascending ? altPb > worst : altPb < worst);
+      placeLine = place != null
+        ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste egen ${esc(altLabel)}-tid (${formatMark(altPb, event)}) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
+        : outsideKnownRange
+          ? `<small style="display:block;color:#677585">Din beste egen ${esc(altLabel)}-tid (${formatMark(altPb, event)}) er svakere enn det svakeste resultatet vi har data på (${formatMark(worst, event)}) - nøyaktig plassering kan ikke fastslås med det datagrunnlaget som er verifisert for dette stevnet.</small>`
+          : `<small style="display:block;color:#677585">Stevnet var innendørs og kjørte ${esc(altLabel)} i stedet for ${esc(eventLabel)} - resultatene under viser stevnets nivå, men kan ikke sammenlignes direkte med din egen tid.</small>`;
+    } else {
+      placeLine = `<small style="display:block;color:#677585">Stevnet var innendørs og kjørte ${esc(altLabel)} i stedet for ${esc(eventLabel)} - du har ingen egne ${esc(altLabel)}-resultater registrert, så resultatene under viser kun stevnets nivå og kan ikke sammenlignes direkte med din egen tid.</small>`;
+    }
   }
   // Not every meet has a confirmed top 8 (or even top 3) - some sources only reported a
   // winner. Labelling the stat with however many marks actually went into it (instead of a
@@ -157,7 +198,7 @@ function renderHtml(data, indoor){
   const segments = [`vinner ${formatMark(data.winnerMark, event)}`];
   if (data.top3?.length > 1) segments.push(`topp ${data.top3.length} snitt ${formatMark(avg(data.top3), event)}`);
   if (data.top8?.length > (data.top3?.length || 0)) segments.push(`topp ${data.top8.length} snitt ${formatMark(avg(data.top8), event)}`);
-  const diagEntry = comparable ? { source: 'own-mark', ...pbDiag } : { source: 'not-comparable', matchedEventName: data.matchedEventName || null };
+  const diagEntry = pbDiag ? { source: comparable ? 'own-mark' : 'alt-own-mark', ...pbDiag } : { source: 'not-comparable', matchedEventName: data.matchedEventName || null };
   return `<strong>${data.year}: ${segments.join(' · ')}</strong><small>Vinner: ${data.winner || 'ukjent'}. <a href="${data.source}" target="_blank" rel="noopener">Se offisielle WA-resultater</a></small>${placeLine}${diagnosticsHtml({ diagnostics: [diagEntry] })}`;
 }
 
