@@ -188,11 +188,18 @@ function athleteCountryCode(){
     return code||null;
   }catch(_){return null;}
 }
+// WA's calendar tags every meet with one "Discipline" category value - "Track and Field",
+// "Combined Events", "Race Walking", "Cross Country", "Road Running", "Mountain Running",
+// "Trail Running", etc. Only the first two belong in this app; explicit, universal gate so no
+// other heuristic (event-name text match, generic-T&F fallback, verified fallback rows) can ever
+// let a Race Walking/Cross Country/Road Running meet through by accident.
+function isAllowedDisciplineCategory(m){const s=disciplineBlob(m);if(!s)return false;return s.includes('track and field')||s.includes('combined events');}
 function baseMatches(){
   const c=eventCode();const combined=c==='Decathlon'||c==='Heptathlon';
   const athleteCountry=athleteCountryCode();
   return dedupeMeets(allMeets.filter(m=>{
     if(!isFutureThrough2027(m)||!isEurope(m)||!isEligibleAgeMeet(m))return false;
+    if(!isAllowedDisciplineCategory(m))return false;
     if(!(combined?eventMatches(m,c):(eventMatches(m,c)||isGenericTrackAndFieldMeet(m))))return false;
     // Only filter by nationality once we actually know it - with no athlete selected, or a
     // country WA's calendar didn't give a code for, showing every national championship is
