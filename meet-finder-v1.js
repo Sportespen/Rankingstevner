@@ -389,8 +389,17 @@ function applyProgramConfirmation(id,program,insightHost){
   if(result===true){programConfirmKeys.add(key);card.querySelector('[data-event-note]')?.remove();}
   else if(result===false){programMismatchKeys.add(key);card.remove();}
 }
+// Only the currently selected sex's own program, not both - the box previously always showed
+// "Men:"/"Women:" side by side regardless of which one the athlete/filter actually selected.
+// Built fresh from the cached raw `program` array on every call (not baked into the cached HTML
+// string) so it stays correct if the sex selection changes after the meet was first fetched.
+function programHtmlFor(program,sex){
+  const wantGender=sex==='W'?'women':'men';
+  const filtered=(Array.isArray(program)?program:[]).filter(u=>String(u?.gender||'').toLowerCase()===wantGender);
+  return filtered.length?`<div style="margin-top:8px"><span class="muted" style="font-size:11px">Program</span>${filtered.map(u=>`<div style="margin-top:2px"><strong style="font-size:12px">${esc(u.gender)}:</strong> <span style="font-size:12px">${esc(u.events.join(', '))}</span></div>`).join('')}</div>`:'';
+}
 async function loadMeetDetails(id,insightHost){
-  if(meetDetailsCache.has(id)){const cached=meetDetailsCache.get(id);if(insightHost)insightHost.innerHTML=cached.html;applyProgramConfirmation(id,cached.program,insightHost);return;}
+  if(meetDetailsCache.has(id)){const cached=meetDetailsCache.get(id);if(insightHost)insightHost.innerHTML=cached.contactHtml+programHtmlFor(cached.program,sexCode());applyProgramConfirmation(id,cached.program,insightHost);return;}
   try{
     // Per-request cache-buster, not just cache:'no-store': that flag only skips the browser's
     // own cache, not Cloudflare's edge cache, which the response's own 1h s-maxage still allows -
@@ -481,10 +490,9 @@ async function loadMeetDetails(id,insightHost){
     // Only present when WA's organiser has actually published a program for this meet - most
     // meets this far out haven't, so this stays empty far more often than not.
     const program=Array.isArray(x.eventsProgram)?x.eventsProgram:[];
-    const programHtml=program.length?`<div style="margin-top:8px"><span class="muted" style="font-size:11px">Program</span>${program.map(u=>`<div style="margin-top:2px"><strong style="font-size:12px">${esc(u.gender)}:</strong> <span style="font-size:12px">${esc(u.events.join(', '))}</span></div>`).join('')}</div>`:'';
-    const html=`<span>Kontakt og øvelser</span><strong>${contactText}</strong>${linksHtml}${infoHtml}${programHtml}`;
-    meetDetailsCache.set(id,{html,program});
-    if(insightHost)insightHost.innerHTML=html;
+    const contactHtml=`<span>Kontakt og øvelser</span><strong>${contactText}</strong>${linksHtml}${infoHtml}`;
+    meetDetailsCache.set(id,{contactHtml,program});
+    if(insightHost)insightHost.innerHTML=contactHtml+programHtmlFor(program,sexCode());
     applyProgramConfirmation(id,program,insightHost);
     // Confirmed via WA's /organiser payload: it carries contact/prize/link info only, no
     // venue/stadium/address field, so the map link stays on the calendar's city-level text
