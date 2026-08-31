@@ -171,7 +171,7 @@
     nameResults.style.display='block';
     nameResults.innerHTML='<div style="padding:12px" class="muted">Søker…</div>';
     try{
-      const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=081`,{cache:'no-store'});
+      const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=081&t=${Date.now()}`,{cache:'no-store'});
       const data=await res.json();
       if(!data.ok) throw new Error(data.error||'Søk feilet');
       if(!data.results?.length){nameResults.innerHTML='<div style="padding:12px" class="muted">Ingen utøvere funnet.</div>';return;}
@@ -205,9 +205,14 @@
       // one real side effect (auto-filling combined-event scores) is already duplicated by
       // ranking-basis.js's own faster fillScores(). Worse, a failure in that scraper threw here
       // and showed "Fant ikke WA-profil" even when the real data sources had succeeded.
+      // `t` is a real per-request cache-buster (not just a static version tag) so a bad
+      // response Cloudflare's edge ever caches for one exact URL (confirmed live: this exact
+      // /api/wa-rank?id=... URL got stuck serving a stale response) can never permanently wedge
+      // this specific athlete's lookup - every call is a guaranteed-fresh URL.
+      const cacheBust=Date.now();
       const [rankRes,resultsRes]=await Promise.all([
-        fetch(`/api/wa-rank?id=${encodeURIComponent(id)}&v=081`,{cache:'no-store'}),
-        fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=081`,{cache:'no-store'})
+        fetch(`/api/wa-rank?id=${encodeURIComponent(id)}&v=081&t=${cacheBust}`,{cache:'no-store'}),
+        fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=081&t=${cacheBust}`,{cache:'no-store'})
       ]);
       const rankData=await rankRes.json(), resultsData=await resultsRes.json();
       if(!rankData.ok) throw new Error(rankData.error||'Profiloppslag feilet');

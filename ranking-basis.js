@@ -277,7 +277,7 @@
     waDetails.insertAdjacentElement('afterend',box);
   }
   function refresh(){exposeRawCombinedResults();if(!allResults.length){window.__rankingstevnerReconstructedBasis={event:eventSelect.value,selected:[],needed:req[group(eventSelect.value)],complete:false,rankingScore:null};window.dispatchEvent(new CustomEvent('rankingbasisupdated'));return;}const b=basisFor(eventSelect.value);fillScores(b);setTimeout(()=>renderBasis(b),180);}
-  async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){await ensureScoring();refresh();return;}loading=true;try{const [res]=await Promise.all([fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=213`,{cache:'no-store'}),ensureScoring()]);const data=await res.json();
+  async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){await ensureScoring();refresh();return;}loading=true;try{const [res]=await Promise.all([fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=213&t=${Date.now()}`,{cache:'no-store'}),ensureScoring()]);const data=await res.json();
     // The WA-ID field can change (or be cleared, e.g. by "Nullstill profil") while this fetch is
     // still in flight - applying the response unconditionally would silently repopulate allResults
     // with the PREVIOUS athlete's data after a reset had already cleared it, needing a second

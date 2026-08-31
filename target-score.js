@@ -9,7 +9,7 @@
 // v0.20.4: synlig WA-ranking med diagnostikk dersom kilden feiler.
 (function(){
   function loadOfficialRanking(){if(document.querySelector('script[data-official-ranking-v312]'))return;const s=document.createElement('script');s.src='official-ranking.js?v=312';s.dataset.officialRankingV312='1';document.head.appendChild(s);s.addEventListener('load',()=>setTimeout(loadBasis,0));}
-  function loadBasis(){if(document.querySelector('script[data-ranking-basis-v220]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=220';s.dataset.rankingBasisV220='1';document.head.appendChild(s);}
+  function loadBasis(){if(document.querySelector('script[data-ranking-basis-v221]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=221';s.dataset.rankingBasisV221='1';document.head.appendChild(s);}
   setTimeout(loadOfficialRanking,0);
 })();
 // v0.24.0: ekte WA-basert estimat for ny rankingplassering (worldathletics.org sin egen
