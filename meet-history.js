@@ -134,14 +134,6 @@ function worstKnownMark(allMarks, ascending){
 function ordinal(n){ return `${n}.`; }
 
 function esc(s){ return String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
-// Temporary while this lookup is unverified against live WA data (network-blocked from the
-// dev sandbox) - shows exactly why a match failed instead of just "not found", the same
-// pattern already used for the official WA ranking lookup's "WA-diagnostikk" block.
-function diagnosticsHtml(data){
-  if (!data?.diagnostics) return '';
-  const diag = esc(JSON.stringify(data.diagnostics, null, 2));
-  return `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px;color:#677585">Diagnostikk</summary><pre style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:#f7f9fb;padding:8px;border-radius:6px;margin-top:6px">${diag}</pre></details>`;
-}
 
 // Lets a user check the actual WA page themselves instead of reading a raw diagnostics dump -
 // only shown when we actually have a matched competition (no-standings/known-competition cases),
@@ -180,10 +172,9 @@ function renderHtml(data, indoor){
   // placement claim is made against it. comparable is absent (not just true) for combined-event
   // responses and the hand-researched VERIFIED table, both always same-distance/discipline.
   const comparable = data.comparable !== false;
-  let placeLine = '', pbDiag = null;
+  let placeLine = '';
   if (comparable) {
     const own = bestOwnMark(indoor, ascending);
-    pbDiag = own.diag;
     const pb = own.mark;
     const place = pb != null ? placementFor(data.allMarks, pb, ascending) : null;
     const worst = worstKnownMark(data.allMarks, ascending);
@@ -191,7 +182,7 @@ function renderHtml(data, indoor){
     placeLine = place != null
       ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste tellende prestasjon (${formatMark(pb, event)}) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
       : outsideKnownRange
-        ? `<small style="display:block;color:#677585">Din beste tellende prestasjon (${formatMark(pb, event)}) er svakere enn det svakeste resultatet vi har data på (${formatMark(worst, event)}) - nøyaktig plassering kan ikke fastslås med det datagrunnlaget som er verifisert for dette stevnet.</small>`
+        ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste tellende prestasjon (${formatMark(pb, event)}) er svakere enn stevnets nivå (ned til ${formatMark(worst, event)}).</small>`
         : '';
   } else {
     const eventLabel = document.getElementById('event')?.selectedOptions?.[0]?.textContent || event;
@@ -202,7 +193,6 @@ function renderHtml(data, indoor){
     // whenever the athlete has run that distance themselves, even though it isn't their main
     // event's own distance.
     const altOwn = data.matchedEventCode ? bestOwnMarkForCode(data.matchedEventCode, ascending) : { mark: null, diag: null };
-    pbDiag = altOwn.diag;
     const altPb = altOwn.mark;
     if (altPb != null) {
       const place = placementFor(data.allMarks, altPb, ascending);
@@ -211,7 +201,7 @@ function renderHtml(data, indoor){
       placeLine = place != null
         ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste egen ${esc(altLabel)}-tid (${formatMark(altPb, event)}) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
         : outsideKnownRange
-          ? `<small style="display:block;color:#677585">Din beste egen ${esc(altLabel)}-tid (${formatMark(altPb, event)}) er svakere enn det svakeste resultatet vi har data på (${formatMark(worst, event)}) - nøyaktig plassering kan ikke fastslås med det datagrunnlaget som er verifisert for dette stevnet.</small>`
+          ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste egen ${esc(altLabel)}-tid (${formatMark(altPb, event)}) er svakere enn stevnets nivå (ned til ${formatMark(worst, event)}).</small>`
           : `<small style="display:block;color:#677585">Stevnet var innendørs og kjørte ${esc(altLabel)} i stedet for ${esc(eventLabel)} - resultatene under viser stevnets nivå, men kan ikke sammenlignes direkte med din egen tid.</small>`;
     } else {
       placeLine = `<small style="display:block;color:#677585">Stevnet var innendørs og kjørte ${esc(altLabel)} i stedet for ${esc(eventLabel)} - du har ingen egne ${esc(altLabel)}-resultater registrert, så resultatene under viser kun stevnets nivå og kan ikke sammenlignes direkte med din egen tid.</small>`;
@@ -223,8 +213,7 @@ function renderHtml(data, indoor){
   const segments = [`vinner ${formatMark(data.winnerMark, event)}`];
   if (data.top3?.length > 1) segments.push(`topp ${data.top3.length} snitt ${formatMark(avg(data.top3), event)}`);
   if (data.top8?.length > (data.top3?.length || 0)) segments.push(`topp ${data.top8.length} snitt ${formatMark(avg(data.top8), event)}`);
-  const diagEntry = pbDiag ? { source: comparable ? 'own-mark' : 'alt-own-mark', ...pbDiag } : { source: 'not-comparable', matchedEventName: data.matchedEventName || null };
-  return `<strong>${data.year}: ${segments.join(' · ')}</strong><small>Vinner: ${data.winner || 'ukjent'}. <a href="${data.source}" target="_blank" rel="noopener">Se offisielle WA-resultater</a></small>${placeLine}${diagnosticsHtml({ diagnostics: [diagEntry] })}`;
+  return `<strong>${data.year}: ${segments.join(' · ')}</strong><small>Vinner: ${data.winner || 'ukjent'}. <a href="${data.source}" target="_blank" rel="noopener">Se offisielle WA-resultater</a></small>${placeLine}`;
 }
 
 window.RankingstevnerMeetHistory = {

@@ -18,24 +18,12 @@
     if(calculateBtn.dataset.rankPositionInstalled) return;
     calculateBtn.dataset.rankPositionInstalled='1';
 
-    // A dash alone doesn't say WHY the estimate is missing - it's built on a live chain (nimarion
-    // profile lookup, then WA's own world-rankings pages, then a page-walk to find where the new
-    // score would land) that can fall short in several distinct ways. Surfacing the backend's own
-    // diagnostics here beats needing dev tools to find out.
-    function diagBox(){
-      let box=document.getElementById('newRankPositionDiag');
-      if(!box){
-        box=document.createElement('details');
-        box.id='newRankPositionDiag';
-        box.style.cssText='margin-top:6px;font-size:11px;color:#677585;grid-column:1/-1';
-        box.innerHTML='<summary style="cursor:pointer">Diagnostikk (ny rankingplassering)</summary><pre style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:#f7f9fb;padding:8px;border-radius:6px;margin-top:6px"></pre>';
-        out.closest('.result-grid')?.insertAdjacentElement('afterend',box);
-      }
-      return box;
-    }
-    function showDiag(payload){
-      const box=diagBox();
-      box.querySelector('pre').textContent=JSON.stringify(payload,null,2);
+    // Was a visible "Diagnostikk (ny rankingplassering)" box shown on every calculation - useful
+    // while this live chain (nimarion lookup -> WA world-rankings page-walk) was still being
+    // verified, but not something regular users of the site should see. Now a no-op that just
+    // clears any stale box left from before this change.
+    function showDiag(){
+      document.getElementById('newRankPositionDiag')?.remove();
     }
 
     let seq=0;

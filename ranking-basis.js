@@ -237,51 +237,14 @@
       .map(r=>({date:r.date||null,competition:r.competition||null,discipline:r.discipline||null,mark:r.mark??null,type:combinedType(r.discipline,code)}));
     window.__rankingstevnerOwnResults={event:code,rows};
   }
-  function renderRawDebug(entries,code,isCombined){
-    if(!waDetails||!waDetails.parentNode)return;
+  // Was a visible "Rådata: alle registrerte resultater (N)" debug link on the page - useful while
+  // tracking down why a specific result was excluded from the ranking basis, but not something
+  // regular users of the site should see. Now just clears any stale box left from before this
+  // change; window.__rankingstevnerOwnResults (which meet-history.js's "Historisk nivå" actually
+  // depends on) is set by each caller independently of this function, so removing the rendering
+  // here doesn't affect that.
+  function renderRawDebug(){
     const old=document.getElementById('rawCombinedDebugBox');if(old)old.remove();
-    if(!code)return;
-    const box=document.createElement('details');
-    box.id='rawCombinedDebugBox';
-    box.style.cssText='margin-top:10px;font-size:11px;color:#677585';
-    const cell='style="border:1px solid #d8e0e6;padding:3px 6px"';
-    // The three checks shown before (legal/date/discipline match) aren't the only gates
-    // candidate() applies - it also needs a Result Score AND a placingTables[category][place-1]
-    // lookup to resolve, silently, with no visibility here into WHICH of those actually failed.
-    // A result could pass every visible column and still be excluded for a reason this table
-    // never showed - exactly what made an athlete's genuinely low "X av 5" count look like a bug
-    // with no way to see why from the page itself.
-    const g=group(code);
-    const rows=entries.map(r=>{
-      const legalOk=r.legal!==false;
-      const dateOk=validDate(r,code);
-      const typeVal=isCombined?combinedType(r.discipline,code):individualType(r.discipline,code);
-      const cat=String(r.category||'').toUpperCase();
-      const place=Number(r.place);
-      let rs=Number(r.resultScore);
-      if((!Number.isFinite(rs)||rs<=0)&&g!=='combined')rs=scoreFromTable(code,r.mark);
-      const rsOk=Number.isFinite(rs)&&rs>0;
-      const ps=g==='combined'?0:placingScoreFor(g,cat,place);
-      const psOk=g==='combined'?true:(ps!=null);
-      const included=typeVal&&legalOk&&dateOk&&rsOk&&psOk;
-      let verdict='Med i grunnlag';
-      if(!typeVal)verdict='feil øvelse';
-      else if(!legalOk)verdict='ikke lovlig';
-      else if(!dateOk)verdict='utenfor periode';
-      else if(!rsOk)verdict='mangler Result Score';
-      else if(!psOk)verdict=`mangler plassering (${Number.isFinite(place)?place:'plass mangler'})`;
-      return `<tr><td ${cell}>${r.discipline||''}</td><td ${cell}>${r.mark??''}</td><td ${cell}>${r.date||''}</td><td ${cell}>${legalOk?'ja':'NEI'}</td><td ${cell}>${dateOk?'ja':'NEI'}</td><td ${cell}>${typeVal||'ingen'}</td><td ${cell}>${cat||'–'}</td><td ${cell}>${Number.isFinite(place)?place:'–'}</td><td ${cell}>${included?'Med i grunnlag':verdict}</td></tr>`;
-    }).join('');
-    const title=isCombined?`Rådata: mangekamp-relaterte resultater (${entries.length})`:`Rådata: alle registrerte resultater (${entries.length})`;
-    const emptyMsg=isCombined?'Ingen resultater i rådataene nevner decathlon/heptathlon/pentathlon i det hele tatt.':'Ingen resultater funnet for denne utøveren.';
-    box.innerHTML=`<summary style="cursor:pointer">${title}</summary>`+
-      (entries.length
-        ? `<table style="margin-top:6px;border-collapse:collapse;width:100%"><tr style="font-weight:700"><td ${cell}>Øvelse</td><td ${cell}>Mark</td><td ${cell}>Dato</td><td ${cell}>Lovlig</td><td ${cell}>Innenfor periode</td><td ${cell}>Klassifisert som</td><td ${cell}>Kat.</td><td ${cell}>Plass</td><td ${cell}>Godkjent i grunnlag</td></tr>${rows}</table>`
-        : `<div style="margin-top:6px">${emptyMsg}</div>`);
-    // Appended as a SIBLING right after waDetails, not a child inside it - waDetails itself gets
-    // set to display:none whenever official-ranking.js already shows a matching official WA
-    // ranking box (to avoid a duplicate), which would have hidden this debug box along with it.
-    waDetails.insertAdjacentElement('afterend',box);
   }
   function refresh(){exposeRawCombinedResults();if(!allResults.length){window.__rankingstevnerReconstructedBasis={event:eventSelect.value,selected:[],needed:req[group(eventSelect.value)],complete:false,rankingScore:null};window.dispatchEvent(new CustomEvent('rankingbasisupdated'));return;}const b=basisFor(eventSelect.value);fillScores(b);setTimeout(()=>renderBasis(b),180);}
   async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){await ensureScoring();refresh();return;}loading=true;try{const [res]=await Promise.all([fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=213&t=${Date.now()}`,{cache:'no-store'}),ensureScoring()]);const data=await res.json();

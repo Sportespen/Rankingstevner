@@ -10,12 +10,12 @@
 // v0.20.4: synlig WA-ranking med diagnostikk dersom kilden feiler.
 (function(){
   function loadOfficialRanking(){if(document.querySelector('script[data-official-ranking-v312]'))return;const s=document.createElement('script');s.src='official-ranking.js?v=312';s.dataset.officialRankingV312='1';document.head.appendChild(s);s.addEventListener('load',()=>setTimeout(loadBasis,0));}
-  function loadBasis(){if(document.querySelector('script[data-ranking-basis-v222]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=222';s.dataset.rankingBasisV222='1';document.head.appendChild(s);}
+  function loadBasis(){if(document.querySelector('script[data-ranking-basis-v223]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=223';s.dataset.rankingBasisV223='1';document.head.appendChild(s);}
   setTimeout(loadOfficialRanking,0);
 })();
 // v0.24.0: ekte WA-basert estimat for ny rankingplassering (worldathletics.org sin egen
 // offentlige rangeringsliste, ikke EA).
 (function(){
-  function loadRankPosition(){if(document.querySelector('script[data-rank-position-v1]'))return;const s=document.createElement('script');s.src='ranking-position-estimate.js?v=1';s.dataset.rankPositionV1='1';document.head.appendChild(s);}
+  function loadRankPosition(){if(document.querySelector('script[data-rank-position-v2]'))return;const s=document.createElement('script');s.src='ranking-position-estimate.js?v=2';s.dataset.rankPositionV2='1';document.head.appendChild(s);}
   setTimeout(loadRankPosition,0);
 })();
