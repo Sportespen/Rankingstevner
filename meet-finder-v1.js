@@ -313,7 +313,10 @@ function championshipStripHTML(){
 }
 async function loadMeetDetails(id,insightHost){
   try{
-    const r=await fetch(`/api/meet-details?id=${encodeURIComponent(id)}`,{cache:'no-store'});
+    // Per-request cache-buster, not just cache:'no-store': that flag only skips the browser's
+    // own cache, not Cloudflare's edge cache, which the response's own 1h s-maxage still allows -
+    // a fixed URL like this one is exactly what caused the earlier total-outage stale-cache bug.
+    const r=await fetch(`/api/meet-details?id=${encodeURIComponent(id)}&t=${Date.now()}`,{cache:'no-store'});
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Kunne ikke hente detaljer');
     const x=d.details||{};
@@ -391,7 +394,11 @@ async function loadMeetDetails(id,insightHost){
     const notesHtml=items.filter(it=>it.note).map(it=>`<div class="muted" style="margin-top:2px">${esc(it.note)}</div>`).join('');
     const linksHtml=items.length?`<div style="margin-top:4px;display:flex;flex-wrap:wrap;column-gap:8px;row-gap:2px">${linkRow}</div>${notesHtml}`:'';
     const infoHtml=x.additionalInfo?`<div style="margin-top:4px">${esc(x.additionalInfo)}</div>`:'';
-    if(insightHost)insightHost.innerHTML=`<span>Kontakt og premier</span><strong>${contactText}</strong>${linksHtml}${infoHtml}`;
+    // Only present when WA's organiser has actually published a program for this meet - most
+    // meets this far out haven't, so this stays empty far more often than not.
+    const program=Array.isArray(x.eventsProgram)?x.eventsProgram:[];
+    const programHtml=program.length?`<div style="margin-top:8px"><span class="muted" style="font-size:11px">Program</span>${program.map(u=>`<div style="margin-top:2px"><strong style="font-size:12px">${esc(u.gender)}:</strong> <span style="font-size:12px">${esc(u.events.join(', '))}</span></div>`).join('')}</div>`:'';
+    if(insightHost)insightHost.innerHTML=`<span>Kontakt og premier</span><strong>${contactText}</strong>${linksHtml}${infoHtml}${programHtml}`;
     // Confirmed via WA's /organiser payload: it carries contact/prize/link info only, no
     // venue/stadium/address field, so the map link stays on the calendar's city-level text
     // set at render time (mapUrl(m)) - there's nothing more precise to upgrade it to here.
