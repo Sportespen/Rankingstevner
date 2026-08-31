@@ -432,7 +432,7 @@ export async function onRequestGet(context) {
   // tell "we found last year's edition, it just didn't have this event" apart from "we never
   // found a previous edition at all" - those mean very different things to a user deciding
   // whether the app is broken or the meet genuinely lacks that event.
-  if (!fetched.rows.length) return json({ ok: true, found: false, reason: 'no-standings-found', matchedMeetName: best.name, year: parseDate(best.start)?.getUTCFullYear() || null, diagnostics });
+  if (!fetched.rows.length) return json({ ok: true, found: false, reason: 'no-standings-found', matchedMeetName: best.name, year: parseDate(best.start)?.getUTCFullYear() || null, competitionId: best.id, diagnostics });
 
   // fetchStandingsForCompetition already returns rows sorted best-first (it knows internally
   // whether this event's "better" is a higher or lower mark), so rows[0] is always the winner
@@ -611,7 +611,7 @@ async function resolveKnownCompetition(known, event, name) {
     });
   }
 
-  if (!known.fallback) return json({ ok: true, found: false, reason: 'known-competition-no-standings', diagnostics: fetched.diagnostics });
+  if (!known.fallback) return json({ ok: true, found: false, reason: 'known-competition-no-standings', matchedMeetName: name, year: known.year, competitionId: known.competitionId, diagnostics: fetched.diagnostics });
 
   return json({
     ok: true, found: true, year: known.year, winner: known.fallback.winner, winnerMark: known.fallback.winnerMark,

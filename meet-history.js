@@ -143,6 +143,14 @@ function diagnosticsHtml(data){
   return `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px;color:#677585">Diagnostikk</summary><pre style="white-space:pre-wrap;word-break:break-word;font-size:11px;background:#f7f9fb;padding:8px;border-radius:6px;margin-top:6px">${diag}</pre></details>`;
 }
 
+// Lets a user check the actual WA page themselves instead of reading a raw diagnostics dump -
+// only shown when we actually have a matched competition (no-standings/known-competition cases),
+// since a bare "no previous edition found" has no meet ID to link to.
+function resultsLinkHtml(data){
+  if (!data?.competitionId) return '';
+  const url = `https://worldathletics.org/competition/calendar-results/results/${encodeURIComponent(data.competitionId)}`;
+  return `<small style="display:block;margin-top:4px"><a href="${url}" target="_blank" rel="noopener">Se WA-resultater for stevnet</a></small>`;
+}
 // "No previous edition found" and "found the previous edition but it didn't have this event"
 // look identical to a user if shown with the same text - live evidence showed a real, correctly
 // working case (a Danish club meet whose 2025 edition genuinely had no men's 100m) displaying
@@ -153,7 +161,7 @@ function notFoundHtml(data){
   const reason = data?.reason;
   if (reason === 'no-standings-found' || reason === 'known-competition-no-standings') {
     const editionBit = data?.matchedMeetName ? ` (${esc(data.matchedMeetName)}${data.year ? ', ' + data.year : ''})` : '';
-    return `<strong>Historiske resultater er ikke verifisert ennå.</strong><small>Fant forrige utgave av stevnet${editionBit}, men den har ikke registrert resultater i denne øvelsen.</small>`;
+    return `<strong>Historiske resultater er ikke verifisert ennå.</strong><small>Fant forrige utgave av stevnet${editionBit}, men den har ikke registrert resultater i denne øvelsen.</small>${resultsLinkHtml(data)}`;
   }
   if (reason === 'unsupported-event') {
     return `<strong>Historiske resultater er ikke verifisert ennå.</strong><small>Denne øvelsen støttes ikke for historiske resultater ennå.</small>`;
@@ -162,7 +170,7 @@ function notFoundHtml(data){
 }
 function renderHtml(data, indoor){
   if (!data || !data.found) {
-    return `${notFoundHtml(data)}${diagnosticsHtml(data)}`;
+    return notFoundHtml(data);
   }
   const event = eventCode();
   const ascending = !!data.ascending;
