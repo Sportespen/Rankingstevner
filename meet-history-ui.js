@@ -34,6 +34,19 @@ function loadCombinedVenueLabels(){
   s.dataset.combinedVenueLabels='1';
   document.head.appendChild(s);
 }
+// The athlete's own best mark (ranking-basis.js's window.__rankingstevnerOwnResults) loads on a
+// separate async chain from this box's own WA-history fetch - confirmed live: on the same page
+// load, one card's history fetch resolved before the athlete's own PB was ready (empty green
+// comparison line, "Historisk nivå" numbers still shown fine) while another card's resolved after
+// (comparison line present), purely by network timing. requestKey above intentionally blocks a
+// re-FETCH of the same card (that WA lookup is slow), but the comparison line is computed fresh
+// from window.__rankingstevnerOwnResults in renderHtml() every time htmlAsync() runs - so once the
+// athlete's own results are actually ready, clearing the key lets already-finished cards recompute
+// their placeLine using the now-cached (instant, no new network call) fetchHistory result.
+function refreshForOwnResults(){
+  document.querySelectorAll('.meet-insight[data-history-request-key]').forEach(el=>{delete el.dataset.historyRequestKey;});
+  apply();
+}
 const observer=new MutationObserver(()=>requestAnimationFrame(apply));
 document.addEventListener('DOMContentLoaded',()=>{
   const host=document.getElementById('meetList');if(host)observer.observe(host,{childList:true,subtree:true});
@@ -41,4 +54,5 @@ document.addEventListener('DOMContentLoaded',()=>{
   loadDedupe();
   loadCombinedVenueLabels();
 });
+window.addEventListener('rankingbasisupdated',()=>requestAnimationFrame(refreshForOwnResults));
 })();
