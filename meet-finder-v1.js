@@ -389,14 +389,26 @@ function applyProgramConfirmation(id,program,insightHost){
   if(result===true){programConfirmKeys.add(key);card.querySelector('[data-event-note]')?.remove();}
   else if(result===false){programMismatchKeys.add(key);card.remove();}
 }
+// This finder only ever lists senior/U23 meets (see isEligibleAgeMeet) - WA's own program text
+// still lists every age-category variant of the same event alongside the senior/open one though
+// (confirmed live: "100m, ..., 100m U23, 100m U20, 100m U18, 100m U16" repeated per event), which
+// is mostly noise here. Only the senior/open entries (no age-category marker) are shown - same
+// bare-name requirement programConfirmsEvent() already applies for confirming/filtering meets.
+const AGE_MARKER_RE=/\bU\d{1,2}\b/i;
+function seniorProgramEvents(events){
+  return (Array.isArray(events)?events:[]).filter(e=>!AGE_MARKER_RE.test(String(e||'')));
+}
 // Only the currently selected sex's own program, not both - the box previously always showed
 // "Men:"/"Women:" side by side regardless of which one the athlete/filter actually selected.
 // Built fresh from the cached raw `program` array on every call (not baked into the cached HTML
 // string) so it stays correct if the sex selection changes after the meet was first fetched.
 function programHtmlFor(program,sex){
   const wantGender=sex==='W'?'women':'men';
-  const filtered=(Array.isArray(program)?program:[]).filter(u=>String(u?.gender||'').toLowerCase()===wantGender);
-  return filtered.length?`<div style="margin-top:8px"><span class="muted" style="font-size:11px">Program</span>${filtered.map(u=>`<div style="margin-top:2px"><strong style="font-size:12px">${esc(u.gender)}:</strong> <span style="font-size:12px">${esc(u.events.join(', '))}</span></div>`).join('')}</div>`:'';
+  const rows=(Array.isArray(program)?program:[])
+    .filter(u=>String(u?.gender||'').toLowerCase()===wantGender)
+    .map(u=>({gender:u.gender,events:seniorProgramEvents(u.events)}))
+    .filter(u=>u.events.length);
+  return rows.length?`<div style="margin-top:8px"><span class="muted" style="font-size:11px">Program</span>${rows.map(u=>`<div style="margin-top:2px"><strong style="font-size:12px">${esc(u.gender)}:</strong> <span style="font-size:12px">${esc(u.events.join(', '))}</span></div>`).join('')}</div>`:'';
 }
 async function loadMeetDetails(id,insightHost){
   if(meetDetailsCache.has(id)){const cached=meetDetailsCache.get(id);if(insightHost)insightHost.innerHTML=cached.contactHtml+programHtmlFor(cached.program,sexCode());applyProgramConfirmation(id,cached.program,insightHost);return;}
