@@ -212,15 +212,18 @@ function isAllowedDisciplineCategory(m){const s=disciplineBlob(m);if(!s)return f
 // "High Jump","Shot Put (6kg) U20","4x200m sh" (relay) - "sh" is WA's "Short Track" abbreviation
 // (same distance, just indoors - matches meet-history.js's SHORT_TRACK_SUFFIX_EVENTS), age/
 // weight suffixes ("U20"/"(6kg)") mark a youth-category variant of the same base event.
-// Deliberately does NOT strip age-category suffixes (U18/U20/...): both real examples confirmed
-// live always list the bare/open event ALONGSIDE any age-restricted variants when both exist
-// ("Shot Put" and "Shot Put (6kg) U20" as separate lines) - so requiring an exact match against
-// the un-suffixed name still works for every meet actually seen, while correctly refusing to
-// confirm this senior/U23-only finder's event from a U20-only (or younger) entry that has no
-// bare version of its own.
+// Deliberately does NOT strip junior age-category suffixes (U18/U20/...): both real examples
+// confirmed live always list the bare/open event ALONGSIDE any age-restricted variants when both
+// exist ("Shot Put" and "Shot Put (6kg) U20" as separate lines) - so requiring an exact match
+// against the un-suffixed name still works for every meet actually seen, while correctly
+// refusing to confirm this senior/U23-only finder's event from a U20-only (or younger) entry
+// that has no bare version of its own. U23 is the one exception - this finder is explicitly
+// senior/U23 scope (see isEligibleAgeMeet), so a "100m U23"-only entry (no bare "100m") should
+// still confirm the event, not just literal senior entries.
 function programEventBaseName(s){
   return String(s||'')
     .replace(/\([^)]*\)/g,' ')
+    .replace(/\bU ?23\b/gi,' ')
     .replace(/\bsh\b/gi,' ')
     .replace(/\s+/g,' ').trim().toLowerCase();
 }
@@ -389,14 +392,15 @@ function applyProgramConfirmation(id,program,insightHost){
   if(result===true){programConfirmKeys.add(key);card.querySelector('[data-event-note]')?.remove();}
   else if(result===false){programMismatchKeys.add(key);card.remove();}
 }
-// This finder only ever lists senior/U23 meets (see isEligibleAgeMeet) - WA's own program text
+// This finder only ever lists senior/U23 meets (see isEligibleAgeMeet's own U20/U18/U17/U16/U15/
+// U14 exclusion list - U23 is always eligible, never excluded there) - WA's own program text
 // still lists every age-category variant of the same event alongside the senior/open one though
 // (confirmed live: "100m, ..., 100m U23, 100m U20, 100m U18, 100m U16" repeated per event), which
-// is mostly noise here. Only the senior/open entries (no age-category marker) are shown - same
-// bare-name requirement programConfirmsEvent() already applies for confirming/filtering meets.
-const AGE_MARKER_RE=/\bU\d{1,2}\b/i;
+// is mostly noise here. Senior/open AND U23 entries are shown; only the younger junior-category
+// variants (U20 and below) are dropped - same categories isEligibleAgeMeet itself excludes.
+const JUNIOR_AGE_MARKER_RE=/\bU ?(?:14|15|16|17|18|20)\b/i;
 function seniorProgramEvents(events){
-  return (Array.isArray(events)?events:[]).filter(e=>!AGE_MARKER_RE.test(String(e||'')));
+  return (Array.isArray(events)?events:[]).filter(e=>!JUNIOR_AGE_MARKER_RE.test(String(e||'')));
 }
 // Only the currently selected sex's own program, not both - the box previously always showed
 // "Men:"/"Women:" side by side regardless of which one the athlete/filter actually selected.
