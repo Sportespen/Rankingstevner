@@ -367,23 +367,36 @@ export async function onRequestGet(context) {
   }
 
   const windowPromises = [1, 2, 3].map(yearsBack => searchWindow(yearsBack));
+  let matchedInWindows = false;
   for (const windowPromise of windowPromises) {
     const windowCandidates = await windowPromise;
     candidates = candidates.concat(windowCandidates);
-    if (windowCandidates.some(c => nameScore(wantedNorm, normalizeMeetName(c.name)) > 0)) break;
+    if (windowCandidates.some(c => nameScore(wantedNorm, normalizeMeetName(c.name)) > 0)) { matchedInWindows = true; break; }
   }
 
-  const queryResults = await queryPromise;
-  const seenIds = new Set(candidates.map(c => `${c.id}`));
-  const queryAdded = [];
-  for (const row of queryResults) {
-    const key = `${row.id}`;
-    if (seenIds.has(key)) continue;
-    seenIds.add(key);
-    candidates.push(row);
-    queryAdded.push(row);
+  // Only worth waiting on the query-search fetch when the window search above didn't already
+  // find a match - it was already fired concurrently regardless, so skipping the await here costs
+  // nothing, but AWAITING it unconditionally added up to FETCH_TIMEOUT_MS (8s) of pure dead time
+  // to every lookup that had already succeeded quickly via the window search - the common case.
+  // That extra serial wait, stacked across a page loading several meet cards' history at once,
+  // risked reproducing the exact platform-timeout failure mode this file was earlier rewritten to
+  // avoid (see the sequential-yearsBack comment above) - only now self-inflicted by this file
+  // rather than by WA's own response times.
+  if (matchedInWindows) {
+    diagnostics.push({ source: 'query-search', queryTerm, skipped: true, reason: 'already matched via window search' });
+  } else {
+    const queryResults = await queryPromise;
+    const seenIds = new Set(candidates.map(c => `${c.id}`));
+    const queryAdded = [];
+    for (const row of queryResults) {
+      const key = `${row.id}`;
+      if (seenIds.has(key)) continue;
+      seenIds.add(key);
+      candidates.push(row);
+      queryAdded.push(row);
+    }
+    diagnostics.push({ source: 'query-search', queryTerm, resultCount: queryResults.length, added: queryAdded.length, sampleNames: queryResults.slice(0, 5).map(c => c.name) });
   }
-  diagnostics.push({ source: 'query-search', queryTerm, resultCount: queryResults.length, added: queryAdded.length, sampleNames: queryResults.slice(0, 5).map(c => c.name) });
 
   const scored = candidates
     .map(c => ({ c, score: nameScore(wantedNorm, normalizeMeetName(c.name)) }))
