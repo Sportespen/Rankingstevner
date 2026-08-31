@@ -415,7 +415,17 @@ function programHtmlFor(program,sex){
   return rows.length?`<div style="margin-top:8px"><span class="muted" style="font-size:11px">Program</span>${rows.map(u=>`<div style="margin-top:2px"><strong style="font-size:12px">${esc(u.gender)}:</strong> <span style="font-size:12px">${esc(u.events.join(', '))}</span></div>`).join('')}</div>`:'';
 }
 async function loadMeetDetails(id,insightHost){
-  if(meetDetailsCache.has(id)){const cached=meetDetailsCache.get(id);if(insightHost)insightHost.innerHTML=cached.contactHtml+programHtmlFor(cached.program,sexCode());applyProgramConfirmation(id,cached.program,insightHost);return;}
+  if(meetDetailsCache.has(id)){
+    const cached=meetDetailsCache.get(id);
+    try{
+      if(insightHost)insightHost.innerHTML=cached.contactHtml+programHtmlFor(cached.program,sexCode());
+      applyProgramConfirmation(id,cached.program,insightHost);
+    }catch(e){
+      console.error('Kunne ikke gjenbruke mellomlagrede stevnedetaljer for id',id,e);
+      if(insightHost)insightHost.innerHTML=`<span>Kontakt og øvelser</span><strong class="muted">Ikke bekreftet</strong>`;
+    }
+    return;
+  }
   try{
     // Per-request cache-buster, not just cache:'no-store': that flag only skips the browser's
     // own cache, not Cloudflare's edge cache, which the response's own 1h s-maxage still allows -
@@ -518,7 +528,8 @@ async function loadMeetDetails(id,insightHost){
     // for a meet many months out, not a technical failure - so show that instead of leaking
     // the raw "WA-kilde 404" backend error string to the user.
     const notYet=/^WA-kilde 404$/.test(e.message||'');
-    const msg=notYet?'Kontaktinfo er ikke publisert av arrangøren ennå.':e.message;
+    const msg=notYet?'Kontaktinfo er ikke publisert av arrangøren ennå.':'Ikke bekreftet';
+    if(!notYet)console.error('Kunne ikke hente stevnedetaljer for id',id,e);
     if(insightHost)insightHost.innerHTML=`<span>Kontakt og øvelser</span><strong class="muted">${esc(msg)}</strong>`;
   }
 }
