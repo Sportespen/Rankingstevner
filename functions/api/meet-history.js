@@ -244,15 +244,26 @@ export async function onRequestGet(context) {
     wa.searchParams.set('query', queryTerm);
     // Wide date span (not just one of the ±45-day windows below) - a single query search can
     // surface every past edition of a recurring meet at once, so no need to repeat it per year.
+    // endDate is capped well before refDate, not AT it - refDate is the wanted meet's own start
+    // date, and live testing caught this returning the wanted meet's own upcoming edition as a
+    // "candidate previous edition" (same id, same date), which of course has zero standings since
+    // it hasn't been run yet. cutoff below plus the explicit date filter on the results are both
+    // needed: the cutoff narrows what WA returns, the filter guards against WA's endDate handling
+    // being inclusive/fuzzy regardless.
+    const cutoff = new Date(refDate.getTime() - 14 * 24 * 3600 * 1000);
     wa.searchParams.set('startDate', new Date(refDate.getTime() - 4 * 365 * 24 * 3600 * 1000).toISOString().slice(0, 10));
-    wa.searchParams.set('endDate', refDate.toISOString().slice(0, 10));
+    wa.searchParams.set('endDate', cutoff.toISOString().slice(0, 10));
     wa.searchParams.set('regionId', '3');
     wa.searchParams.set('regionType', 'area');
     try {
       const r = await fetchWithTimeout(wa.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
       if (!r.ok) return [];
       const html = await r.text();
-      return extractCalendarObjects(html).filter(row => row.id && row.name && row.start);
+      return extractCalendarObjects(html).filter(row => {
+        if (!row.id || !row.name || !row.start) return false;
+        const d = parseDate(row.start);
+        return d && d < cutoff;
+      });
     } catch (e) {
       diagnostics.push({ source: 'query-search', queryTerm, error: String(e?.message || e) });
       return [];
