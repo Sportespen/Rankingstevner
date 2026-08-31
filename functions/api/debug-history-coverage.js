@@ -14,7 +14,7 @@ export async function onRequestGet(context){
   const url=new URL(context.request.url);
   const event=(url.searchParams.get('event')||'100m').trim();
   const sex=(url.searchParams.get('sex')||'M').trim().toUpperCase()==='W'?'W':'M';
-  const limit=Math.min(Number(url.searchParams.get('limit'))||10,15);
+  const limit=Math.min(Number(url.searchParams.get('limit'))||6,10);
   const origin=url.origin;
   const today=new Date().toISOString().slice(0,10);
 
@@ -29,7 +29,16 @@ export async function onRequestGet(context){
 
   const results=await Promise.all(meets.map(async m=>{
     try{
-      const histRes=await fetch(`${origin}/api/meet-history?name=${encodeURIComponent(m.name)}&event=${encodeURIComponent(event)}&sex=${sex}&date=${encodeURIComponent(m.start||'')}&t=${Date.now()}`);
+      // A single /api/meet-history call can itself take up to ~15-20s worst case (its own
+      // internal fetches already have their own timeouts, but nothing bounded THIS call before)
+      // - running several of those in parallel from one function risked exactly the Cloudflare
+      // platform-timeout crash seen earlier this session, just one level up. 25s gives real
+      // lookups room to finish while still failing this one meet cleanly instead of hanging.
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(),25000);
+      let histRes;
+      try{histRes=await fetch(`${origin}/api/meet-history?name=${encodeURIComponent(m.name)}&event=${encodeURIComponent(event)}&sex=${sex}&date=${encodeURIComponent(m.start||'')}&t=${Date.now()}`,{signal:controller.signal});}
+      finally{clearTimeout(timer);}
       const hist=await histRes.json();
       let category;
       if(hist?.found)category='found';
