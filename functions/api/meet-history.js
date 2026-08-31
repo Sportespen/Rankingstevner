@@ -206,14 +206,24 @@ export async function onRequestGet(context) {
   // around the same calendar date each year, so search narrow (±30 day) windows centered on
   // that date, one year back at a time, instead of one wide unfocused scan.
   let candidates = [];
-  let nimarionAll = null;
-  try {
-    const r = await fetchWithTimeout('https://worldathletics.nimarion.de/competitions', { headers: { Accept: 'application/json', 'User-Agent': 'Rankingstevner/1.0' } });
-    if (r.ok) nimarionAll = await r.json();
-    diagnostics.push({ source: 'nimarion-competitions', count: Array.isArray(nimarionAll) ? nimarionAll.length : 0 });
-  } catch (e) {
-    diagnostics.push({ source: 'nimarion-competitions', error: String(e?.message || e) });
-  }
+  // Started once, before the loop, and NOT awaited yet - live diagnostics showed a single lookup
+  // taking ~25s total, and this fetch being awaited before the calendar search even started (so
+  // its own latency stacked serially on top of the calendar search's) was a large, needless part
+  // of that: nimarion's /competitions feed is a live/upcoming-meets feed (~50 entries, confirmed
+  // live) that essentially never contains a match for a PAST year's edition, which is exactly
+  // what this search is centered on. It's only ever kept as a supplementary source, so it now
+  // runs concurrently with the first round of calendar-page fetches instead of blocking them -
+  // whichever is slower gates this stage, not the sum of both.
+  const nimarionPromise = (async () => {
+    try {
+      const r = await fetchWithTimeout('https://worldathletics.nimarion.de/competitions', { headers: { Accept: 'application/json', 'User-Agent': 'Rankingstevner/1.0' } });
+      return r.ok ? await r.json() : null;
+    } catch (e) {
+      diagnostics.push({ source: 'nimarion-competitions', error: String(e?.message || e) });
+      return null;
+    }
+  })();
+  let nimarionLogged = false;
 
   // Small domestic/regional championships often don't run on a fixed weekend from year to
   // year (unlike GL Tour meets), so a ±30 day window missed some real editions. Widened to
@@ -225,17 +235,9 @@ export async function onRequestGet(context) {
     const seen = new Set();
     const windowCandidates = [];
 
-    for (const x of Array.isArray(nimarionAll) ? nimarionAll : []) {
-      if (!x?.id || !x?.name || !x?.start) continue;
-      const d = parseDate(x.start);
-      if (!d || d < windowStart || d > windowEnd) continue;
-      const key = `${x.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      windowCandidates.push({ id: x.id, name: x.name, start: x.start });
-    }
-
-    await Promise.all([0, 100, 200, 300, 400].map(async offset => {
+    // Fired immediately, awaited last - overlaps with the nimarion fetch below instead of
+    // stacking after it.
+    const calendarPromise = Promise.all([0, 100, 200, 300, 400].map(async offset => {
       const wa = new URL('https://worldathletics.org/competition/calendar-results');
       // Without isSearchReset=true the page seems to ignore a custom startDate/endDate and
       // just show its default (upcoming-focused) view - which matches exactly what we saw:
@@ -283,6 +285,20 @@ export async function onRequestGet(context) {
         diagnostics.push({ source: 'calendar', yearsBack, offset, error: String(e?.message || e) });
       }
     }));
+
+    const nimarionAll = await nimarionPromise;
+    if (!nimarionLogged) { diagnostics.push({ source: 'nimarion-competitions', count: Array.isArray(nimarionAll) ? nimarionAll.length : 0 }); nimarionLogged = true; }
+    for (const x of Array.isArray(nimarionAll) ? nimarionAll : []) {
+      if (!x?.id || !x?.name || !x?.start) continue;
+      const d = parseDate(x.start);
+      if (!d || d < windowStart || d > windowEnd) continue;
+      const key = `${x.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      windowCandidates.push({ id: x.id, name: x.name, start: x.start });
+    }
+
+    await calendarPromise;
 
     diagnostics.push({ source: 'window', yearsBack, windowStart: windowStart.toISOString().slice(0, 10), windowEnd: windowEnd.toISOString().slice(0, 10), candidateCount: windowCandidates.length, sampleNames: windowCandidates.slice(0, 8).map(c => c.name) });
     candidates = candidates.concat(windowCandidates);
