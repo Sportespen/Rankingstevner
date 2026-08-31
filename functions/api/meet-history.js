@@ -45,6 +45,18 @@ const WA_DISCIPLINE_NAME = {
   HJ: 'High Jump', PV: 'Pole Vault', LJ: 'Long Jump', TJ: 'Triple Jump',
   SP: 'Shot Put', DT: 'Discus Throw', HT: 'Hammer Throw', JT: 'Javelin Throw',
 };
+// None of the fetches in this file had a per-request deadline - a single lookup can chain up to
+// ~15 calendar-page fetches (3 years back x offset pages) plus another ~9 results-page fetches
+// (eventId/day candidates), and meet-search.js already showed live what happens when that many
+// sequential/untimed external calls run too long: Cloudflare kills the whole request and returns
+// its own HTML error page instead of a real response. Same fix here.
+const FETCH_TIMEOUT_MS = 8000;
+async function fetchWithTimeout(url, options) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try { return await fetch(url, { ...options, signal: controller.signal }); }
+  finally { clearTimeout(timer); }
+}
 function isCombinedEvent(event) { return event === 'Decathlon' || event === 'Heptathlon'; }
 function isSupportedEvent(event) { return isCombinedEvent(event) || !!WA_DISCIPLINE_NAME[event]; }
 function isAscending(event) { return TRACK_EVENTS.has(event); }
@@ -154,7 +166,7 @@ export async function onRequestGet(context) {
   let candidates = [];
   let nimarionAll = null;
   try {
-    const r = await fetch('https://worldathletics.nimarion.de/competitions', { headers: { Accept: 'application/json', 'User-Agent': 'Rankingstevner/1.0' } });
+    const r = await fetchWithTimeout('https://worldathletics.nimarion.de/competitions', { headers: { Accept: 'application/json', 'User-Agent': 'Rankingstevner/1.0' } });
     if (r.ok) nimarionAll = await r.json();
     diagnostics.push({ source: 'nimarion-competitions', count: Array.isArray(nimarionAll) ? nimarionAll.length : 0 });
   } catch (e) {
@@ -181,7 +193,7 @@ export async function onRequestGet(context) {
       windowCandidates.push({ id: x.id, name: x.name, start: x.start });
     }
 
-    await Promise.all([0, 100, 200].map(async offset => {
+    await Promise.all([0, 100, 200, 300, 400].map(async offset => {
       const wa = new URL('https://worldathletics.org/competition/calendar-results');
       // Without isSearchReset=true the page seems to ignore a custom startDate/endDate and
       // just show its default (upcoming-focused) view - which matches exactly what we saw:
@@ -194,13 +206,17 @@ export async function onRequestGet(context) {
       // narrows the candidate pool a lot, same reasoning as meet-search.js.
       wa.searchParams.set('regionId', '3');
       wa.searchParams.set('regionType', 'area');
-      // disciplineId=1 is WA's own "Combined Events" filter - only meaningful for
-      // Decathlon/Heptathlon. No confirmed per-event disciplineId exists for individual events
-      // (same situation meet-search.js is already in for its own Stevnefinner listing), so
-      // those searches go unfiltered by discipline - broader, but still safe, since the
-      // eventNameFullName-based results extraction below only ever accepts standings whose
-      // "event" field actually matches the wanted discipline.
-      if (isCombinedEvent(event)) wa.searchParams.set('disciplineId', '1');
+      // Previously restricted to disciplineId=1 ("Combined Events") for Decathlon/Heptathlon
+      // searches. Removed after live diagnostics for a real meet ("Låvefesten") showed 0 matches
+      // across 300 "Combined Events"-filtered candidates over 3 years, despite it being a
+      // genuinely recurring meet - WA's own Discipline category is too coarse to filter on (the
+      // same coarseness meet-search.js already had to work around): a club meet that hosts a
+      // combined event alongside ordinary track and field is commonly tagged just "Track and
+      // Field", not "Combined Events". Individual events already searched unfiltered by
+      // discipline for the same reason; combined events now do too - safe to widen, since the
+      // eventNameFullName-based results extraction below only ever accepts standings whose own
+      // "event" field actually matches the wanted discipline, so extra candidates just fall
+      // through to "no-standings-found" rather than causing a wrong match.
       // hideCompetitionsWithNoResults=true was dropped here: WA's own "has results" flag looks
       // unreliable for smaller/domestic federations - a meet can be missing that flag while its
       // results page is actually populated (this is consistent with those same meets' results
@@ -211,7 +227,7 @@ export async function onRequestGet(context) {
       // dropping the filter can only add candidates, never break an existing match.
       if (offset) wa.searchParams.set('offset', String(offset));
       try {
-        const r = await fetch(wa.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
+        const r = await fetchWithTimeout(wa.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
         if (!r.ok) return;
         const html = await r.text();
         for (const row of extractCalendarObjects(html)) {
@@ -288,6 +304,12 @@ export async function onRequestGet(context) {
 // returns rows already sorted best-first (winner at index 0), since the two event families sort
 // in opposite directions (combined/field events: higher wins; track events: lower wins) - the
 // caller shouldn't have to know which.
+// Each eventId/day candidate used to be tried one after another with no timeout - a meet that
+// fell through every tier (unconfirmed eventIds, all 4 days) could chain up to 9 sequential
+// untimed external fetches for a single lookup. Now fetched concurrently per tier and time-
+// bounded (fetchWithTimeout), then picked in the same priority order as before (first candidate
+// in the original list that actually has standings wins) - purely a wall-clock/reliability fix,
+// same winner as the old sequential version would have picked.
 async function fetchStandingsForCompetition(competitionId, event, sex) {
   // Confirmed via a user-provided worldathletics.org link
   // (results/7230385?eventId=10229571&gender=M) that WA's own URL structure includes an
@@ -298,30 +320,14 @@ async function fetchStandingsForCompetition(competitionId, event, sex) {
   const diagnostics = [];
 
   if (isCombinedEvent(event)) {
-    for (const eventId of EVENT_ID_CANDIDATES[event] || []) {
-      const resultsUrl = new URL(`https://worldathletics.org/competition/calendar-results/results/${competitionId}`);
-      resultsUrl.searchParams.set('eventId', String(eventId));
-      resultsUrl.searchParams.set('gender', gender);
-      let html = '';
-      try {
-        const r = await fetch(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
-        if (r.ok) html = await r.text();
-        diagnostics.push({ source: 'wa-results-page', url: resultsUrl.toString(), eventId, status: r.status, htmlLength: html.length });
-      } catch (e) {
-        diagnostics.push({ source: 'wa-results-page', url: resultsUrl.toString(), eventId, error: String(e?.message || e) });
-        continue;
+    const eventIds = EVENT_ID_CANDIDATES[event] || [];
+    const attempts = await Promise.all(eventIds.map(eventId => fetchCombinedEventCandidate(competitionId, eventId, gender)));
+    for (let i = 0; i < attempts.length; i++) {
+      diagnostics.push(...attempts[i].diagnostics);
+      if (attempts[i].rows.length) {
+        const rows = attempts[i].rows.slice().sort((a, b) => b.mark - a.mark);
+        return { rows, eventId: eventIds[i], resultsUrl: attempts[i].resultsUrl, diagnostics };
       }
-      const rows = extractCombinedEventStandings(html);
-      if (rows.length) { rows.sort((a, b) => b.mark - a.mark); return { rows, eventId, resultsUrl: resultsUrl.toString(), diagnostics }; }
-      // Temporary while this page's embedded data shape is unverified: show enough of the
-      // __NEXT_DATA__ payload (or its absence) to see what's actually there.
-      const m = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
-      diagnostics.push({
-        source: 'wa-results-shape', eventId, hasNextData: !!m,
-        nextDataLength: m ? m[1].length : 0,
-        nextDataSample: m ? decode(m[1]).slice(0, 800) : null,
-        htmlSample: !m ? html.slice(0, 500) : null
-      });
     }
   }
 
@@ -334,34 +340,63 @@ async function fetchStandingsForCompetition(competitionId, event, sex) {
   // day's data (the same ?day=N shape this app's own original German Championships research URL
   // used) and picks out the specific event by its WA name instead.
   const wantedName = isCombinedEvent(event) ? null : waDisciplineFullName(event, gender);
-  for (const day of [1, 2, 3, 4]) {
-    const resultsUrl = new URL(`https://worldathletics.org/competition/calendar-results/results/${competitionId}`);
-    resultsUrl.searchParams.set('day', String(day));
-    resultsUrl.searchParams.set('gender', gender);
-    let html = '';
-    try {
-      const r = await fetch(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
-      if (r.ok) html = await r.text();
-      diagnostics.push({ source: 'wa-results-page-by-day', url: resultsUrl.toString(), day, status: r.status, htmlLength: html.length });
-    } catch (e) {
-      diagnostics.push({ source: 'wa-results-page-by-day', url: resultsUrl.toString(), day, error: String(e?.message || e) });
-      continue;
+  const dayAttempts = await Promise.all([1, 2, 3, 4].map(day => fetchDayCandidate(competitionId, day, gender, event, wantedName)));
+  for (let i = 0; i < dayAttempts.length; i++) {
+    diagnostics.push(...dayAttempts[i].diagnostics);
+    if (dayAttempts[i].rows.length) {
+      const rows = isCombinedEvent(event) ? dayAttempts[i].rows.slice().sort((a, b) => b.mark - a.mark) : dayAttempts[i].rows;
+      return { rows, eventId: null, resultsUrl: dayAttempts[i].resultsUrl, diagnostics };
     }
-    if (isCombinedEvent(event)) {
-      const rows = extractCombinedEventStandings(html);
-      if (rows.length) { rows.sort((a, b) => b.mark - a.mark); return { rows, eventId: null, resultsUrl: resultsUrl.toString(), diagnostics }; }
-    } else if (wantedName) {
-      const rows = extractIndividualEventStandings(html, wantedName, isAscending(event));
-      if (rows.length) return { rows, eventId: null, resultsUrl: resultsUrl.toString(), diagnostics };
-    }
-    // A day page can be huge (hundreds of KB, every discipline held that day) - dumping a raw
-    // text sample like the eventId loop does would be unreadable. Pulling out just the distinct
-    // "event" name strings shows directly whether the wanted discipline is even on that day at
-    // all, which is the actual question, without needing the full payload.
-    const eventNames = [...new Set([...html.matchAll(/"event"\s*:\s*"([^"]+)"/g)].map(m => m[1]))];
-    diagnostics.push({ source: 'wa-results-day-shape', day, wantedName, eventNamesFound: eventNames.slice(0, 40) });
   }
   return { rows: [], eventId: null, resultsUrl: null, diagnostics };
+}
+async function fetchCombinedEventCandidate(competitionId, eventId, gender) {
+  const resultsUrl = new URL(`https://worldathletics.org/competition/calendar-results/results/${competitionId}`);
+  resultsUrl.searchParams.set('eventId', String(eventId));
+  resultsUrl.searchParams.set('gender', gender);
+  let html = '', status = null;
+  try {
+    const r = await fetchWithTimeout(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
+    status = r.status;
+    if (r.ok) html = await r.text();
+  } catch (e) {
+    return { rows: [], resultsUrl: resultsUrl.toString(), diagnostics: [{ source: 'wa-results-page', url: resultsUrl.toString(), eventId, error: String(e?.message || e) }] };
+  }
+  const rows = extractCombinedEventStandings(html);
+  const base = { source: 'wa-results-page', url: resultsUrl.toString(), eventId, status, htmlLength: html.length };
+  if (rows.length) return { rows, resultsUrl: resultsUrl.toString(), diagnostics: [base] };
+  // Temporary while this page's embedded data shape is unverified: show enough of the
+  // __NEXT_DATA__ payload (or its absence) to see what's actually there.
+  const m = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+  return { rows: [], resultsUrl: resultsUrl.toString(), diagnostics: [base, {
+    source: 'wa-results-shape', eventId, hasNextData: !!m,
+    nextDataLength: m ? m[1].length : 0,
+    nextDataSample: m ? decode(m[1]).slice(0, 800) : null,
+    htmlSample: !m ? html.slice(0, 500) : null
+  }] };
+}
+async function fetchDayCandidate(competitionId, day, gender, event, wantedName) {
+  const resultsUrl = new URL(`https://worldathletics.org/competition/calendar-results/results/${competitionId}`);
+  resultsUrl.searchParams.set('day', String(day));
+  resultsUrl.searchParams.set('gender', gender);
+  let html = '', status = null;
+  try {
+    const r = await fetchWithTimeout(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
+    status = r.status;
+    if (r.ok) html = await r.text();
+  } catch (e) {
+    return { rows: [], resultsUrl: resultsUrl.toString(), diagnostics: [{ source: 'wa-results-page-by-day', url: resultsUrl.toString(), day, error: String(e?.message || e) }] };
+  }
+  const base = { source: 'wa-results-page-by-day', url: resultsUrl.toString(), day, status, htmlLength: html.length };
+  const rows = isCombinedEvent(event) ? extractCombinedEventStandings(html)
+    : wantedName ? extractIndividualEventStandings(html, wantedName, isAscending(event)) : [];
+  if (rows.length) return { rows, resultsUrl: resultsUrl.toString(), diagnostics: [base] };
+  // A day page can be huge (hundreds of KB, every discipline held that day) - dumping a raw
+  // text sample like the eventId candidate does would be unreadable. Pulling out just the
+  // distinct "event" name strings shows directly whether the wanted discipline is even on that
+  // day at all, which is the actual question, without needing the full payload.
+  const eventNames = [...new Set([...html.matchAll(/"event"\s*:\s*"([^"]+)"/g)].map(m => m[1]))];
+  return { rows: [], resultsUrl: resultsUrl.toString(), diagnostics: [base, { source: 'wa-results-day-shape', day, wantedName, eventNamesFound: eventNames.slice(0, 40) }] };
 }
 
 // Fetches+parses the real results page directly for a meet whose WA competition ID is already
