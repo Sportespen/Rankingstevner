@@ -655,6 +655,11 @@ function normalizeMeetName(s) {
     // ("58. Nordrhein-Meisterschaften ...") that increments every year - left in, it would
     // break substring matching against the same meet a year later since "58" never equals "59".
     .replace(/^\s*\d+\.\s*/, '')
+    // English-language meets instead often use an ordinal SUFFIX ("66th Ostrava Golden Spike")
+    // - confirmed live via the coverage diagnostic: this form wasn't stripped at all, so a major
+    // recurring meet like this could never match its own previous edition ("65th Ostrava Golden
+    // Spike") since the edition number changes every year just like the German "58./59." case.
+    .replace(/^\s*\d+(st|nd|rd|th)\s+/i, '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/\b(19|20)\d{2}\b/g, '')
