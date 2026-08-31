@@ -8,6 +8,16 @@
 // search) and made "Historisk nivå" look worse than it is for meets a real user actually sees.
 // Runs the real /api/meet-history lookup against that filtered sample, categorizing each result
 // so the actual failure distribution - across meets that genuinely matter - is visible at once.
+// meet-search.js's nimarion-proxy source has no region filter (only the WA-calendar half of it
+// does, via regionId=3) - confirmed live: raw results included meets in Chile and Brazil, which
+// Stevnefinner's own baseMatches() always excludes (isEurope()) before a user ever sees them.
+// Same country-code check here so the tested population matches the real list exactly.
+const EUROPE_CODES=new Set(['ALB','AND','ARM','AUT','BLR','BEL','BIH','BUL','CRO','CYP','CZE','DEN','EST','FIN','FRA','GEO','GER','GIB','GBR','GRE','HUN','ISL','IRL','ITA','KOS','LAT','LIE','LTU','LUX','MLT','MDA','MON','MNE','NED','MKD','NOR','POL','POR','ROU','SMR','SRB','SVK','SLO','ESP','SWE','SUI','TUR','UKR']);
+function isEuropeMeet(m){
+  const raw=[typeof m?.location==='string'?m.location:'',m?.area,m?.country,m?.countryCode].filter(Boolean).join(' ');
+  const paren=raw.match(/\(([A-Z]{3})\)/);
+  return paren?EUROPE_CODES.has(paren[1]):false;
+}
 const DIRECT_PROGRAM_EVENT_CODE={
   '100m':'100m','200m':'200m','400m':'400m','800m':'800m','1500m':'1500m','5000m':'5000m','10000m':'10000m',
   '100mh':'100mH','110mh':'110mH','400mh':'400mH','3000msc':'3000mSC','3000m steeplechase':'3000mSC',
@@ -53,7 +63,7 @@ export async function onRequestGet(context){
   try{
     const searchRes=await fetchWithTimeout(`${origin}/api/meet-search?event=${encodeURIComponent(event)}&startDate=${today}&endDate=2027-12-31&v=1&t=${Date.now()}`);
     const searchData=await searchRes.json();
-    candidates=(Array.isArray(searchData?.results)?searchData.results:[]).filter(m=>m?.id).slice(0,pool);
+    candidates=(Array.isArray(searchData?.results)?searchData.results:[]).filter(m=>m?.id&&isEuropeMeet(m)).slice(0,pool);
   }catch(e){
     return json({ok:false,error:'meet-search failed: '+String(e?.message||e)},502);
   }
