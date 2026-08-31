@@ -364,9 +364,12 @@ async function loadMeetDetails(id,insightHost){
         return {href:parsed.href,note};
       }catch(_){return null;}
     };
-    // Stevnets nettside/Resultater/Premiepenger should always be present, so fall back to
-    // WA's own competition page (which always exists once we have an id) when the organiser
-    // payload's own field is missing or fails validation.
+    // WA's own "i" popup on their calendar only shows a "Website:"/"Results:" line when the
+    // organiser actually published one (confirmed live: some meets show both, some show only
+    // "Results:", most show neither) - it never fabricates a link to WA's own competition page
+    // as a substitute. Nettside/Resultater now match that: hidden, not backfilled, when empty.
+    // Premier still links out to WA's own page when there IS prize info to show, since the
+    // prize text itself has no dedicated URL of its own in the organiser data.
     const fallbackUrl=waUrl({id});
     // Returns {anchor, note} instead of a ready HTML string - a trailing note (e.g. "(only fin
     // and swe athletes)") used to sit inline right after its link, and once it wrapped to its
@@ -377,8 +380,8 @@ async function loadMeetDetails(id,insightHost){
       return r?{anchor:`<a href="${esc(r.href)}" target="_blank" rel="noopener">${label}</a>`,note:r.note}:null;
     };
     const items=[
-      linkParts('Nettside',x.websiteUrl,fallbackUrl),
-      linkParts('Resultater',x.resultsUrl,fallbackUrl),
+      linkParts('Nettside',x.websiteUrl), // no fallback - only shown when WA actually has one
+      linkParts('Resultater',x.resultsUrl), // no fallback - only shown when WA actually has one
       // Only shown when WA's organiser data actually has prize money published - previously this
       // always showed a bare "Premier" link (to WA's own page) even with nothing to report.
       prizeLabel?{anchor:`<a href="${esc(fallbackUrl)}" target="_blank" rel="noopener">${esc(prizeLabel)}</a>`,note:''}:null,
