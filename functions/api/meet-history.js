@@ -85,9 +85,17 @@ function individualEventNameCandidates(event, gender) {
 // sequential/untimed external calls run too long: Cloudflare kills the whole request and returns
 // its own HTML error page instead of a real response. Same fix here.
 const FETCH_TIMEOUT_MS = 8000;
-async function fetchWithTimeout(url, options) {
+// Results pages are real, server-rendered Next.js pages (~85KB seen live) rather than the
+// calendar list's lighter pages, and now fetch concurrently (up to 4 day candidates at once) -
+// live diagnostics showed a real, data-bearing day page aborted at 8s ("The operation was
+// aborted") while the empty 500-error days next to it returned fast, meaning the slower real
+// page needs more headroom, not a shorter deadline. Only used for the results-page fetches
+// (which already run in parallel via Promise.all, so this doesn't multiply worst-case wall time
+// the way raising it for the sequential window-search loop above would).
+const RESULTS_FETCH_TIMEOUT_MS = 15000;
+async function fetchWithTimeout(url, options, timeoutMs = FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try { return await fetch(url, { ...options, signal: controller.signal }); }
   finally { clearTimeout(timer); }
 }
@@ -393,7 +401,7 @@ async function fetchCombinedEventCandidate(competitionId, eventId, gender) {
   resultsUrl.searchParams.set('gender', gender);
   let html = '', status = null;
   try {
-    const r = await fetchWithTimeout(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
+    const r = await fetchWithTimeout(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } }, RESULTS_FETCH_TIMEOUT_MS);
     status = r.status;
     if (r.ok) html = await r.text();
   } catch (e) {
@@ -418,7 +426,7 @@ async function fetchDayCandidate(competitionId, day, gender, event, nameCandidat
   resultsUrl.searchParams.set('gender', gender);
   let html = '', status = null;
   try {
-    const r = await fetchWithTimeout(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } });
+    const r = await fetchWithTimeout(resultsUrl.toString(), { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 Rankingstevner/1.0' } }, RESULTS_FETCH_TIMEOUT_MS);
     status = r.status;
     if (r.ok) html = await r.text();
   } catch (e) {
