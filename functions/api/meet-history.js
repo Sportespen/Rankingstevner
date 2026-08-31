@@ -45,6 +45,35 @@ const WA_DISCIPLINE_NAME = {
   HJ: 'High Jump', PV: 'Pole Vault', LJ: 'Long Jump', TJ: 'Triple Jump',
   SP: 'Shot Put', DT: 'Discus Throw', HT: 'Hammer Throw', JT: 'Javelin Throw',
 };
+// Indoor tracks are too short to run some outdoor sprints/hurdles at their nominal distance - WA
+// substitutes a genuinely different, shorter distance instead. Confirmed live: an indoor meet's
+// day page listed "Men's 60 Metres" with no "100 Metres" block at all. A 60m time isn't
+// comparable to a 100m time, so a match found this way is shown as reference only - no placement
+// claim against the athlete's own mark (see meet-history.js's `comparable` handling).
+const INDOOR_SPRINT_ALT_NAME = {
+  '100m': '60 Metres',
+  '100mH': '60 Metres Hurdles',
+  '110mH': '60 Metres Hurdles',
+};
+// These stay the SAME nominal distance indoors - WA just appends "Short Track" to note the
+// venue, not a shorter race (confirmed live on the same indoor day page: "Men's 400 Metres Short
+// Track", "...800 Metres Short Track", "...1500 Metres Short Track") - so a mark found this way
+// IS directly comparable to the athlete's own outdoor mark for the same event.
+const SHORT_TRACK_SUFFIX_EVENTS = new Set(['400m', '800m', '1500m']);
+// Ordered list of {name, comparable} to try against a single day page's own event blocks - same
+// distance first (comparable), then any indoor substitute WA uses for that discipline (not
+// comparable, reference only). No extra fetch needed: a day page already lists every discipline
+// held that day, so trying more names costs nothing beyond a second in-memory scan of the same
+// already-fetched HTML.
+function individualEventNameCandidates(event, gender) {
+  const primary = waDisciplineFullName(event, gender);
+  const out = [];
+  if (primary) out.push({ name: primary, comparable: true });
+  if (primary && SHORT_TRACK_SUFFIX_EVENTS.has(event)) out.push({ name: `${primary} Short Track`, comparable: true });
+  const alt = INDOOR_SPRINT_ALT_NAME[event];
+  if (alt) out.push({ name: `${gender === 'W' ? "Women's" : "Men's"} ${alt}`, comparable: false });
+  return out;
+}
 // None of the fetches in this file had a per-request deadline - a single lookup can chain up to
 // ~15 calendar-page fetches (3 years back x offset pages) plus another ~9 results-page fetches
 // (eventId/day candidates), and meet-search.js already showed live what happens when that many
@@ -294,6 +323,8 @@ export async function onRequestGet(context) {
     eventId: fetched.eventId,
     source: fetched.resultsUrl,
     matchedMeetName: best.name,
+    comparable: fetched.comparable !== false,
+    matchedEventName: fetched.matchedEventName || null,
     diagnostics
   });
 }
@@ -339,13 +370,13 @@ async function fetchStandingsForCompetition(competitionId, event, sex) {
   // no confirmed global eventId for any of them, so this goes straight to asking for a whole
   // day's data (the same ?day=N shape this app's own original German Championships research URL
   // used) and picks out the specific event by its WA name instead.
-  const wantedName = isCombinedEvent(event) ? null : waDisciplineFullName(event, gender);
-  const dayAttempts = await Promise.all([1, 2, 3, 4].map(day => fetchDayCandidate(competitionId, day, gender, event, wantedName)));
+  const nameCandidates = isCombinedEvent(event) ? null : individualEventNameCandidates(event, gender);
+  const dayAttempts = await Promise.all([1, 2, 3, 4].map(day => fetchDayCandidate(competitionId, day, gender, event, nameCandidates)));
   for (let i = 0; i < dayAttempts.length; i++) {
     diagnostics.push(...dayAttempts[i].diagnostics);
     if (dayAttempts[i].rows.length) {
       const rows = isCombinedEvent(event) ? dayAttempts[i].rows.slice().sort((a, b) => b.mark - a.mark) : dayAttempts[i].rows;
-      return { rows, eventId: null, resultsUrl: dayAttempts[i].resultsUrl, diagnostics };
+      return { rows, eventId: null, resultsUrl: dayAttempts[i].resultsUrl, comparable: dayAttempts[i].comparable !== false, matchedEventName: dayAttempts[i].matchedEventName || null, diagnostics };
     }
   }
   return { rows: [], eventId: null, resultsUrl: null, diagnostics };
@@ -375,7 +406,7 @@ async function fetchCombinedEventCandidate(competitionId, eventId, gender) {
     htmlSample: !m ? html.slice(0, 500) : null
   }] };
 }
-async function fetchDayCandidate(competitionId, day, gender, event, wantedName) {
+async function fetchDayCandidate(competitionId, day, gender, event, nameCandidates) {
   const resultsUrl = new URL(`https://worldathletics.org/competition/calendar-results/results/${competitionId}`);
   resultsUrl.searchParams.set('day', String(day));
   resultsUrl.searchParams.set('gender', gender);
@@ -388,15 +419,24 @@ async function fetchDayCandidate(competitionId, day, gender, event, wantedName) 
     return { rows: [], resultsUrl: resultsUrl.toString(), diagnostics: [{ source: 'wa-results-page-by-day', url: resultsUrl.toString(), day, error: String(e?.message || e) }] };
   }
   const base = { source: 'wa-results-page-by-day', url: resultsUrl.toString(), day, status, htmlLength: html.length };
-  const rows = isCombinedEvent(event) ? extractCombinedEventStandings(html)
-    : wantedName ? extractIndividualEventStandings(html, wantedName, isAscending(event)) : [];
-  if (rows.length) return { rows, resultsUrl: resultsUrl.toString(), diagnostics: [base] };
+  if (isCombinedEvent(event)) {
+    const rows = extractCombinedEventStandings(html);
+    if (rows.length) return { rows, resultsUrl: resultsUrl.toString(), comparable: true, diagnostics: [base] };
+  } else if (Array.isArray(nameCandidates)) {
+    // Same distance tried first, any indoor substitute (comparable:false) only as a fallback -
+    // see individualEventNameCandidates. All against this same already-fetched HTML, no extra
+    // network round trip per candidate.
+    for (const candidate of nameCandidates) {
+      const rows = extractIndividualEventStandings(html, candidate.name, isAscending(event));
+      if (rows.length) return { rows, resultsUrl: resultsUrl.toString(), comparable: candidate.comparable, matchedEventName: candidate.name, diagnostics: [base] };
+    }
+  }
   // A day page can be huge (hundreds of KB, every discipline held that day) - dumping a raw
   // text sample like the eventId candidate does would be unreadable. Pulling out just the
   // distinct "event" name strings shows directly whether the wanted discipline is even on that
   // day at all, which is the actual question, without needing the full payload.
   const eventNames = [...new Set([...html.matchAll(/"event"\s*:\s*"([^"]+)"/g)].map(m => m[1]))];
-  return { rows: [], resultsUrl: resultsUrl.toString(), diagnostics: [base, { source: 'wa-results-day-shape', day, wantedName, eventNamesFound: eventNames.slice(0, 40) }] };
+  return { rows: [], resultsUrl: resultsUrl.toString(), diagnostics: [base, { source: 'wa-results-day-shape', day, wantedNames: nameCandidates?.map(c => c.name) || null, eventNamesFound: eventNames.slice(0, 40) }] };
 }
 
 // Fetches+parses the real results page directly for a meet whose WA competition ID is already
@@ -420,6 +460,7 @@ async function resolveKnownCompetition(known, event, name) {
       ok: true, found: true, year: known.year, winner: winner.name || known.fallback?.winner || null, winnerMark: winner.mark,
       top3: marks.slice(0, 3), top8: marks.slice(0, 8), allMarks: marks, ascending: false,
       competitionId: known.competitionId, eventId: fetched.eventId, source: fetched.resultsUrl, matchedMeetName: name,
+      comparable: fetched.comparable !== false, matchedEventName: fetched.matchedEventName || null,
       diagnostics: [...fetched.diagnostics, { source: 'known-competition-live' }]
     });
   }
@@ -429,7 +470,7 @@ async function resolveKnownCompetition(known, event, name) {
   return json({
     ok: true, found: true, year: known.year, winner: known.fallback.winner, winnerMark: known.fallback.winnerMark,
     top3: known.fallback.top.slice(0, 3), top8: known.fallback.top, allMarks: known.fallback.top, ascending: false,
-    source: known.fallback.source, matchedMeetName: name,
+    source: known.fallback.source, matchedMeetName: name, comparable: true,
     diagnostics: [...fetched.diagnostics, { source: 'known-competition-fallback' }]
   });
 }

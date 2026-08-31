@@ -128,22 +128,37 @@ function renderHtml(data, indoor){
   }
   const event = eventCode();
   const ascending = !!data.ascending;
-  const { mark: pb, diag: pbDiag } = bestOwnMark(indoor, ascending);
-  const place = pb != null ? placementFor(data.allMarks, pb, ascending) : null;
-  const worst = worstKnownMark(data.allMarks, ascending);
-  const outsideKnownRange = pb != null && worst != null && (ascending ? pb > worst : pb < worst);
-  const placeLine = place != null
-    ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste tellende prestasjon (${formatMark(pb, event)}) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
-    : outsideKnownRange
-      ? `<small style="display:block;color:#677585">Din beste tellende prestasjon (${formatMark(pb, event)}) er svakere enn det svakeste resultatet vi har data på (${formatMark(worst, event)}) - nøyaktig plassering kan ikke fastslås med det datagrunnlaget som er verifisert for dette stevnet.</small>`
-      : '';
+  // Indoor meets substitute a genuinely shorter distance for some sprints/hurdles (e.g. 60m
+  // instead of 100m - see meet-history.js on the backend for the confirmed list) - a mark over a
+  // different distance isn't comparable to the athlete's own mark for this event, so no
+  // placement claim is made against it. comparable is absent (not just true) for combined-event
+  // responses and the hand-researched VERIFIED table, both always same-distance/discipline.
+  const comparable = data.comparable !== false;
+  let placeLine = '', pbDiag = null;
+  if (comparable) {
+    const own = bestOwnMark(indoor, ascending);
+    pbDiag = own.diag;
+    const pb = own.mark;
+    const place = pb != null ? placementFor(data.allMarks, pb, ascending) : null;
+    const worst = worstKnownMark(data.allMarks, ascending);
+    const outsideKnownRange = pb != null && worst != null && (ascending ? pb > worst : pb < worst);
+    placeLine = place != null
+      ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste tellende prestasjon (${formatMark(pb, event)}) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
+      : outsideKnownRange
+        ? `<small style="display:block;color:#677585">Din beste tellende prestasjon (${formatMark(pb, event)}) er svakere enn det svakeste resultatet vi har data på (${formatMark(worst, event)}) - nøyaktig plassering kan ikke fastslås med det datagrunnlaget som er verifisert for dette stevnet.</small>`
+        : '';
+  } else {
+    const eventLabel = document.getElementById('event')?.selectedOptions?.[0]?.textContent || event;
+    placeLine = `<small style="display:block;color:#677585">Stevnet var innendørs og kjørte ${esc(data.matchedEventName || 'en kortere distanse')} i stedet for ${esc(eventLabel)} - resultatene under viser stevnets nivå, men kan ikke sammenlignes direkte med din egen tid.</small>`;
+  }
   // Not every meet has a confirmed top 8 (or even top 3) - some sources only reported a
   // winner. Labelling the stat with however many marks actually went into it (instead of a
   // fixed "topp 3"/"topp 8") avoids implying more depth than what's actually verified.
   const segments = [`vinner ${formatMark(data.winnerMark, event)}`];
   if (data.top3?.length > 1) segments.push(`topp ${data.top3.length} snitt ${formatMark(avg(data.top3), event)}`);
   if (data.top8?.length > (data.top3?.length || 0)) segments.push(`topp ${data.top8.length} snitt ${formatMark(avg(data.top8), event)}`);
-  return `<strong>${data.year}: ${segments.join(' · ')}</strong><small>Vinner: ${data.winner || 'ukjent'}. <a href="${data.source}" target="_blank" rel="noopener">Se offisielle WA-resultater</a></small>${placeLine}${diagnosticsHtml({ diagnostics: [{ source: 'own-mark', ...pbDiag }] })}`;
+  const diagEntry = comparable ? { source: 'own-mark', ...pbDiag } : { source: 'not-comparable', matchedEventName: data.matchedEventName || null };
+  return `<strong>${data.year}: ${segments.join(' · ')}</strong><small>Vinner: ${data.winner || 'ukjent'}. <a href="${data.source}" target="_blank" rel="noopener">Se offisielle WA-resultater</a></small>${placeLine}${diagnosticsHtml({ diagnostics: [diagEntry] })}`;
 }
 
 window.RankingstevnerMeetHistory = {
