@@ -236,8 +236,17 @@ export async function onRequestGet(context) {
   // a real match regardless of what page it would otherwise have fallen on. If it returns nothing
   // useful, this adds nothing; if WA's own text index matches, the existing name-scoring below
   // picks the result up like any other candidate.
+  // "Longest token" alone picked bad terms for championship-style names - live-tested and
+  // confirmed: "European Athletics U23 Championships" picked "championships" (14 letters), a
+  // word shared by hundreds of unrelated meets, and WA's query search only returns its first page
+  // (unlike the offset-paginated calendar windows below), so the real meet never surfaced. Prefer
+  // the longest token that ISN'T one of these generic tournament words; only fall back to the
+  // longest overall when every token is generic (e.g. the name really is just "World Athletics
+  // Championships").
+  const GENERIC_QUERY_WORDS = new Set(['championships', 'championship', 'athletics', 'international', 'invitational', 'meeting', 'games', 'open', 'trophy', 'festival', 'classic', 'series', 'cup', 'grand', 'prix', 'european', 'world', 'national', 'regional', 'indoor', 'outdoor', 'track', 'field', 'division', 'first', 'second', 'third']);
   const queryTokens = meaningfulTokens(wantedNorm);
-  const queryTerm = queryTokens.length ? queryTokens.reduce((a, b) => (b.length > a.length ? b : a)) : '';
+  const specificTokens = queryTokens.filter(t => !GENERIC_QUERY_WORDS.has(t));
+  const queryTerm = (specificTokens.length ? specificTokens : queryTokens).reduce((a, b) => (!a || b.length > a.length ? b : a), '');
   const queryPromise = queryTerm ? (async () => {
     const wa = new URL('https://worldathletics.org/competition/calendar-results');
     wa.searchParams.set('isSearchReset', 'true');
