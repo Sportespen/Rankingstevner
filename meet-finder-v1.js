@@ -193,6 +193,25 @@ function nationalChampionshipCountryCode(m){
   if(norm(m?.competitionGroup||'').includes('national championship'))return countryCode(m)||null;
   return null;
 }
+// Multi-nation representative "Games"/"Championships" - entry is exclusively by national
+// federation selection, never open registration or a direct invitation an athlete/club could act
+// on. Unlike nationalChampionshipCountryCode() above (a SINGLE country's own championship, kept
+// visible only for that country's own athletes), these have no "own country" case where they'd
+// ever be enterable - excluded for every athlete regardless of nationality. Confirmed live: "XX
+// Mediterranean Games" (Taranto, Italy) showed up under a 400m search despite being exactly this
+// kind of event - no individual athlete, Norwegian or otherwise, can register for it directly.
+const REPRESENTATIVE_ONLY_EVENTS=[
+  'olympic games','youth olympic games',
+  'world athletics championships','world championships',
+  'european athletics championships','european athletics indoor championships',
+  'european athletics team championships','world athletics team championships',
+  'european athletics u23 championships','european athletics u20 championships','european athletics u18 championships',
+  'world athletics u20 championships','world athletics u18 championships',
+  'mediterranean games','european games','commonwealth games','asian games','pan american games','african games',
+  'university games','world university games','universiade','military world games','island games',
+  'balkan championships','nordic championships'
+];
+function isRepresentativeOnlyMeet(m){return hasAny(norm(m?.name),REPRESENTATIVE_ONLY_EVENTS);}
 // Read directly from the shared profile store (same localStorage key athlete-profile.js writes)
 // rather than wiring up another cross-script live trigger - this file only needs a fresh read
 // each time it filters, not to be notified the instant the athlete changes.
@@ -270,6 +289,7 @@ function baseMatches(){
   const athleteCountry=athleteCountryCode();
   return dedupeMeets(allMeets.filter(m=>{
     if(!isFutureThrough2027(m)||!isEurope(m)||!isEligibleAgeMeet(m))return false;
+    if(isRepresentativeOnlyMeet(m))return false;
     if(!isAllowedDisciplineCategory(m))return false;
     if(!(combined?eventMatches(m,c):(eventMatches(m,c)||isGenericTrackAndFieldMeet(m))))return false;
     // WA's own confirmed program (once fetched - see loadMeetDetails) overrides the coarse
