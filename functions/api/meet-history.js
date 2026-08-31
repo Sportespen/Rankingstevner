@@ -744,12 +744,19 @@ function extractCalendarObjects(html) {
   while ((z = re.exec(text))) out.push({ id: Number(z[1]), name: z[2], start: z[3] });
   return out;
 }
-// This lookup's matching logic is still being actively fixed based on live diagnostics -
-// a 6-hour edge cache (the previous setting) meant a "not found" response from before a fix
-// kept being served by Cloudflare for hours after the fix was deployed, making it look like
-// nothing had changed. "found:true" results are cheap to recompute and can change too (a fixed
-// name-extraction bug should show up immediately), so nothing here is cached at the edge for
-// now; revisit once the matching/extraction logic has stopped changing week to week.
+// A real lookup chains ~20 external fetches and, per live measurement, takes up to ~15s even at
+// its own best - the matching/scheduling logic is now well-exercised and confirmed correct
+// against several real meets this session, so it's worth caching again (the earlier 6-hour
+// cache was reverted specifically because it hid fix verification for too long, not because
+// caching itself was wrong). Kept short and asymmetric instead: a confirmed "found" answer is
+// genuinely stable (WA's own past results don't change) and cached longer; a "not found" is
+// more likely to reflect an still-unfixed matching gap, so it's kept short enough that a fix
+// becomes visible to real users again within a couple of minutes without needing a manual
+// cache-buster - which is still the right tool when actively verifying a change during
+// development (same pattern used for every other endpoint this session).
 function json(body, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
+  const cacheControl = (status === 200 && body?.ok && body?.found)
+    ? 'public, max-age=300, s-maxage=900'
+    : 'public, max-age=30, s-maxage=120';
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': cacheControl } });
 }
