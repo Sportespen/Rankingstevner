@@ -202,6 +202,59 @@ function athleteCountryCode(){
 // other heuristic (event-name text match, generic-T&F fallback, verified fallback rows) can ever
 // let a Race Walking/Cross Country/Road Running meet through by accident.
 function isAllowedDisciplineCategory(m){const s=disciplineBlob(m);if(!s)return false;return s.includes('track and field')||s.includes('combined events');}
+// The calendar's own Discipline category (checked above) can only ever say "Track and Field" -
+// it has no per-event breakdown, so a meet hosting only Pole Vault matches a 100m search just as
+// happily as a real sprint meet (confirmed live: "Fana stavhoppgalla", a pole-vault-only meet,
+// showed up under 100m). WA's organiser "Program" data (already fetched for the "Kontakt og
+// øvelser" box) DOES list the real, confirmed per-gender event names, so once it's available for
+// a meet it becomes the authoritative source: only the meets it actually confirms should show.
+// Real program strings confirmed live: "60m","200m sh","800m sh","60mH","60mH (0.99) U20",
+// "High Jump","Shot Put (6kg) U20","4x200m sh" (relay) - "sh" is WA's "Short Track" abbreviation
+// (same distance, just indoors - matches meet-history.js's SHORT_TRACK_SUFFIX_EVENTS), age/
+// weight suffixes ("U20"/"(6kg)") mark a youth-category variant of the same base event.
+// Deliberately does NOT strip age-category suffixes (U18/U20/...): both real examples confirmed
+// live always list the bare/open event ALONGSIDE any age-restricted variants when both exist
+// ("Shot Put" and "Shot Put (6kg) U20" as separate lines) - so requiring an exact match against
+// the un-suffixed name still works for every meet actually seen, while correctly refusing to
+// confirm this senior/U23-only finder's event from a U20-only (or younger) entry that has no
+// bare version of its own.
+function programEventBaseName(s){
+  return String(s||'')
+    .replace(/\([^)]*\)/g,' ')
+    .replace(/\bsh\b/gi,' ')
+    .replace(/\s+/g,' ').trim().toLowerCase();
+}
+const DIRECT_PROGRAM_EVENT_CODE={
+  '100m':'100m','200m':'200m','400m':'400m','800m':'800m','1500m':'1500m','5000m':'5000m','10000m':'10000m',
+  '100mh':'100mH','110mh':'110mH','400mh':'400mH','3000msc':'3000mSC','3000m steeplechase':'3000mSC',
+  'high jump':'HJ','pole vault':'PV','long jump':'LJ','triple jump':'TJ',
+  'shot put':'SP','discus throw':'DT','discus':'DT','hammer throw':'HT','hammer':'HT','javelin throw':'JT','javelin':'JT',
+  'decathlon':'Decathlon','heptathlon':'Heptathlon',
+};
+// Returns true (confirmed), false (program known but doesn't include this event - meet should be
+// excluded), or null (no program published yet for this meet - stays with the old "unconfirmed"
+// fallback treatment). Indoor sprints/hurdles substitute a genuinely shorter WA distance (60m/
+// 60mH instead of 100m/100mH/110mH) - same list as meet-history.js's INDOOR_SPRINT_ALT_NAME,
+// only applied when the meet itself is indoor.
+function programConfirmsEvent(eventsProgram,code,sex,indoor){
+  if(!Array.isArray(eventsProgram)||!eventsProgram.length)return null;
+  const wantGender=sex==='W'?'women':'men';
+  for(const unit of eventsProgram){
+    if(String(unit?.gender||'').toLowerCase()!==wantGender)continue;
+    for(const raw of (Array.isArray(unit.events)?unit.events:[])){
+      const base=programEventBaseName(raw);
+      if(DIRECT_PROGRAM_EVENT_CODE[base]===code)return true;
+      if(indoor&&base==='60m'&&code==='100m')return true;
+      if(indoor&&base==='60mh'&&(code==='100mH'||code==='110mH'))return true;
+    }
+  }
+  return false;
+}
+// Keyed by `${meetId}|${eventCode}` - persisted across renders so a meet the confirmed program
+// has already ruled in/out doesn't flicker back to its old unconfirmed state (or briefly
+// reappear) on the next filter change/athlete switch/auto-refresh re-render.
+const programMismatchKeys=new Set();
+const programConfirmKeys=new Set();
 function baseMatches(){
   const c=eventCode();const combined=c==='Decathlon'||c==='Heptathlon';
   const athleteCountry=athleteCountryCode();
@@ -209,6 +262,9 @@ function baseMatches(){
     if(!isFutureThrough2027(m)||!isEurope(m)||!isEligibleAgeMeet(m))return false;
     if(!isAllowedDisciplineCategory(m))return false;
     if(!(combined?eventMatches(m,c):(eventMatches(m,c)||isGenericTrackAndFieldMeet(m))))return false;
+    // WA's own confirmed program (once fetched - see loadMeetDetails) overrides the coarse
+    // Discipline-category guess above: a meet it's already ruled out for this event stays out.
+    if(m.id&&programMismatchKeys.has(`${m.id}|${c}`))return false;
     // Only filter by nationality once we actually know it - with no athlete selected, or a
     // country WA's calendar didn't give a code for, showing every national championship is
     // still correct (better than silently hiding all of them on a guess).
@@ -319,8 +375,22 @@ function championshipStripHTML(){
   };
   return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box"><div style="font-size:12px;font-weight:800;letter-spacing:.12em;color:#007f73;margin:0 0 12px">KVALIFISERING TIL MESTERSKAP 2027</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">${section('outdoor')}${section('indoor')}</div></div>`;
 }
+// Applies the now-known confirmed program to the card this box belongs to: removes the "(ikke
+// bekreftet)" note if the currently selected event is confirmed, or removes the whole card if
+// the program is known and does NOT include it (persisted in programMismatchKeys so baseMatches()
+// excludes it from scratch on the next render too, not just this one).
+function applyProgramConfirmation(id,program,insightHost){
+  const card=insightHost?.closest('.meet-card-v1');
+  if(!card)return;
+  const code=eventCode();
+  const indoor=card.dataset.meetIndoor==='1';
+  const result=programConfirmsEvent(program,code,sexCode(),indoor);
+  const key=`${id}|${code}`;
+  if(result===true){programConfirmKeys.add(key);card.querySelector('[data-event-note]')?.remove();}
+  else if(result===false){programMismatchKeys.add(key);card.remove();}
+}
 async function loadMeetDetails(id,insightHost){
-  if(meetDetailsCache.has(id)){if(insightHost)insightHost.innerHTML=meetDetailsCache.get(id);return;}
+  if(meetDetailsCache.has(id)){const cached=meetDetailsCache.get(id);if(insightHost)insightHost.innerHTML=cached.html;applyProgramConfirmation(id,cached.program,insightHost);return;}
   try{
     // Per-request cache-buster, not just cache:'no-store': that flag only skips the browser's
     // own cache, not Cloudflare's edge cache, which the response's own 1h s-maxage still allows -
@@ -413,8 +483,9 @@ async function loadMeetDetails(id,insightHost){
     const program=Array.isArray(x.eventsProgram)?x.eventsProgram:[];
     const programHtml=program.length?`<div style="margin-top:8px"><span class="muted" style="font-size:11px">Program</span>${program.map(u=>`<div style="margin-top:2px"><strong style="font-size:12px">${esc(u.gender)}:</strong> <span style="font-size:12px">${esc(u.events.join(', '))}</span></div>`).join('')}</div>`:'';
     const html=`<span>Kontakt og øvelser</span><strong>${contactText}</strong>${linksHtml}${infoHtml}${programHtml}`;
-    meetDetailsCache.set(id,html);
+    meetDetailsCache.set(id,{html,program});
     if(insightHost)insightHost.innerHTML=html;
+    applyProgramConfirmation(id,program,insightHost);
     // Confirmed via WA's /organiser payload: it carries contact/prize/link info only, no
     // venue/stadium/address field, so the map link stays on the calendar's city-level text
     // set at render time (mapUrl(m)) - there's nothing more precise to upgrade it to here.
@@ -439,7 +510,7 @@ function render(){const host=$('meetList');if(!host)return;const base=baseMatche
   // includes meets whose specific program isn't confirmed yet, so the summary text says so up
   // front rather than only on the per-card badge, which someone skimming just the count could miss.
   const individualNote=combined?'':' Programmet er ofte ikke offentliggjort ennå - stevner der øvelsen ikke er bekreftet er merket «ikke bekreftet», sjekk stevnets eget program.';
-  const summary=`<div class="finder-summary"><div><span class="eyebrow">FREMTIDIGE WA-STEVNER</span><h4>${esc(eventLabel())}</h4><p class="muted">Kun senior- og U23-stevner i Europa.${combinedNote}${individualNote}${loadedAt?` Sist oppdatert ${stamp()}.`:''}</p></div><div class="finder-count">${loading?'…':matches.length}<small>${loading?'henter':'aktuelle stevner'}</small></div></div>`;if(loading&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Henter fremtidige stevner…</strong></div>`;return;}if(loadError&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Kunne ikke hente stevnekalenderen.</strong><p class="muted">${esc(loadError)}</p></div>`;return;}const controls=filterBar()+championshipStripHTML();if(!matches.length){const emptyBody=base.length?`<strong>Ingen treff med valgte filtre.</strong><p class="muted">Prøv å utvide dato eller velge Alle i filtrene.</p>`:`<strong>Fant ingen ${esc(eventLabel())}-stevner i den offentlige WA-kalenderen akkurat nå.</strong><p class="muted">Kan skyldes en reell pause i terminlisten, eller at færre stevner har publisert fullt program denne langt frem i tid - se diagnostikken under.</p>${eventDiagnosticsHtml()}`;host.innerHTML=summary+controls+`<div class="finder-empty">${emptyBody}</div>`;bindFilters();return;}host.innerHTML=summary+controls+matches.map(m=>{const confirmed=eventConfirmed(m,code);const eventNote=confirmed?'':' <span class="muted" style="font-weight:400;font-size:11px">(ikke bekreftet)</span>';return `<article class="meet-card meet-card-v1" data-meet-start="${esc(m.start||'')}" data-meet-indoor="${venueType(m)==='indoor'?'1':'0'}"><div class="meet-top"><div><h4>${esc(m.name||'Stevne')}</h4><div class="meta">${esc(locationText(m)||'Sted ikke publisert')} <a href="${esc(mapUrl(m))}" target="_blank" rel="noopener">Vis i kart</a></div></div><span class="cat">${esc(m.rankingCategory||'WA')}</span></div><div class="meet-facts"><div><span>Dato</span>${dateBoxHTML(m)}</div><div><span>Land</span><strong>${esc(countryLabel(m))}</strong></div><div><span>Øvelse</span><strong>${esc(perMeetEventLabel(m))}${eventNote}</strong></div><div><span>Arena</span><strong>${esc(venueLabel(m))}</strong></div></div><div class="meet-insight"><span>Historisk nivå</span><strong>Historiske resultater kobles inn senere.</strong></div>${m.id?`<div class="meet-insight" data-meet-contact="${esc(m.id)}"><span>Kontakt og øvelser</span><strong class="muted">Henter kontaktinfo og program …</strong></div>`:''}</article>`;}).join('');bindFilters();loadAllMeetDetails(host);}
+  const summary=`<div class="finder-summary"><div><span class="eyebrow">FREMTIDIGE WA-STEVNER</span><h4>${esc(eventLabel())}</h4><p class="muted">Kun senior- og U23-stevner i Europa.${combinedNote}${individualNote}${loadedAt?` Sist oppdatert ${stamp()}.`:''}</p></div><div class="finder-count">${loading?'…':matches.length}<small>${loading?'henter':'aktuelle stevner'}</small></div></div>`;if(loading&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Henter fremtidige stevner…</strong></div>`;return;}if(loadError&&!allMeets.length){host.innerHTML=summary+`<div class="finder-empty"><strong>Kunne ikke hente stevnekalenderen.</strong><p class="muted">${esc(loadError)}</p></div>`;return;}const controls=filterBar()+championshipStripHTML();if(!matches.length){const emptyBody=base.length?`<strong>Ingen treff med valgte filtre.</strong><p class="muted">Prøv å utvide dato eller velge Alle i filtrene.</p>`:`<strong>Fant ingen ${esc(eventLabel())}-stevner i den offentlige WA-kalenderen akkurat nå.</strong><p class="muted">Kan skyldes en reell pause i terminlisten, eller at færre stevner har publisert fullt program denne langt frem i tid - se diagnostikken under.</p>${eventDiagnosticsHtml()}`;host.innerHTML=summary+controls+`<div class="finder-empty">${emptyBody}</div>`;bindFilters();return;}host.innerHTML=summary+controls+matches.map(m=>{const confirmed=eventConfirmed(m,code)||(m.id&&programConfirmKeys.has(`${m.id}|${code}`));const eventNote=confirmed?'':' <span class="muted" data-event-note style="font-weight:400;font-size:11px">(ikke bekreftet)</span>';return `<article class="meet-card meet-card-v1" data-meet-start="${esc(m.start||'')}" data-meet-indoor="${venueType(m)==='indoor'?'1':'0'}"><div class="meet-top"><div><h4>${esc(m.name||'Stevne')}</h4><div class="meta">${esc(locationText(m)||'Sted ikke publisert')} <a href="${esc(mapUrl(m))}" target="_blank" rel="noopener">Vis i kart</a></div></div><span class="cat">${esc(m.rankingCategory||'WA')}</span></div><div class="meet-facts"><div><span>Dato</span>${dateBoxHTML(m)}</div><div><span>Land</span><strong>${esc(countryLabel(m))}</strong></div><div><span>Øvelse</span><strong>${esc(perMeetEventLabel(m))}${eventNote}</strong></div><div><span>Arena</span><strong>${esc(venueLabel(m))}</strong></div></div><div class="meet-insight"><span>Historisk nivå</span><strong>Historiske resultater kobles inn senere.</strong></div>${m.id?`<div class="meet-insight" data-meet-contact="${esc(m.id)}"><span>Kontakt og øvelser</span><strong class="muted">Henter kontaktinfo og program …</strong></div>`:''}</article>`;}).join('');bindFilters();loadAllMeetDetails(host);}
 async function load(){if(loading)return;loading=true;loadError='';render();try{const params=new URLSearchParams({v:'58',event:eventCode(),startDate:new Date().toISOString().slice(0,10),endDate:'2027-12-31'});const res=await fetch(`/api/meet-search?${params}`,{cache:'no-store'});const data=await res.json();if(!res.ok||!data?.ok)throw new Error(data?.error||`Kalenderkilde svarte ${res.status}`);allMeets=Array.isArray(data.results)?data.results:[];loadedAt=new Date();}catch(e){loadError=String(e?.message||e);}finally{loading=false;render();}}
 function install(){const panel=$('meetList')?.closest('.panel');if(panel){const h=panel.querySelector('h3');if(h)h.textContent='Finn aktuelle rankingstevner';const status=panel.querySelector('.section-head>.muted');if(status)status.textContent='World Athletics-kalender';}$('meetCategoryFilter')?.closest('.filters')?.setAttribute('style','display:none!important');$('event')?.addEventListener('change',()=>setTimeout(load,0));$('sex')?.addEventListener('change',()=>setTimeout(load,0));
   // The national-championship filter depends on which athlete is selected, not just event/sex -
