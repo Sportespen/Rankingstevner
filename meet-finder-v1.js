@@ -50,6 +50,14 @@ const CHAMPIONSHIP={
 const EA_TOPLIST_URL='https://www.european-athletics.com/home/historical-data/top-lists';
 const MAX_DATE=new Date('2027-12-31T23:59:59');
 let allMeets=[];let loading=false;let loadError='';let loadedAt=null;
+// render() rebuilds every meet card from scratch on each call (filter change, athlete switch via
+// the waStatus MutationObserver, the 15-minute auto-refresh, ...), and used to re-fetch every
+// visible card's contact/program info all over again each time even when nothing about that
+// specific meet had changed - the actual cause of "øvelsesutvalget" feeling slow to load,
+// especially with several cards on screen. A meet's own contact/program data doesn't change
+// within a browsing session, so this caches the rendered HTML per meet id and skips the network
+// call entirely on a repeat render.
+const meetDetailsCache=new Map();
 const $=id=>document.getElementById(id);
 const eventCode=()=>$('event')?.value||'';
 const eventLabel=()=>$('event')?.selectedOptions?.[0]?.textContent||'valgt øvelse';
@@ -312,6 +320,7 @@ function championshipStripHTML(){
   return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box"><div style="font-size:12px;font-weight:800;letter-spacing:.12em;color:#007f73;margin:0 0 12px">KVALIFISERING TIL MESTERSKAP 2027</div><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">${section('outdoor')}${section('indoor')}</div></div>`;
 }
 async function loadMeetDetails(id,insightHost){
+  if(meetDetailsCache.has(id)){if(insightHost)insightHost.innerHTML=meetDetailsCache.get(id);return;}
   try{
     // Per-request cache-buster, not just cache:'no-store': that flag only skips the browser's
     // own cache, not Cloudflare's edge cache, which the response's own 1h s-maxage still allows -
@@ -403,7 +412,9 @@ async function loadMeetDetails(id,insightHost){
     // meets this far out haven't, so this stays empty far more often than not.
     const program=Array.isArray(x.eventsProgram)?x.eventsProgram:[];
     const programHtml=program.length?`<div style="margin-top:8px"><span class="muted" style="font-size:11px">Program</span>${program.map(u=>`<div style="margin-top:2px"><strong style="font-size:12px">${esc(u.gender)}:</strong> <span style="font-size:12px">${esc(u.events.join(', '))}</span></div>`).join('')}</div>`:'';
-    if(insightHost)insightHost.innerHTML=`<span>Kontakt og øvelser</span><strong>${contactText}</strong>${linksHtml}${infoHtml}${programHtml}`;
+    const html=`<span>Kontakt og øvelser</span><strong>${contactText}</strong>${linksHtml}${infoHtml}${programHtml}`;
+    meetDetailsCache.set(id,html);
+    if(insightHost)insightHost.innerHTML=html;
     // Confirmed via WA's /organiser payload: it carries contact/prize/link info only, no
     // venue/stadium/address field, so the map link stays on the calendar's city-level text
     // set at render time (mapUrl(m)) - there's nothing more precise to upgrade it to here.

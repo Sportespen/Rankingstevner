@@ -366,12 +366,19 @@ async function fetchStandingsForCompetition(competitionId, event, sex) {
 
   if (isCombinedEvent(event)) {
     const eventIds = EVENT_ID_CANDIDATES[event] || [];
-    const attempts = await Promise.all(eventIds.map(eventId => fetchCombinedEventCandidate(competitionId, eventId, gender)));
-    for (let i = 0; i < attempts.length; i++) {
-      diagnostics.push(...attempts[i].diagnostics);
-      if (attempts[i].rows.length) {
-        const rows = attempts[i].rows.slice().sort((a, b) => b.mark - a.mark);
-        return { rows, eventId: eventIds[i], resultsUrl: attempts[i].resultsUrl, diagnostics };
+    // All candidates start fetching immediately (.map already launches each fetch, not lazily) -
+    // this keeps the network-overlap benefit of running them concurrently. But awaiting them IN
+    // PRIORITY ORDER, one at a time, means a fast-but-wrong later candidate can never make the
+    // response wait for a slow-but-irrelevant one behind it once the real (earlier-priority) one
+    // has already answered - unlike Promise.all, which always waits for every candidate
+    // (including ones whose answer nobody needed) before the caller can see any result.
+    const attemptPromises = eventIds.map(eventId => fetchCombinedEventCandidate(competitionId, eventId, gender));
+    for (let i = 0; i < attemptPromises.length; i++) {
+      const attempt = await attemptPromises[i];
+      diagnostics.push(...attempt.diagnostics);
+      if (attempt.rows.length) {
+        const rows = attempt.rows.slice().sort((a, b) => b.mark - a.mark);
+        return { rows, eventId: eventIds[i], resultsUrl: attempt.resultsUrl, diagnostics };
       }
     }
   }
@@ -385,12 +392,18 @@ async function fetchStandingsForCompetition(competitionId, event, sex) {
   // day's data (the same ?day=N shape this app's own original German Championships research URL
   // used) and picks out the specific event by its WA name instead.
   const nameCandidates = isCombinedEvent(event) ? null : individualEventNameCandidates(event, gender);
-  const dayAttempts = await Promise.all([1, 2, 3, 4].map(day => fetchDayCandidate(competitionId, day, gender, event, nameCandidates)));
-  for (let i = 0; i < dayAttempts.length; i++) {
-    diagnostics.push(...dayAttempts[i].diagnostics);
-    if (dayAttempts[i].rows.length) {
-      const rows = isCombinedEvent(event) ? dayAttempts[i].rows.slice().sort((a, b) => b.mark - a.mark) : dayAttempts[i].rows;
-      return { rows, eventId: null, resultsUrl: dayAttempts[i].resultsUrl, comparable: dayAttempts[i].comparable !== false, matchedEventName: dayAttempts[i].matchedEventName || null, matchedEventCode: dayAttempts[i].matchedEventCode || null, diagnostics };
+  // Same pattern as the eventId candidates above: all 4 days start fetching at once (so a real
+  // day-1 page and three quick day-2/3/4 "not held" errors overlap on the wire), but are awaited
+  // in order - day 1's answer alone gates the response once it has rows, instead of the response
+  // always waiting for whichever of the four takes longest (day 1's real ~85KB page has been
+  // observed live to take meaningfully longer than an empty day's fast error response).
+  const dayPromises = [1, 2, 3, 4].map(day => fetchDayCandidate(competitionId, day, gender, event, nameCandidates));
+  for (let i = 0; i < dayPromises.length; i++) {
+    const attempt = await dayPromises[i];
+    diagnostics.push(...attempt.diagnostics);
+    if (attempt.rows.length) {
+      const rows = isCombinedEvent(event) ? attempt.rows.slice().sort((a, b) => b.mark - a.mark) : attempt.rows;
+      return { rows, eventId: null, resultsUrl: attempt.resultsUrl, comparable: attempt.comparable !== false, matchedEventName: attempt.matchedEventName || null, matchedEventCode: attempt.matchedEventCode || null, diagnostics };
     }
   }
   return { rows: [], eventId: null, resultsUrl: null, diagnostics };
