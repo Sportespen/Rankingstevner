@@ -40,7 +40,7 @@
     // Drop the h4 entirely instead of renaming it to "Velg øvelse" - identical text to the
     // "VELG ØVELSE" eyebrow right above it.
     eventChoice.querySelector('h4')?.remove();
-    eventChoice.querySelector('.eyebrow')?.replaceChildren(document.createTextNode('VELG ØVELSE'));
+    eventChoice.querySelector('.eyebrow')?.replaceChildren(document.createTextNode('VELG ØVELSE FOR RANKING'));
     hideRedundantLabelText(eventSelect.closest('label'),'Øvelse');
 
     // "Finn utøver" repeated the "UTØVERPROFIL" eyebrow right above it in different words.
