@@ -328,7 +328,7 @@ async function loadMeetDetails(id,insightHost){
       ?uniqueContacts.map(c=>esc([c.name,c.email,c.phone].filter(Boolean).join(' · '))).join(' ; ')
       :'Ingen kontaktperson oppgitt.';
     const prizeEntries=x.prizeMoney?Object.entries(x.prizeMoney).filter(([,v])=>v):[];
-    const prizeLabel=prizeEntries.length?`Premier: ${prizeEntries.map(([k,v])=>`${k}: ${v}`).join(', ')}`:'Premier';
+    const prizeLabel=prizeEntries.length?`Premier: ${prizeEntries.map(([k,v])=>`${k}: ${v}`).join(', ')}`:'';
     // WA's organiser payload is inconsistent about what shape these URLs come in:
     //  - a path starting with "/" (e.g. "/competition/.../results/123") IS relative to
     //    worldathletics.org - WA hosts results for meets worldwide, so resultsUrl commonly
@@ -379,7 +379,9 @@ async function loadMeetDetails(id,insightHost){
     const items=[
       linkParts('Nettside',x.websiteUrl,fallbackUrl),
       linkParts('Resultater',x.resultsUrl,fallbackUrl),
-      {anchor:`<a href="${esc(fallbackUrl)}" target="_blank" rel="noopener">${esc(prizeLabel)}</a>`,note:''},
+      // Only shown when WA's organiser data actually has prize money published - previously this
+      // always showed a bare "Premier" link (to WA's own page) even with nothing to report.
+      prizeLabel?{anchor:`<a href="${esc(fallbackUrl)}" target="_blank" rel="noopener">${esc(prizeLabel)}</a>`,note:''}:null,
       linkParts('Livestream',x.liveStreamUrl), // no fallback - only shown when WA actually has one
     ].filter(Boolean);
     // Each "· anchor" pair is kept in one nowrap span so a line break can never strand the
