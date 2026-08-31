@@ -228,7 +228,15 @@ export async function onRequestGet(context) {
   // Small domestic/regional championships often don't run on a fixed weekend from year to
   // year (unlike GL Tour meets), so a ±30 day window missed some real editions. Widened to
   // ±45 days, and a 3rd yearsBack pass added for meets on a longer or irregular cycle.
-  for (const yearsBack of [1, 2, 3]) {
+  // The 3 years used to run SEQUENTIALLY (only breaking early once a match was found), so a
+  // search that genuinely finds nothing in any of the 3 years paid the full cost of all three
+  // one after another - live evidence: a "not found" lookup came back as Cloudflare's own HTML
+  // timeout error page ("Unexpected token '<'"), the exact signature meet-search.js hit earlier
+  // this session from too much serial external-fetch time. All 3 years now start concurrently
+  // (bounded by whichever is slowest, not the sum of all three) but are still awaited/checked in
+  // priority order - year 1 first - so an earlier year's match is still preferred exactly as
+  // before, it just no longer costs anything extra to also have years 2 and 3 already in flight.
+  async function searchWindow(yearsBack) {
     const center = new Date(refDate.getTime() - yearsBack * 365 * 24 * 3600 * 1000);
     const windowStart = new Date(center.getTime() - 45 * 24 * 3600 * 1000);
     const windowEnd = new Date(center.getTime() + 45 * 24 * 3600 * 1000);
@@ -301,6 +309,12 @@ export async function onRequestGet(context) {
     await calendarPromise;
 
     diagnostics.push({ source: 'window', yearsBack, windowStart: windowStart.toISOString().slice(0, 10), windowEnd: windowEnd.toISOString().slice(0, 10), candidateCount: windowCandidates.length, sampleNames: windowCandidates.slice(0, 8).map(c => c.name) });
+    return windowCandidates;
+  }
+
+  const windowPromises = [1, 2, 3].map(yearsBack => searchWindow(yearsBack));
+  for (const windowPromise of windowPromises) {
+    const windowCandidates = await windowPromise;
     candidates = candidates.concat(windowCandidates);
     if (windowCandidates.some(c => nameScore(wantedNorm, normalizeMeetName(c.name)) > 0)) break;
   }
