@@ -216,10 +216,33 @@ function renderHtml(data, indoor){
   return `<strong>${data.year}: ${segments.join(' · ')}</strong><small>Vinner: ${data.winner || 'ukjent'}. <a href="${data.source}" target="_blank" rel="noopener">Se offisielle WA-resultater</a></small>${placeLine}`;
 }
 
+// Fixes the actual root cause of the race with the athlete's own PB (ranking-basis.js's
+// window.__rankingstevnerOwnResults) instead of reacting to it after the fact - a bounded,
+// per-card wait before the FIRST render, rather than a shared listener that resets every already-
+// rendered card (tried once, reverted: rankingbasisupdated can fire more than once during normal
+// page activity, and each firing knocked every card back to the loading state, which looked like
+// no meet had historical results at all - a far worse regression than the narrow case it fixed).
+// This wait is local to one card's own promise chain - it cannot affect any other card, and the
+// deadline guarantees it can never hang: own results usually land ~220-260ms after an event/sex
+// change (ranking-basis.js's own delay), so 2s comfortably covers the normal case while still
+// falling back to today's exact behaviour (no PB comparison) if it genuinely never arrives.
+function waitForOwnResults(){
+  const event = eventCode();
+  if (!event) return Promise.resolve();
+  return new Promise(resolve => {
+    const deadline = Date.now() + 2000;
+    (function check(){
+      const own = window.__rankingstevnerOwnResults;
+      if ((own !== undefined && own?.event === event) || Date.now() >= deadline) { resolve(); return; }
+      setTimeout(check, 100);
+    })();
+  });
+}
+
 window.RankingstevnerMeetHistory = {
   loadingHtml: '<strong>Søker i World Athletics-kalenderen …</strong><small>Henter forrige utgave av stevnet.</small>',
   async htmlAsync(name, date, indoor){
-    const data = await fetchHistory(name, date);
+    const [data] = await Promise.all([fetchHistory(name, date), waitForOwnResults()]);
     return renderHtml(data, indoor);
   }
 };
