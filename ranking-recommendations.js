@@ -35,6 +35,16 @@ const CATEGORY_DESCRIPTIONS = {
 // be recommended no matter how good the estimated placing looks. Left GL out too, out of caution -
 // Gold Label/Continental Tour Gold meets are still a strong, largely invited field in practice.
 const ACCESSIBLE_CATEGORIES = new Set(['A', 'B', 'C', 'D', 'E', 'F']);
+// Highest to lowest, matching meet-finder-v1.js's own RANKING_CATEGORIES order - used to search
+// higher categories FIRST. The pool used to sort purely by date, and the search stops as soon as
+// it has 3 valid candidates - live feedback caught this settling for 3 F-category meets that
+// happened to resolve first chronologically, without the search ever having reached whatever
+// A/B/C/D/E meets existed further down the date-sorted list. The whole point of this box is
+// finding the HIGHEST category with a low enough field to be realistic, not just "the first 3
+// meets that work" - sorting by category rank first (date only as a tie-breaker within the same
+// category) means a real A/B/C meet, if one exists and has usable data, gets checked well before
+// the search would ever fall back to F.
+const CATEGORY_RANK = { A: 0, B: 1, C: 2, D: 3, E: 4, F: 5 };
 function eventCode(){ return document.getElementById('event')?.value || ''; }
 function athleteSex(){ return document.getElementById('sex')?.value === 'W' ? 'W' : 'M'; }
 function isCombinedCode(event){ return event === 'Decathlon' || event === 'Heptathlon'; }
@@ -70,13 +80,15 @@ function ownBestMark(event){
 
 function ordinal(n){ return `${n}.`; }
 
-// Checking only the first 10 (soonest) accessible-category meets was fast but, per live feedback,
-// often came back empty - not because there was nothing to recommend, just because the sample was
-// too small (many meets fail the check for mundane reasons: no confirmed historical data yet, or
-// the athlete's own mark falls outside that particular field's known range). "No recommendation"
-// should mean genuinely exhausted the real candidates, not "gave up after 10". Works through the
-// full list (soonest-first, still the more actionable ordering) in small batches instead, stopping
-// as soon as there are 3 good candidates rather than always checking everything - onProgress lets
+// Checking only the first 10 (highest-category, then soonest) accessible-category meets was fast
+// but, per live feedback, often came back empty - not because there was nothing to recommend, just
+// because the sample was too small (many meets fail the check for mundane reasons: no confirmed
+// historical data yet, or the athlete's own mark falls outside that particular field's known
+// range). "No recommendation" should mean genuinely exhausted the real candidates, not "gave up
+// after 10". Works through the full list (highest category first, then soonest) in small batches
+// instead, stopping as soon as there are 3 good candidates rather than always checking everything
+// (still means a higher category gets checked well before ever falling back to a lower one) -
+// onProgress lets
 // the caller show what's happening while this runs, since it can take a while on a full search.
 const BATCH_SIZE = 10;
 const POOL_CEILING = 80; // generous but bounded - protects against a pathologically long search
@@ -101,7 +113,10 @@ async function computeRecommendations(onProgress){
 
   const candidates = finder.currentMatches()
     .filter(m => m.id && m.name && m.start && ACCESSIBLE_CATEGORIES.has(String(m.rankingCategory || '').trim()))
-    .sort((a, b) => new Date(a.start) - new Date(b.start))
+    .sort((a, b) => {
+      const catDiff = CATEGORY_RANK[String(a.rankingCategory || '').trim()] - CATEGORY_RANK[String(b.rankingCategory || '').trim()];
+      return catDiff !== 0 ? catDiff : new Date(a.start) - new Date(b.start);
+    })
     .slice(0, POOL_CEILING);
 
   const currentRankingScore = scoring.currentRankingScore();
