@@ -1,6 +1,25 @@
 // Inject verified historical level into Stevnefinner cards after each render.
 (() => {
 'use strict';
+// Each card's own history lookup already chains up to ~15 outbound fetches to World Athletics
+// internally (calendar-page pagination x years, plus a query-search fallback) - confirmed live
+// that under concurrent load, most of those fetches can time out even for ONE card's lookup alone.
+// Firing every card's lookup at once on a real page (10+ meets) multiplies that into potentially
+// hundreds of simultaneous requests competing for the same connections - live evidence: a meet
+// ("Åbne Klubmesterskaber og Gert Kærlin Tribute") that had already been confirmed matchable this
+// same session came back "not found" on a live page load, most likely because its calendar fetch
+// got starved rather than genuinely finding nothing. Throttling how many cards look up history at
+// once should make each individual lookup far more likely to actually complete in time.
+const MAX_CONCURRENT_HISTORY_LOOKUPS=3;
+let activeHistoryLookups=0;
+const historyLookupQueue=[];
+function pumpHistoryQueue(){
+  while(activeHistoryLookups<MAX_CONCURRENT_HISTORY_LOOKUPS&&historyLookupQueue.length){
+    const task=historyLookupQueue.shift();
+    activeHistoryLookups++;
+    task().finally(()=>{activeHistoryLookups--;pumpHistoryQueue();});
+  }
+}
 function apply(){
   const api=window.RankingstevnerMeetHistory;if(!api)return;
   document.querySelectorAll('.meet-card-v1').forEach(card=>{
@@ -14,11 +33,12 @@ function apply(){
     if(history.dataset.historyRequestKey===requestKey)return;
     history.dataset.historyRequestKey=requestKey;
     history.innerHTML=`<span>Historisk nivå</span>${api.loadingHtml}`;
-    api.htmlAsync(name,date,indoor).then(html=>{
+    historyLookupQueue.push(()=>api.htmlAsync(name,date,indoor).then(html=>{
       if(history.dataset.historyRequestKey!==requestKey)return; // card moved on to a different meet/event since
       history.innerHTML=`<span>Historisk nivå</span>${html}`;
-    });
+    }));
   });
+  pumpHistoryQueue();
 }
 function loadDedupe(){
   if(document.querySelector('script[data-meet-dedupe]'))return;
