@@ -250,14 +250,19 @@ let computing = false;
 // cadence instead of giving up. Genuinely nothing to show (no WA-ID, no candidates found) still
 // renders an explanatory message via the other `reason` branches below - only 'not-ready' (the
 // scripts themselves not being loaded yet) keeps trying forever.
-let everRendered = false;
 async function recompute(){
   const box = document.getElementById('rankingRecommendations');
   if (!box) return;
-  // Shown once, immediately, so the box isn't an invisible blank space while the scripts this
-  // depends on are still loading (which, per the comment above, can take a little while) - live
-  // evidence showed users reading "nothing there" as the module being broken rather than loading.
-  if (!everRendered && !box.innerHTML) {
+  // Shown immediately whenever the box is currently empty, so it's never an invisible blank space
+  // while a computation runs - live evidence showed users reading "nothing there" as broken rather
+  // than loading. This used to be gated behind an "only the very first time ever" flag, which broke
+  // on an event/sex change: meet-finder-v1.js rebuilds the ENTIRE meet list (a fresh, empty
+  // #rankingRecommendations div included) on every such change, so "first time ever" had already
+  // happened once for a previous event and the flag suppressed the loading text for every event
+  // switch after that - leaving a genuinely empty box with nothing shown while it recomputed.
+  // Checking the box's own current content instead of a one-shot flag fixes that for every event
+  // change, not just the very first render.
+  if (!box.innerHTML) {
     box.innerHTML = loadingBoxHtml('Beregner anbefalinger …', false);
   }
   const myRun = ++runId;
@@ -273,7 +278,6 @@ async function recompute(){
       scheduleRecompute(1000);
       return; // leave the loading state (or whatever was already showing) rather than blanking it
     }
-    everRendered = true;
     box.innerHTML = renderHtml(result);
   } finally {
     computing = false;
