@@ -81,11 +81,13 @@ async function computeRecommendations(){
   // Sorted soonest-first before capping - a nearer-term meet is more actionable than one over a
   // year out, and this keeps the number of fresh lookups this box can trigger bounded regardless
   // of how many meets match overall (most will already be cache hits from the visible cards below
-  // it anyway, since they're normally the same underlying list).
+  // it anyway, since they're normally the same underlying list). Capped at 10 (was 20) after live
+  // feedback that the box was too slow - each probed meet can take several seconds through the
+  // shared 3-at-a-time queue, so halving the pool roughly halves the worst-case wait.
   const pool = finder.currentMatches()
     .filter(m => m.id && m.name && m.start)
     .sort((a, b) => new Date(a.start) - new Date(b.start))
-    .slice(0, 20);
+    .slice(0, 10);
 
   const currentRankingScore = scoring.currentRankingScore();
 
@@ -248,7 +250,12 @@ document.addEventListener('click', e => {
 
 document.addEventListener('DOMContentLoaded', () => {
   scheduleRecompute(300);
-  window.addEventListener('meetlistrendered', () => scheduleRecompute(50));
+  // Delayed a bit more than before (50ms -> 500ms) so the visible cards' own history fetches
+  // (meet-history-ui.js's apply(), triggered by this same event) get a head start claiming the
+  // shared queue/cache first - since this box's own probe pool normally overlaps heavily with the
+  // visible cards, letting cards go first means more of this box's own lookups arrive as instant
+  // cache hits instead of adding a second, competing burst of fresh queue entries on top.
+  window.addEventListener('meetlistrendered', () => scheduleRecompute(500));
   // The athlete's own PB, current Ranking Score, and the scoring tables all become available via
   // this same event (ranking-basis.js) - a second trigger for cases where the box's first attempt
   // ran before any of that was ready and no event/sex change happens afterward to prompt a retry.

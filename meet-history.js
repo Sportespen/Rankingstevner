@@ -277,21 +277,31 @@ function queued(fn){
     pumpQueue();
   });
 }
+// A cache hit (or an already in-flight fetch for the same meet) still had to wait its turn behind
+// the concurrency cap even though there was no new network work to gate - live evidence the
+// "Anbefalte stevner" box was much slower than it needed to be, since most of the ~10-20 meets it
+// probes overlap with the cards already being fetched below it. Resolving those without queueing
+// at all - only genuinely NEW lookups go through the cap - lets the two share the same fetches
+// instead of one waiting in line behind the other for work that's already done or already running.
+function cacheKeyFor(name, date){
+  return `${name}|${date || ''}|${eventCode()}|${athleteSex()}`;
+}
 
 window.RankingstevnerMeetHistory = {
   loadingHtml: '<strong>Søker i World Athletics-kalenderen …</strong><small>Henter forrige utgave av stevnet.</small>',
   waitForOwnResults,
   htmlAsync(name, date, indoor){
-    return queued(async () => {
+    const run = async () => {
       const [data] = await Promise.all([fetchHistory(name, date), waitForOwnResults()]);
       return renderHtml(data, indoor);
-    });
+    };
+    return cache.has(cacheKeyFor(name, date)) ? run() : queued(run);
   },
   // Raw data (not rendered HTML) for callers that need the actual marks/category, not a display
   // string - e.g. the "Anbefalte stevner" box. Shares fetchHistory's cache, so a meet already
   // looked up for its own card costs nothing extra here.
   dataAsync(name, date){
-    return queued(() => fetchHistory(name, date));
+    return cache.has(cacheKeyFor(name, date)) ? fetchHistory(name, date) : queued(() => fetchHistory(name, date));
   },
   formatMark
 };
