@@ -25,6 +25,16 @@ const CATEGORY_DESCRIPTIONS = {
   E: 'Mindre regionalt stevne',
   F: 'Lokalt/klubbstevne - laveste stevnekategori'
 };
+// OW/DF/GW (Olympics/VM, Diamond League final, Diamond League) are invite-only for the world's
+// established elite - live feedback caught this box recommending a Diamond League final to an
+// athlete ranked #3532 in the world, something they have no realistic path into regardless of what
+// the Performance Score math says. Recommending only from categories a developing/regional athlete
+// can actually get into (national federation entry, standard qualifying times, direct contact to
+// the organiser) also sidesteps the closed-tiny-field problem that only really shows up at the
+// elite invite-only tiers: a meet nobody outside a small invited field can enter at all shouldn't
+// be recommended no matter how good the estimated placing looks. Left GL out too, out of caution -
+// Gold Label/Continental Tour Gold meets are still a strong, largely invited field in practice.
+const ACCESSIBLE_CATEGORIES = new Set(['A', 'B', 'C', 'D', 'E', 'F']);
 function eventCode(){ return document.getElementById('event')?.value || ''; }
 function athleteSex(){ return document.getElementById('sex')?.value === 'W' ? 'W' : 'M'; }
 function isCombinedCode(event){ return event === 'Decathlon' || event === 'Heptathlon'; }
@@ -85,7 +95,7 @@ async function computeRecommendations(){
   // feedback that the box was too slow - each probed meet can take several seconds through the
   // shared 3-at-a-time queue, so halving the pool roughly halves the worst-case wait.
   const pool = finder.currentMatches()
-    .filter(m => m.id && m.name && m.start)
+    .filter(m => m.id && m.name && m.start && ACCESSIBLE_CATEGORIES.has(String(m.rankingCategory || '').trim()))
     .sort((a, b) => new Date(a.start) - new Date(b.start))
     .slice(0, 10);
 
