@@ -171,7 +171,7 @@ function historicalLevelLine(x){
   return `<small class="muted" style="display:block;margin-top:2px">${yearBit}${segments.join(' · ')}</small>`;
 }
 
-function itemHtml(x){
+function itemHtml(x, ownMarkText){
   const improvement = Number.isFinite(x.improvement) ? x.improvement : null;
   const improvementLine = improvement != null
     ? (improvement > 0
@@ -187,7 +187,7 @@ function itemHtml(x){
       <div><strong>${esc(x.meet.name || 'Stevne')}</strong><div class="muted" style="font-size:12px;margin-top:2px">${esc(locationText(x.meet) || 'Sted ikke publisert')} · ${fmtDate(x.meet.start)}</div>${historicalLevelLine(x)}</div>
       <span class="cat" title="${esc(CATEGORY_DESCRIPTIONS[x.category]||'')}">${esc(x.category)}</span>
     </div>
-    <small style="display:block;margin-top:8px">Forventet ${ordinal(x.place)} plass med din beste tellende prestasjon → <strong>Performance Score ${x.performanceScore}</strong> (Result Score ${x.resultScore} + Placing Score ${x.placingScore})${sourceLink}</small>
+    <small style="display:block;margin-top:8px">Forventet ${ordinal(x.place)} plass med din beste tellende prestasjon (<strong>${esc(ownMarkText)}</strong>) → <strong>Performance Score ${x.performanceScore}</strong> (Result Score ${x.resultScore} + Placing Score ${x.placingScore})${sourceLink}</small>
     ${improvementLine}
     <small class="muted" style="display:block;margin-top:8px">Trykk for å se hele stevnekortet ↓</small>
   </div>`;
@@ -206,11 +206,12 @@ function renderHtml(result){
   if (!result.top || !result.top.length) {
     return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Fant ingen stevner med nok verifisert historisk nivå ennå til å gi konkrete anbefalinger (så langt sjekket ${result.probed} stevner).${currentLine}</p></div>`;
   }
+  const ownMarkText = formatOwnMark(result);
   const items = result.top.map(x => ({ ...x, improvement: Number.isFinite(result.currentRankingScore) ? x.performanceScore - result.currentRankingScore : null }));
   return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box">
     ${heading}
-    <p class="muted" style="margin:8px 0 12px">Stevner der høy stevnekategori og et historisk sett svakt felt gir best mulighet til å forbedre rankingen din, basert på din beste tellende prestasjon (${formatOwnMark(result)}).${currentLine}</p>
-    <div style="display:grid;gap:10px">${items.map(itemHtml).join('')}</div>
+    <p class="muted" style="margin:8px 0 12px">Stevner der høy stevnekategori og et historisk sett svakt felt gir best mulighet til å forbedre rankingen din, basert på din beste tellende prestasjon (${ownMarkText}).${currentLine}</p>
+    <div style="display:grid;gap:10px">${items.map(x => itemHtml(x, ownMarkText)).join('')}</div>
   </div>`;
 }
 
