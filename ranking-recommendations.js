@@ -134,12 +134,28 @@ async function computeRecommendations(onProgress){
       const category = String(m.rankingCategory || '').trim();
       const data = await history.dataAsync(m.name, m.start);
       if (!data?.found || data.comparable === false || !Array.isArray(data.allMarks) || !data.allMarks.length) return null;
-      const place = placementFor(data.allMarks, pb, ascending);
+      let place = placementFor(data.allMarks, pb, ascending);
+      let lastPlaceEstimate = false;
+      // placementFor() returns null when the athlete's mark is worse than every recorded mark -
+      // deliberately, since a WA results page might only publish the top finishers, not the whole
+      // field, and claiming a specific place beyond what's listed could overclaim. But a SMALL
+      // recorded field (fewer than 8) is very likely the complete field - small domestic/club meets
+      // normally report everyone who competed, not a curated top list - so a "would have finished
+      // last" estimate is trustworthy there, and worth showing if it would still score points for
+      // this category (several categories' Placing Score tables pay down past 8th place).
+      if (place == null && data.allMarks.length < 8) {
+        const estimatedPlace = data.allMarks.length + 1;
+        const estimatedScore = scoring.placingScore(event, category, estimatedPlace);
+        if (estimatedScore != null && estimatedScore > 0) {
+          place = estimatedPlace;
+          lastPlaceEstimate = true;
+        }
+      }
       if (place == null) return null;
       const placingScore = scoring.placingScore(event, category, place);
       if (placingScore == null) return null;
       return {
-        meet: m, place, category,
+        meet: m, place, category, lastPlaceEstimate,
         resultScore, placingScore,
         performanceScore: resultScore + placingScore,
         year: data.year || null,
@@ -208,6 +224,7 @@ function itemHtml(x, ownMarkText){
       <span class="cat" title="${esc(CATEGORY_DESCRIPTIONS[x.category]||'')}">${esc(x.category)}</span>
     </div>
     <small style="display:block;margin-top:8px">Forventet ${ordinal(x.place)} plass med din beste tellende prestasjon (<strong>${esc(ownMarkText)}</strong>) → <strong>Performance Score ${x.performanceScore}</strong> (Result Score ${x.resultScore} + Placing Score ${x.placingScore})${sourceLink}</small>
+    ${x.lastPlaceEstimate ? `<small class="muted" style="display:block;margin-top:2px">Anslag: din prestasjon var svakere enn alle ${x.place - 1} kjente resultatene, men feltet var lite nok til at sisteplass trolig fortsatt gir rankingpoeng.</small>` : ''}
     ${improvementLine}
     <small class="muted" style="display:block;margin-top:8px">Trykk for å se hele stevnekortet ↓</small>
   </div>`;
