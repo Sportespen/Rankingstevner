@@ -157,6 +157,13 @@ function formatOwnMark(result){
 
 let runId = 0;
 let computing = false;
+// ranking-basis.js (window.RankingstevnerScoring) loads dynamically, well after this file's own
+// script tag runs - confirmed live: the box stayed permanently blank because the very first
+// attempt ran before that had loaded, got 'not-ready', and nothing ever asked for a second try
+// (no event/sex change, no re-render of the meet list). 'not-ready' now retries itself on a short
+// backoff instead of relying on an unrelated trigger to happen to fire again - capped so a
+// genuinely broken page doesn't retry forever.
+let notReadyRetries = 0;
 async function recompute(){
   const box = document.getElementById('rankingRecommendations');
   if (!box) return;
@@ -166,6 +173,11 @@ async function recompute(){
   try {
     const result = await computeRecommendations();
     if (myRun !== runId) return; // event/sex changed again while this was in flight
+    if (result?.reason === 'not-ready') {
+      if (notReadyRetries < 20) { notReadyRetries++; scheduleRecompute(500); }
+      return; // leave whatever was showing before (usually nothing yet) rather than blanking it
+    }
+    notReadyRetries = 0;
     box.innerHTML = renderHtml(result);
   } finally {
     computing = false;
@@ -184,6 +196,10 @@ function scheduleRecompute(delay){
 document.addEventListener('DOMContentLoaded', () => {
   scheduleRecompute(300);
   window.addEventListener('meetlistrendered', () => scheduleRecompute(50));
+  // The athlete's own PB, current Ranking Score, and the scoring tables all become available via
+  // this same event (ranking-basis.js) - a second trigger for cases where the box's first attempt
+  // ran before any of that was ready and no event/sex change happens afterward to prompt a retry.
+  window.addEventListener('rankingbasisupdated', () => scheduleRecompute(300));
   document.getElementById('event')?.addEventListener('change', () => scheduleRecompute(600));
   document.getElementById('sex')?.addEventListener('change', () => scheduleRecompute(700));
 });
