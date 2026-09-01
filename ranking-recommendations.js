@@ -147,20 +147,6 @@ async function computeRecommendations(onProgress){
         winnerMark: data.winnerMark ?? null,
         top3: Array.isArray(data.top3) ? data.top3 : null,
         top8: Array.isArray(data.top8) ? data.top8 : null,
-        // "topp 8 snitt" is an AVERAGE - it can look faster than the athlete's own mark even when
-        // the actual slowest of the specific marks beaten (the real comparison point for an
-        // 8th-place claim) is slower than it, since a few very fast marks pull the average down.
-        // Live feedback: this read as "how can he take 8th if his time is worse than the top-8
-        // average" - a fair question the average alone can't answer. fieldSize/boundaryMark make
-        // the actual comparison checkable: how many recorded marks were really faster, and the
-        // slowest of THOSE specific marks - the one right at the placement cutoff, not just "the
-        // field's worst mark overall" (which could be someone finishing well behind, unrelated to
-        // where this placement estimate actually comes from).
-        fieldSize: data.allMarks.length,
-        boundaryMark: (() => {
-          const beaten = data.allMarks.filter(m => ascending ? m < pb : m > pb);
-          return beaten.length ? (ascending ? Math.max(...beaten) : Math.min(...beaten)) : null;
-        })(),
       };
     }));
     checked += batch.length;
@@ -214,14 +200,6 @@ function itemHtml(x, ownMarkText){
     : '';
   const yearBit = x.year ? ` (${x.year})` : '';
   const sourceLink = x.source ? ` · <a href="${esc(x.source)}" target="_blank" rel="noopener">Historisk nivå${yearBit}</a>` : '';
-  // Makes the placement claim independently checkable instead of relying on the "topp 8 snitt"
-  // average, which doesn't map 1:1 to it (see the comment on boundaryMark above) - live feedback
-  // was specifically "how can he take 8th if his time is worse than the top-8 average", a fair
-  // question this answers directly with the real number his placement is actually measured against.
-  const fmt = window.RankingstevnerMeetHistory?.formatMark;
-  const proofLine = (x.boundaryMark != null && typeof fmt === 'function')
-    ? `<small class="muted" style="display:block;margin-top:2px">Basert på ${x.place - 1} av ${x.fieldSize} kjente resultater som var bedre enn din prestasjon (svakeste av disse: ${fmt(x.boundaryMark, eventCode())}).</small>`
-    : '';
   // Clicking the card jumps down to the same meet's own full card (contact info, program,
   // "Historisk nivå" details) further down the page instead of duplicating all of that here.
   return `<div data-jump-to-meet="${esc(x.meet.id)}" style="padding:14px 16px;border:1px solid #cfe2dc;border-radius:12px;background:#fff;cursor:pointer">
@@ -230,7 +208,6 @@ function itemHtml(x, ownMarkText){
       <span class="cat" title="${esc(CATEGORY_DESCRIPTIONS[x.category]||'')}">${esc(x.category)}</span>
     </div>
     <small style="display:block;margin-top:8px">Forventet ${ordinal(x.place)} plass med din beste tellende prestasjon (<strong>${esc(ownMarkText)}</strong>) → <strong>Performance Score ${x.performanceScore}</strong> (Result Score ${x.resultScore} + Placing Score ${x.placingScore})${sourceLink}</small>
-    ${proofLine}
     ${improvementLine}
     <small class="muted" style="display:block;margin-top:8px">Trykk for å se hele stevnekortet ↓</small>
   </div>`;
