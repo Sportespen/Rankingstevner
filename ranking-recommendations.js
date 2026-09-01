@@ -11,6 +11,20 @@
 'use strict';
 
 function esc(s){ return String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+// Same descriptions as meet-finder-v1.js's own category badges - duplicated (small, static data)
+// rather than exposed, same reasoning as placementFor()/TRACK_EVENTS below.
+const CATEGORY_DESCRIPTIONS = {
+  OW: 'Olympiske leker / VM - høyeste stevnekategori',
+  DF: 'Diamond League-finale',
+  GW: 'Diamond League (ordinær runde)',
+  GL: 'Gold Label / Continental Tour Gold - store internasjonale stevner',
+  A: 'Continental Tour Silver-nivå - høyt internasjonalt stevne',
+  B: 'Continental Tour Bronse-nivå - solid internasjonalt/nasjonalt stevne',
+  C: 'Mindre internasjonalt eller stort nasjonalt stevne',
+  D: 'Nasjonalt/regionalt stevne',
+  E: 'Mindre regionalt stevne',
+  F: 'Lokalt/klubbstevne - laveste stevnekategori'
+};
 function eventCode(){ return document.getElementById('event')?.value || ''; }
 function athleteSex(){ return document.getElementById('sex')?.value === 'W' ? 'W' : 'M'; }
 function isCombinedCode(event){ return event === 'Decathlon' || event === 'Heptathlon'; }
@@ -128,7 +142,7 @@ function itemHtml(x){
   return `<div data-jump-to-meet="${esc(x.meet.id)}" style="padding:14px 16px;border:1px solid #cfe2dc;border-radius:12px;background:#fff;cursor:pointer">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div><strong>${esc(x.meet.name || 'Stevne')}</strong><div class="muted" style="font-size:12px;margin-top:2px">${esc(locationText(x.meet) || 'Sted ikke publisert')} · ${fmtDate(x.meet.start)}</div></div>
-      <span class="cat">${esc(x.category)}</span>
+      <span class="cat" title="${esc(CATEGORY_DESCRIPTIONS[x.category]||'')}">${esc(x.category)}</span>
     </div>
     <small style="display:block;margin-top:8px">Forventet ${ordinal(x.place)} plass med din beste tellende prestasjon → <strong>Performance Score ${x.performanceScore}</strong> (Result Score ${x.resultScore} + Placing Score ${x.placingScore})${sourceLink}</small>
     ${improvementLine}
