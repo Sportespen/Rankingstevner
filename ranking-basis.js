@@ -36,6 +36,16 @@
   };
   const req={standard:5,distance:3,tenk:2,combined:2};
   let currentId='',allResults=[],loading=false,scoringData=null;
+  // Lets meet-history.js's "Historisk nivå" tell a genuine "no results for this athlete/event yet"
+  // apart from "results haven't been fetched yet at all" - confirmed live as the real cause of the
+  // green comparison line missing on every card: official-ranking.js's own, independent fetch
+  // chain dispatches 'rankingofficialloaded' early (~40ms in), which triggers refresh() here and
+  // publishes window.__rankingstevnerOwnResults using whatever allResults holds at that moment -
+  // often still empty, since the athlete's own WA-ID fetch (load()) is scheduled 400ms in and can
+  // easily still be in flight. That early, empty snapshot already has the right event code, so a
+  // check that only compares event codes accepts it as "ready" long before the real results land.
+  // idFromInput() is a hoisted function declaration further down this same scope - safe to call here.
+  window.__rankingstevnerOwnResultsSettled=!idFromInput();
 
   function group(code){if(code==='5000m'||code==='3000mSC')return'distance';if(code==='10000m')return'tenk';if(code==='Decathlon'||code==='Heptathlon')return'combined';return'standard';}
   function norm(s){return String(s||'').toLowerCase().replace(/kilometres?|kilometers?/g,'km').replace(/metres?|meters?/g,'m').replace(/hurdles?/g,'h').replace(/steeplechase/g,'sc').replace(/[^a-z0-9]+/g,'');}
@@ -247,19 +257,19 @@
     const old=document.getElementById('rawCombinedDebugBox');if(old)old.remove();
   }
   function refresh(){exposeRawCombinedResults();if(!allResults.length){window.__rankingstevnerReconstructedBasis={event:eventSelect.value,selected:[],needed:req[group(eventSelect.value)],complete:false,rankingScore:null};window.dispatchEvent(new CustomEvent('rankingbasisupdated'));return;}const b=basisFor(eventSelect.value);fillScores(b);setTimeout(()=>renderBasis(b),180);}
-  async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){await ensureScoring();refresh();return;}loading=true;try{const [res]=await Promise.all([fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=213&t=${Date.now()}`,{cache:'no-store'}),ensureScoring()]);const data=await res.json();
+  async function load(id){if(!id||loading)return;if(id===currentId&&allResults.length){await ensureScoring();refresh();return;}loading=true;window.__rankingstevnerOwnResultsSettled=false;try{const [res]=await Promise.all([fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=213&t=${Date.now()}`,{cache:'no-store'}),ensureScoring()]);const data=await res.json();
     // The WA-ID field can change (or be cleared, e.g. by "Nullstill profil") while this fetch is
     // still in flight - applying the response unconditionally would silently repopulate allResults
     // with the PREVIOUS athlete's data after a reset had already cleared it, needing a second
     // reset click to actually catch. Only apply it if this is still what the field is asking for.
     if(idFromInput()!==id)return;
-    if(data?.ok&&Array.isArray(data.results)){currentId=String(id);allResults=data.results;refresh();}}catch(_){}finally{loading=false;}}
+    if(data?.ok&&Array.isArray(data.results)){currentId=String(id);allResults=data.results;refresh();}}catch(_){}finally{loading=false;window.__rankingstevnerOwnResultsSettled=true;}}
   // A cleared WA-ID used to just no-op here (load() returns immediately with no id), leaving
   // currentId/allResults holding the PREVIOUS athlete's data - so the very next refresh() (e.g.
   // from the eventSelect 'change' this same reset dispatches) recomputed the basis from that
   // stale data and re-rendered the box that had just been removed. Clearing the cached results
   // here means a reset actually stays reset.
-  function resetLoadedResults(){currentId='';allResults=[];document.getElementById('autoRankingBasisAllEvents')?.remove();document.getElementById('rawCombinedDebugBox')?.remove();window.__rankingstevnerReconstructedBasis=null;window.__rankingstevnerOwnResults=null;}
+  function resetLoadedResults(){currentId='';allResults=[];document.getElementById('autoRankingBasisAllEvents')?.remove();document.getElementById('rawCombinedDebugBox')?.remove();window.__rankingstevnerReconstructedBasis=null;window.__rankingstevnerOwnResults=null;window.__rankingstevnerOwnResultsSettled=true;}
   function idFromInput(){return waInput.value.trim().match(/(\d{7,9})/)?.[1]||'';}
   eventSelect.addEventListener('change',()=>setTimeout(refresh,220));sex.addEventListener('change',()=>setTimeout(refresh,260));waInput.addEventListener('change',()=>{const id=idFromInput();if(id)load(id);else resetLoadedResults();});
   // Same fix as official-ranking.js's observer: athlete-profile.js sets waStatus's text TWICE for

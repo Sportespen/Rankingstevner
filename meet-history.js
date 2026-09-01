@@ -223,17 +223,33 @@ function renderHtml(data, indoor){
 // page activity, and each firing knocked every card back to the loading state, which looked like
 // no meet had historical results at all - a far worse regression than the narrow case it fixed).
 // This wait is local to one card's own promise chain - it cannot affect any other card, and the
-// deadline guarantees it can never hang: own results usually land ~220-260ms after an event/sex
-// change (ranking-basis.js's own delay), so 2s comfortably covers the normal case while still
-// falling back to today's exact behaviour (no PB comparison) if it genuinely never arrives.
+// deadline guarantees it can never hang.
+//
+// Checking the event code alone (an earlier version of this fix) wasn't enough - live evidence
+// with a real profile that DOES have logged marks (5 counting 100m results) still showed the
+// comparison line missing on every card. Root cause: official-ranking.js's own, unrelated fetch
+// chain dispatches 'rankingofficialloaded' early (often ~40ms in), which makes ranking-basis.js
+// publish window.__rankingstevnerOwnResults using whatever it has at that moment - often still
+// empty, since the athlete's own WA-ID fetch is scheduled 400ms in and can easily still be
+// pending. That early, empty snapshot already carries the right event code, so the old check
+// accepted it as "ready" long before the athlete's real results ever arrived - and since a card
+// only computes this once, it stayed empty forever. ranking-basis.js now also exposes
+// window.__rankingstevnerOwnResultsSettled (true only once a real fetch for the CURRENT WA-ID has
+// actually finished, or once there's confirmed to be no WA-ID at all) - waiting on that as well
+// closes the gap.
 function waitForOwnResults(){
   const event = eventCode();
   if (!event) return Promise.resolve();
   return new Promise(resolve => {
-    const deadline = Date.now() + 2000;
+    const deadline = Date.now() + 3000;
     (function check(){
       const own = window.__rankingstevnerOwnResults;
-      if ((own !== undefined && own?.event === event) || Date.now() >= deadline) { resolve(); return; }
+      const settled = window.__rankingstevnerOwnResultsSettled !== false;
+      // own===null (not undefined) is resetLoadedResults()'s explicit "confirmed no WA-ID at all"
+      // signal - once settled, nothing more is ever coming for THIS profile, so resolve right away
+      // instead of burning the full deadline waiting for an event match that will never happen.
+      const ready = settled && (own === null || (own !== undefined && own?.event === event));
+      if (ready || Date.now() >= deadline) { resolve(); return; }
       setTimeout(check, 100);
     })();
   });
