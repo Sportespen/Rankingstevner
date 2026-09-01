@@ -181,16 +181,25 @@ function formatOwnMark(result){
 
 let runId = 0;
 let computing = false;
-// ranking-basis.js (window.RankingstevnerScoring) loads dynamically, well after this file's own
-// script tag runs - confirmed live: the box stayed permanently blank because the very first
-// attempt ran before that had loaded, got 'not-ready', and nothing ever asked for a second try
-// (no event/sex change, no re-render of the meet list). 'not-ready' now retries itself on a short
-// backoff instead of relying on an unrelated trigger to happen to fire again - capped so a
-// genuinely broken page doesn't retry forever.
-let notReadyRetries = 0;
+// ranking-basis.js (window.RankingstevnerScoring) loads via a three-hop chain (target-score.js
+// schedules official-ranking.js, which only injects ranking-basis.js once ITS OWN script has
+// finished loading) - confirmed live twice now that this can take longer than expected, or
+// possibly not resolve at all in a given page load. A capped retry (tried once already, 20x500ms)
+// still left the box permanently blank when that chain took longer than the cap - there's no real
+// cost to checking a few object references, so 'not-ready' now retries indefinitely on a gentle
+// cadence instead of giving up. Genuinely nothing to show (no WA-ID, no candidates found) still
+// renders an explanatory message via the other `reason` branches below - only 'not-ready' (the
+// scripts themselves not being loaded yet) keeps trying forever.
+let everRendered = false;
 async function recompute(){
   const box = document.getElementById('rankingRecommendations');
   if (!box) return;
+  // Shown once, immediately, so the box isn't an invisible blank space while the scripts this
+  // depends on are still loading (which, per the comment above, can take a little while) - live
+  // evidence showed users reading "nothing there" as the module being broken rather than loading.
+  if (!everRendered && !box.innerHTML) {
+    box.innerHTML = `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box"><span class="eyebrow">ANBEFALTE STEVNER</span><p class="muted" style="margin:8px 0 0">Beregner anbefalinger …</p></div>`;
+  }
   const myRun = ++runId;
   if (computing) return; // a newer trigger will run right after this one finishes anyway
   computing = true;
@@ -198,10 +207,10 @@ async function recompute(){
     const result = await computeRecommendations();
     if (myRun !== runId) return; // event/sex changed again while this was in flight
     if (result?.reason === 'not-ready') {
-      if (notReadyRetries < 20) { notReadyRetries++; scheduleRecompute(500); }
-      return; // leave whatever was showing before (usually nothing yet) rather than blanking it
+      scheduleRecompute(1000);
+      return; // leave the loading state (or whatever was already showing) rather than blanking it
     }
-    notReadyRetries = 0;
+    everRendered = true;
     box.innerHTML = renderHtml(result);
   } finally {
     computing = false;
