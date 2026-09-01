@@ -116,6 +116,9 @@ async function computeRecommendations(){
       performanceScore: resultScore + placingScore,
       year: data.year || null,
       source: data.source || null,
+      winnerMark: data.winnerMark ?? null,
+      top3: Array.isArray(data.top3) ? data.top3 : null,
+      top8: Array.isArray(data.top8) ? data.top8 : null,
     };
   }));
 
@@ -139,6 +142,22 @@ function fmtDate(v){
   if (!d || Number.isNaN(d.getTime())) return '–';
   return d.toLocaleDateString('no-NO', { day: '2-digit', month: 'short', year: 'numeric' });
 }
+function avg(a){ return a.reduce((s, v) => s + v, 0) / a.length; }
+
+// Same "2024: vinner 13.16 · topp 3 snitt 13.21 · topp 8 snitt 13.29" summary meet-history.js's
+// own "Historisk nivå" card shows, so the actual level behind the estimated placing is visible
+// here too instead of only the derived numbers (Performance Score etc.) - live feedback wanted the
+// real marks shown, not just what they translate to.
+function historicalLevelLine(x){
+  const fmt = window.RankingstevnerMeetHistory?.formatMark;
+  if (typeof fmt !== 'function' || !Number.isFinite(x.winnerMark)) return '';
+  const event = eventCode();
+  const segments = [`vinner ${fmt(x.winnerMark, event)}`];
+  if (x.top3?.length > 1) segments.push(`topp ${x.top3.length} snitt ${fmt(avg(x.top3), event)}`);
+  if (x.top8?.length > (x.top3?.length || 0)) segments.push(`topp ${x.top8.length} snitt ${fmt(avg(x.top8), event)}`);
+  const yearBit = x.year ? `${x.year}: ` : '';
+  return `<small class="muted" style="display:block;margin-top:2px">${yearBit}${segments.join(' · ')}</small>`;
+}
 
 function itemHtml(x){
   const improvement = Number.isFinite(x.improvement) ? x.improvement : null;
@@ -153,7 +172,7 @@ function itemHtml(x){
   // "Historisk nivå" details) further down the page instead of duplicating all of that here.
   return `<div data-jump-to-meet="${esc(x.meet.id)}" style="padding:14px 16px;border:1px solid #cfe2dc;border-radius:12px;background:#fff;cursor:pointer">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-      <div><strong>${esc(x.meet.name || 'Stevne')}</strong><div class="muted" style="font-size:12px;margin-top:2px">${esc(locationText(x.meet) || 'Sted ikke publisert')} · ${fmtDate(x.meet.start)}</div></div>
+      <div><strong>${esc(x.meet.name || 'Stevne')}</strong><div class="muted" style="font-size:12px;margin-top:2px">${esc(locationText(x.meet) || 'Sted ikke publisert')} · ${fmtDate(x.meet.start)}</div>${historicalLevelLine(x)}</div>
       <span class="cat" title="${esc(CATEGORY_DESCRIPTIONS[x.category]||'')}">${esc(x.category)}</span>
     </div>
     <small style="display:block;margin-top:8px">Forventet ${ordinal(x.place)} plass med din beste tellende prestasjon → <strong>Performance Score ${x.performanceScore}</strong> (Result Score ${x.resultScore} + Placing Score ${x.placingScore})${sourceLink}</small>
