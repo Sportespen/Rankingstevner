@@ -48,6 +48,11 @@ const CATEGORY_RANK = { A: 0, B: 1, C: 2, D: 3, E: 4, F: 5 };
 function eventCode(){ return document.getElementById('event')?.value || ''; }
 function athleteSex(){ return document.getElementById('sex')?.value === 'W' ? 'W' : 'M'; }
 function isCombinedCode(event){ return event === 'Decathlon' || event === 'Heptathlon'; }
+// Matches ranking-basis.js's own validDate() cutoff exactly (18 months for combined events/10000m,
+// 12 months for everything else) - shown to the user so "no own mark" reads as a real, understood
+// fact about the ranking period rather than a vague "fill in your WA-ID" prompt that's actively
+// wrong when a WA-ID IS already filled in and simply has no result for this specific event.
+function rankingPeriodMonths(event){ return (isCombinedCode(event) || event === '10000m') ? 18 : 12; }
 
 // Same "which direction is better" list meet-history.js already uses for the green comparison
 // line - lower time wins for track events, higher mark wins for jumps/throws/combined events.
@@ -212,7 +217,8 @@ function renderHtml(result){
   const heading = `<span class="eyebrow">ANBEFALTE STEVNER</span>`;
   if (!result || result.reason === 'not-ready' || result.reason === 'no-event') return '';
   if (result.reason === 'no-own-mark') {
-    return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Fyll inn WA-ID med et registrert resultat i valgt øvelse for å få stevneanbefalinger basert på ditt eget nivå.</p></div>`;
+    const months = rankingPeriodMonths(eventCode());
+    return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Utøver mangler resultater for øvelsen i perioden (siste ${months} måneder) - ingen stevneanbefalinger å vise.</p></div>`;
   }
   if (result.reason === 'no-result-score') {
     return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Fant ikke Result Score for din beste prestasjon i valgt øvelse ennå.</p></div>`;
