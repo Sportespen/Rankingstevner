@@ -313,6 +313,19 @@ document.addEventListener('click', e => {
   jumpToMeet(item.dataset.jumpToMeet);
 });
 
+// Puts the loading text up immediately, synchronously - separate from the actual (debounced,
+// potentially slow) recompute. Live feedback: it's fine for the recommendations themselves to take
+// a while to fill in, but the box going blank and only showing "Beregner..." after the debounce
+// delay (500-700ms) read as broken in that gap. Wired into every trigger below, not just the
+// event/sex change listeners: meet-finder-v1.js rebuilds #rankingRecommendations as a fresh empty
+// div on its OWN render cycle (itself triggered by the same event/sex change, independently of this
+// file), and that rebuild reliably lands between this file's own listener firing and its debounced
+// recompute actually running - so meetlistrendered needs this too, not only the raw DOM event.
+function showWorkingNow(){
+  const box = document.getElementById('rankingRecommendations');
+  if (box && !box.querySelector('[data-jump-to-meet]')) box.innerHTML = loadingBoxHtml('Beregner anbefalinger …', false);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   scheduleRecompute(300);
   // Delayed a bit more than before (50ms -> 500ms) so the visible cards' own history fetches
@@ -320,12 +333,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // shared queue/cache first - since this box's own probe pool normally overlaps heavily with the
   // visible cards, letting cards go first means more of this box's own lookups arrive as instant
   // cache hits instead of adding a second, competing burst of fresh queue entries on top.
-  window.addEventListener('meetlistrendered', () => scheduleRecompute(500));
+  window.addEventListener('meetlistrendered', () => { showWorkingNow(); scheduleRecompute(500); });
   // The athlete's own PB, current Ranking Score, and the scoring tables all become available via
   // this same event (ranking-basis.js) - a second trigger for cases where the box's first attempt
   // ran before any of that was ready and no event/sex change happens afterward to prompt a retry.
   window.addEventListener('rankingbasisupdated', () => scheduleRecompute(300));
-  document.getElementById('event')?.addEventListener('change', () => scheduleRecompute(600));
-  document.getElementById('sex')?.addEventListener('change', () => scheduleRecompute(700));
+  document.getElementById('event')?.addEventListener('change', () => { showWorkingNow(); scheduleRecompute(600); });
+  document.getElementById('sex')?.addEventListener('change', () => { showWorkingNow(); scheduleRecompute(700); });
 });
 })();
