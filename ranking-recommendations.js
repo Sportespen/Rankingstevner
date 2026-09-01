@@ -70,7 +70,18 @@ function ownBestMark(event){
 
 function ordinal(n){ return `${n}.`; }
 
-async function computeRecommendations(){
+// Checking only the first 10 (soonest) accessible-category meets was fast but, per live feedback,
+// often came back empty - not because there was nothing to recommend, just because the sample was
+// too small (many meets fail the check for mundane reasons: no confirmed historical data yet, or
+// the athlete's own mark falls outside that particular field's known range). "No recommendation"
+// should mean genuinely exhausted the real candidates, not "gave up after 10". Works through the
+// full list (soonest-first, still the more actionable ordering) in small batches instead, stopping
+// as soon as there are 3 good candidates rather than always checking everything - onProgress lets
+// the caller show what's happening while this runs, since it can take a while on a full search.
+const BATCH_SIZE = 10;
+const POOL_CEILING = 80; // generous but bounded - protects against a pathologically long search
+
+async function computeRecommendations(onProgress){
   const finder = window.RankingstevnerMeetFinder;
   const history = window.RankingstevnerMeetHistory;
   const scoring = window.RankingstevnerScoring;
@@ -88,42 +99,43 @@ async function computeRecommendations(){
   const resultScore = scoring.resultScore(event, pb);
   if (resultScore == null) return { reason: 'no-result-score' };
 
-  // Sorted soonest-first before capping - a nearer-term meet is more actionable than one over a
-  // year out, and this keeps the number of fresh lookups this box can trigger bounded regardless
-  // of how many meets match overall (most will already be cache hits from the visible cards below
-  // it anyway, since they're normally the same underlying list). Capped at 10 (was 20) after live
-  // feedback that the box was too slow - each probed meet can take several seconds through the
-  // shared 3-at-a-time queue, so halving the pool roughly halves the worst-case wait.
-  const pool = finder.currentMatches()
+  const candidates = finder.currentMatches()
     .filter(m => m.id && m.name && m.start && ACCESSIBLE_CATEGORIES.has(String(m.rankingCategory || '').trim()))
     .sort((a, b) => new Date(a.start) - new Date(b.start))
-    .slice(0, 10);
+    .slice(0, POOL_CEILING);
 
   const currentRankingScore = scoring.currentRankingScore();
+  let scored = [];
+  let checked = 0;
 
-  const results = await Promise.all(pool.map(async m => {
-    const category = String(m.rankingCategory || '').trim();
-    if (!category) return null;
-    const data = await history.dataAsync(m.name, m.start);
-    if (!data?.found || data.comparable === false || !Array.isArray(data.allMarks) || !data.allMarks.length) return null;
-    const place = placementFor(data.allMarks, pb, ascending);
-    if (place == null) return null;
-    const placingScore = scoring.placingScore(event, category, place);
-    if (placingScore == null) return null;
-    return {
-      meet: m, place, category,
-      resultScore, placingScore,
-      performanceScore: resultScore + placingScore,
-      year: data.year || null,
-      source: data.source || null,
-      winnerMark: data.winnerMark ?? null,
-      top3: Array.isArray(data.top3) ? data.top3 : null,
-      top8: Array.isArray(data.top8) ? data.top8 : null,
-    };
-  }));
+  for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+    const batch = candidates.slice(i, i + BATCH_SIZE);
+    const results = await Promise.all(batch.map(async m => {
+      const category = String(m.rankingCategory || '').trim();
+      const data = await history.dataAsync(m.name, m.start);
+      if (!data?.found || data.comparable === false || !Array.isArray(data.allMarks) || !data.allMarks.length) return null;
+      const place = placementFor(data.allMarks, pb, ascending);
+      if (place == null) return null;
+      const placingScore = scoring.placingScore(event, category, place);
+      if (placingScore == null) return null;
+      return {
+        meet: m, place, category,
+        resultScore, placingScore,
+        performanceScore: resultScore + placingScore,
+        year: data.year || null,
+        source: data.source || null,
+        winnerMark: data.winnerMark ?? null,
+        top3: Array.isArray(data.top3) ? data.top3 : null,
+        top8: Array.isArray(data.top8) ? data.top8 : null,
+      };
+    }));
+    checked += batch.length;
+    scored = scored.concat(results.filter(Boolean)).sort((a, b) => b.performanceScore - a.performanceScore);
+    if (scored.length >= 3) break;
+    onProgress?.(checked, candidates.length);
+  }
 
-  const scored = results.filter(Boolean).sort((a, b) => b.performanceScore - a.performanceScore);
-  return { pb, resultScore, currentRankingScore, probed: pool.length, top: scored.slice(0, 3) };
+  return { pb, resultScore, currentRankingScore, probed: checked, top: scored.slice(0, 3) };
 }
 
 // Exact copy of meet-finder-v1.js's own locationText() - the API sometimes returns location as a
@@ -210,6 +222,22 @@ function formatOwnMark(result){
   return String(result.pb);
 }
 
+// Blinking (not just static "loading") text specifically for the progress state, per explicit
+// request - a full search across many meets can take a while, and a static message reads as stuck
+// the same way the earlier permanently-blank bug did; a visibly animated one makes it obvious this
+// is still actively working.
+function ensureBlinkStyle(){
+  if (document.getElementById('rankingRecommendationsBlinkStyle')) return;
+  const style = document.createElement('style');
+  style.id = 'rankingRecommendationsBlinkStyle';
+  style.textContent = '.rr-blink{animation:rrBlinkPulse 1.2s ease-in-out infinite}@keyframes rrBlinkPulse{0%,100%{opacity:1}50%{opacity:.35}}';
+  document.head.appendChild(style);
+}
+function loadingBoxHtml(text, blink){
+  if (blink) ensureBlinkStyle();
+  return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box"><span class="eyebrow">ANBEFALTE STEVNER</span><p class="muted${blink ? ' rr-blink' : ''}" style="margin:8px 0 0">${esc(text)}</p></div>`;
+}
+
 let runId = 0;
 let computing = false;
 // ranking-basis.js (window.RankingstevnerScoring) loads via a three-hop chain (target-score.js
@@ -229,13 +257,16 @@ async function recompute(){
   // depends on are still loading (which, per the comment above, can take a little while) - live
   // evidence showed users reading "nothing there" as the module being broken rather than loading.
   if (!everRendered && !box.innerHTML) {
-    box.innerHTML = `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box"><span class="eyebrow">ANBEFALTE STEVNER</span><p class="muted" style="margin:8px 0 0">Beregner anbefalinger …</p></div>`;
+    box.innerHTML = loadingBoxHtml('Beregner anbefalinger …', false);
   }
   const myRun = ++runId;
   if (computing) return; // a newer trigger will run right after this one finishes anyway
   computing = true;
   try {
-    const result = await computeRecommendations();
+    const result = await computeRecommendations((checked, total) => {
+      if (myRun !== runId) return; // superseded - don't fight the newer run's own rendering
+      box.innerHTML = loadingBoxHtml(`Jobber med å ta frem anbefalte rankingstevner basert på din ranking (sjekket ${checked} av ${total} stevner) …`, true);
+    });
     if (myRun !== runId) return; // event/sex changed again while this was in flight
     if (result?.reason === 'not-ready') {
       scheduleRecompute(1000);
