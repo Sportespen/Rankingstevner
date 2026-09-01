@@ -8,18 +8,9 @@
 // hundreds of simultaneous requests competing for the same connections - live evidence: a meet
 // ("Åbne Klubmesterskaber og Gert Kærlin Tribute") that had already been confirmed matchable this
 // same session came back "not found" on a live page load, most likely because its calendar fetch
-// got starved rather than genuinely finding nothing. Throttling how many cards look up history at
-// once should make each individual lookup far more likely to actually complete in time.
-const MAX_CONCURRENT_HISTORY_LOOKUPS=3;
-let activeHistoryLookups=0;
-const historyLookupQueue=[];
-function pumpHistoryQueue(){
-  while(activeHistoryLookups<MAX_CONCURRENT_HISTORY_LOOKUPS&&historyLookupQueue.length){
-    const task=historyLookupQueue.shift();
-    activeHistoryLookups++;
-    task().finally(()=>{activeHistoryLookups--;pumpHistoryQueue();});
-  }
-}
+// got starved rather than genuinely finding nothing. api.htmlAsync() now queues internally
+// (shared with the "Anbefalte stevner" box's own lookups, so both stay under the same cap) -
+// this file no longer needs its own separate queue.
 function apply(){
   const api=window.RankingstevnerMeetHistory;if(!api)return;
   document.querySelectorAll('.meet-card-v1').forEach(card=>{
@@ -33,12 +24,11 @@ function apply(){
     if(history.dataset.historyRequestKey===requestKey)return;
     history.dataset.historyRequestKey=requestKey;
     history.innerHTML=`<span>Historisk nivå</span>${api.loadingHtml}`;
-    historyLookupQueue.push(()=>api.htmlAsync(name,date,indoor).then(html=>{
+    api.htmlAsync(name,date,indoor).then(html=>{
       if(history.dataset.historyRequestKey!==requestKey)return; // card moved on to a different meet/event since
       history.innerHTML=`<span>Historisk nivå</span>${html}`;
-    }));
+    });
   });
-  pumpHistoryQueue();
 }
 function loadDedupe(){
   if(document.querySelector('script[data-meet-dedupe]'))return;

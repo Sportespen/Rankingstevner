@@ -287,6 +287,20 @@
     setTimeout(()=>load(id),50);
   }).observe(waStatus,{childList:true,subtree:true,characterData:true});}
   window.addEventListener('rankingofficialloaded',()=>setTimeout(refresh,40));const initial=idFromInput();if(initial)setTimeout(()=>load(initial),400);
+  // Exposes the same Result Score / Placing Score building blocks this file already uses for the
+  // athlete's own ranking grunnlag, so other modules (the "Anbefalte stevner" box) can reuse the
+  // exact same scoring - not a second, potentially inconsistent reimplementation.
+  window.RankingstevnerScoring={
+    ready:ensureScoring,
+    resultScore:scoreFromTable,
+    placingScore:(code,cat,place)=>placingScoreFor(group(code),cat,place),
+    currentRankingScore(){
+      const official=window.__rankingstevnerOfficialRanking;
+      if(Number.isFinite(official?.score))return official.score;
+      const local=window.__rankingstevnerReconstructedBasis;
+      return Number.isFinite(local?.rankingScore)?local.rankingScore:null;
+    }
+  };
 })();
 
 (function(){function hideDuplicateScoreEditor(){const scoreInputs=document.getElementById('scoreInputs');const block=scoreInputs?.closest('.existing');if(block)block.style.display='none';}hideDuplicateScoreEditor();setTimeout(hideDuplicateScoreEditor,300);})();

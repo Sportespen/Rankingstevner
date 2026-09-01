@@ -255,11 +255,44 @@ function waitForOwnResults(){
   });
 }
 
+// A single card's history lookup already chains up to ~15 outbound fetches to World Athletics -
+// confirmed live that most of those can time out under concurrent load even for ONE lookup alone.
+// Centralising the concurrency limit here (rather than in meet-history-ui.js, which only throttled
+// the per-card HTML lookups) means every caller - card rendering AND the "Anbefalte stevner" box,
+// which probes several more meets than are ever shown - shares the same cap instead of each adding
+// their own uncoordinated load on top of the other.
+const MAX_CONCURRENT_LOOKUPS = 3;
+let activeLookups = 0;
+const lookupQueue = [];
+function pumpQueue(){
+  while (activeLookups < MAX_CONCURRENT_LOOKUPS && lookupQueue.length) {
+    const task = lookupQueue.shift();
+    activeLookups++;
+    task().finally(() => { activeLookups--; pumpQueue(); });
+  }
+}
+function queued(fn){
+  return new Promise((resolve, reject) => {
+    lookupQueue.push(() => fn().then(resolve, reject));
+    pumpQueue();
+  });
+}
+
 window.RankingstevnerMeetHistory = {
   loadingHtml: '<strong>Søker i World Athletics-kalenderen …</strong><small>Henter forrige utgave av stevnet.</small>',
-  async htmlAsync(name, date, indoor){
-    const [data] = await Promise.all([fetchHistory(name, date), waitForOwnResults()]);
-    return renderHtml(data, indoor);
-  }
+  waitForOwnResults,
+  htmlAsync(name, date, indoor){
+    return queued(async () => {
+      const [data] = await Promise.all([fetchHistory(name, date), waitForOwnResults()]);
+      return renderHtml(data, indoor);
+    });
+  },
+  // Raw data (not rendered HTML) for callers that need the actual marks/category, not a display
+  // string - e.g. the "Anbefalte stevner" box. Shares fetchHistory's cache, so a meet already
+  // looked up for its own card costs nothing extra here.
+  dataAsync(name, date){
+    return queued(() => fetchHistory(name, date));
+  },
+  formatMark
 };
 })();
