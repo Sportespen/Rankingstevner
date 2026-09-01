@@ -97,9 +97,16 @@ async function computeRecommendations(){
   return { pb, resultScore, currentRankingScore, probed: pool.length, top: scored.slice(0, 3) };
 }
 
+// Exact copy of meet-finder-v1.js's own locationText() - the API sometimes returns location as a
+// plain string, sometimes as an object ({venue,city,country,countryCode,area}), and a version that
+// only handled the string shape silently fell back to "Sted ikke publisert" for every meet using
+// the object shape, even though the card below (using the real function) showed a real location.
 function locationText(m){
-  const raw = typeof m?.location === 'string' ? m.location : '';
-  return raw.replace(/\s*\([A-Z]{3}\)\s*$/, '').trim();
+  const loc = m?.location;
+  if (!loc) return '';
+  if (typeof loc === 'string') return loc;
+  if (typeof loc === 'object') return [loc.venue, loc.city, loc.country, loc.countryCode, loc.area].filter(Boolean).join(' ');
+  return String(loc);
 }
 function fmtDate(v){
   const d = v ? new Date(v) : null;
@@ -116,13 +123,16 @@ function itemHtml(x){
     : '';
   const yearBit = x.year ? ` (${x.year})` : '';
   const sourceLink = x.source ? ` · <a href="${esc(x.source)}" target="_blank" rel="noopener">Historisk nivå${yearBit}</a>` : '';
-  return `<div style="padding:14px 16px;border:1px solid #cfe2dc;border-radius:12px;background:#fff">
+  // Clicking the card jumps down to the same meet's own full card (contact info, program,
+  // "Historisk nivå" details) further down the page instead of duplicating all of that here.
+  return `<div data-jump-to-meet="${esc(x.meet.id)}" style="padding:14px 16px;border:1px solid #cfe2dc;border-radius:12px;background:#fff;cursor:pointer">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div><strong>${esc(x.meet.name || 'Stevne')}</strong><div class="muted" style="font-size:12px;margin-top:2px">${esc(locationText(x.meet) || 'Sted ikke publisert')} · ${fmtDate(x.meet.start)}</div></div>
       <span class="cat">${esc(x.category)}</span>
     </div>
     <small style="display:block;margin-top:8px">Forventet ${ordinal(x.place)} plass med din beste tellende prestasjon → <strong>Performance Score ${x.performanceScore}</strong> (Result Score ${x.resultScore} + Placing Score ${x.placingScore})${sourceLink}</small>
     ${improvementLine}
+    <small class="muted" style="display:block;margin-top:8px">Trykk for å se hele stevnekortet ↓</small>
   </div>`;
 }
 
@@ -192,6 +202,26 @@ function scheduleRecompute(delay){
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(recompute, delay);
 }
+
+// Scrolls to and briefly highlights the same meet's own full card further down the page (contact
+// info, program, "Historisk nivå" details) instead of duplicating all of that inside this box.
+// Delegated on document (not the box itself) so it survives the box's innerHTML being replaced on
+// every recompute - meet-finder-v1.js now stamps data-meet-id on each card for this to match on.
+function jumpToMeet(id){
+  if (!id) return;
+  const card = document.querySelector(`.meet-card-v1[data-meet-id="${CSS.escape(String(id))}"]`);
+  if (!card) return; // e.g. filtered out by the date/country/venue filters above - nothing to jump to
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  card.style.transition = 'outline-color .3s ease';
+  card.style.outline = '3px solid #0f766e';
+  card.style.outlineOffset = '2px';
+  setTimeout(() => { card.style.outline = ''; card.style.outlineOffset = ''; }, 1800);
+}
+document.addEventListener('click', e => {
+  const item = e.target.closest('[data-jump-to-meet]');
+  if (!item || e.target.closest('a')) return; // let the "Historisk nivå" link open normally
+  jumpToMeet(item.dataset.jumpToMeet);
+});
 
 document.addEventListener('DOMContentLoaded', () => {
   scheduleRecompute(300);
