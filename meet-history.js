@@ -48,9 +48,14 @@ function formatTime(totalSeconds){
 }
 function formatMark(mark, event){
   if (!Number.isFinite(mark)) return '';
-  if (isCombinedCode(event)) return `${mark} p`;
+  // Real recorded marks are always clean (2 decimals for a jump/throw, whole points for a
+  // combined-event total), but avg() of several of them (the "topp 3/8 snitt" lines, here and in
+  // ranking-recommendations.js's own summary) isn't - plain JS division produces long floating-
+  // point remainders (e.g. 17.833333333333332) that were shown completely unrounded. formatTime()
+  // already rounds track marks to hundredths; field/combined marks needed the same treatment.
+  if (isCombinedCode(event)) return `${Math.round(mark)} p`;
   if (TRACK_EVENTS.has(event)) return formatTime(mark);
-  return `${mark} m`;
+  return `${mark.toFixed(2)} m`;
 }
 
 // An outdoor 10-event total and an indoor 7-event total aren't on the same raw points scale
