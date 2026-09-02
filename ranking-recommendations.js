@@ -273,6 +273,27 @@ function ensureBlinkStyle(){
   style.textContent = '.rr-blink{animation:rrBlinkPulse 1.2s ease-in-out infinite}@keyframes rrBlinkPulse{0%,100%{opacity:1}50%{opacity:.35}}@keyframes rrSpin{to{transform:rotate(360deg)}}.rr-spinner{display:inline-block;width:14px;height:14px;margin-right:7px;border:2px solid #21405f;border-top-color:#ff8a19;border-radius:50%;vertical-align:-2px;animation:rrSpin .75s linear infinite}';
   document.head.appendChild(style);
 }
+// Rough, self-calibrating estimate rather than a hardcoded guess - extrapolates from how long the
+// batches checked so far actually took. Deliberately rounded to a coarse bucket (5s below 30s, 10s
+// above) so it reads as an approximation and doesn't visibly jitter on every batch tick. The search
+// can (and often does) stop early once 3 good candidates are found - candidates.length is only the
+// worst case - so this can overshoot; that just means the box finishes sooner than shown, which is
+// the safe direction to be wrong in.
+function estimateSecondsRemaining(startedAt, checked, total){
+  if (!checked || !total || total <= checked) return null;
+  const elapsedMs = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt;
+  if (elapsedMs <= 0) return null;
+  const msPerItem = elapsedMs / checked;
+  const etaSeconds = Math.round((msPerItem * (total - checked)) / 1000);
+  if (etaSeconds < 3) return null; // about to finish - not worth showing
+  const bucket = etaSeconds < 30 ? 5 : 10;
+  return Math.round(etaSeconds / bucket) * bucket;
+}
+function formatEta(seconds){
+  if (!seconds) return '';
+  const text = seconds < 60 ? `${seconds} sek` : `${Math.round(seconds / 60)} min`;
+  return `, ca. ${text} igjen`;
+}
 function loadingBoxHtml(text, blink){
   ensureBlinkStyle();
   return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box"><span class="eyebrow">ANBEFALTE STEVNER</span><h4 style="margin:6px 0 0;font-size:20px;color:#fff">${esc(eventLabel())}</h4><p class="muted${blink ? ' rr-blink' : ''}" style="margin:8px 0 0"><span class="rr-spinner" aria-hidden="true"></span>${esc(text)}</p></div>`;
@@ -307,10 +328,12 @@ async function recompute(){
   const myRun = ++runId;
   if (computing) return; // a newer trigger will run right after this one finishes anyway
   computing = true;
+  const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
   try {
     const result = await computeRecommendations((checked, total) => {
       if (myRun !== runId) return; // superseded - don't fight the newer run's own rendering
-      box.innerHTML = loadingBoxHtml(`Jobber med å ta frem anbefalte rankingstevner basert på din ranking (sjekket ${checked} av ${total} stevner) …`, true);
+      const eta = formatEta(estimateSecondsRemaining(startedAt, checked, total));
+      box.innerHTML = loadingBoxHtml(`Jobber med å ta frem anbefalte rankingstevner basert på din ranking (sjekket ${checked} av ${total} stevner${eta}) …`, true);
     });
     if (myRun !== runId) return; // event/sex changed again while this was in flight
     if (result?.reason === 'not-ready') {
