@@ -168,8 +168,12 @@ async function computeRecommendations(onProgress){
     }));
     checked += batch.length;
     scored = scored.concat(results.filter(Boolean)).sort((a, b) => b.performanceScore - a.performanceScore);
-    if (scored.length >= 3) break;
+    // Report progress before the early-exit check, not after - otherwise a search that finds its 3
+    // candidates in the very first batch (common for a smaller field, e.g. Stav) never calls
+    // onProgress at all, and the loading box (and its time estimate) never shows anything besides
+    // the initial static "Beregner anbefalinger …" the whole way through.
     onProgress?.(checked, candidates.length);
+    if (scored.length >= 3) break;
   }
 
   return { pb, resultScore, currentRankingScore, probed: checked, top: scored.slice(0, 3) };
@@ -368,12 +372,50 @@ function jumpToMeet(id){
   card.style.outline = '3px solid #ff8a19';
   card.style.outlineOffset = '2px';
   setTimeout(() => { card.style.outline = ''; card.style.outlineOffset = ''; }, 1800);
+  showBackButton();
 }
 document.addEventListener('click', e => {
   const item = e.target.closest('[data-jump-to-meet]');
   if (!item || e.target.closest('a')) return; // let the "Historisk nivå" link open normally
   jumpToMeet(item.dataset.jumpToMeet);
 });
+
+// Floating "back to recommendations" button - jumping to a meet card can land far down the page
+// (especially on mobile, where every card takes up much more vertical space), and scrolling all the
+// way back up by hand was the explicit complaint this fixes. Created once and shown/hidden rather
+// than recreated per jump; auto-hides via IntersectionObserver once the recommendations panel is
+// back in view, so it doesn't linger as dead chrome after the user has already scrolled back.
+let backButtonObserver = null;
+function ensureBackButton(){
+  let btn = document.getElementById('rrBackToRecommendations');
+  if (btn) return btn;
+  btn = document.createElement('button');
+  btn.id = 'rrBackToRecommendations';
+  btn.type = 'button';
+  btn.textContent = '↑ Tilbake til Anbefalte stevner';
+  btn.style.cssText = 'display:none;position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:50;border:1px solid #ff8a19;border-radius:999px;padding:11px 18px;font-weight:800;font-size:13px;background:#102a47;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.45);cursor:pointer';
+  btn.addEventListener('click', () => {
+    const target = document.getElementById('kvalifiseringPanel') || document.getElementById('rankingRecommendations');
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    btn.style.display = 'none';
+  });
+  document.body.appendChild(btn);
+  return btn;
+}
+function showBackButton(){
+  const btn = ensureBackButton();
+  btn.style.display = 'block';
+  const target = document.getElementById('kvalifiseringPanel') || document.getElementById('rankingRecommendations');
+  if (!target || !('IntersectionObserver' in window)) return;
+  backButtonObserver?.disconnect();
+  backButtonObserver = new IntersectionObserver(entries => {
+    if (entries[0]?.isIntersecting) {
+      btn.style.display = 'none';
+      backButtonObserver.disconnect();
+    }
+  }, { threshold: 0.3 });
+  backButtonObserver.observe(target);
+}
 
 // Puts the loading text up immediately, synchronously - separate from the actual (debounced,
 // potentially slow) recompute. Live feedback: it's fine for the recommendations themselves to take
