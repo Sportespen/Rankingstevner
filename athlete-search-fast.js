@@ -17,7 +17,7 @@
     if(!box){
       box=document.createElement('div');
       box.id='profileNameSearchResults';
-      box.style.cssText='display:none;position:absolute;left:0;right:0;top:100%;z-index:80;background:#fff;border:1px solid #d5dfdf;border-radius:10px;box-shadow:0 10px 24px rgba(0,0,0,.10);max-height:320px;overflow:auto;margin-top:4px';
+      box.style.cssText='display:none;position:absolute;left:0;right:0;top:100%;z-index:80;background:#0b1d33;border:1px solid #21405f;border-radius:10px;box-shadow:0 10px 24px rgba(0,0,0,.35);max-height:320px;overflow:auto;margin-top:4px';
       host.appendChild(box);
     }
 
@@ -53,13 +53,13 @@
     function render(list,message=''){
       visible=list||[];
       if(!visible.length){
-        if(message){box.innerHTML=`<div style="padding:10px 12px;color:#677585">${message}</div>`;box.style.display='block';}
+        if(message){box.innerHTML=`<div style="padding:10px 12px;color:#aebed0">${message}</div>`;box.style.display='block';}
         else {box.innerHTML='';box.style.display='none';}
         return;
       }
       box.innerHTML=visible.map((a,i)=>{
         const meta=[a.country,a.birthDate?String(a.birthDate).slice(0,10):'',`WA-ID ${a.id}`].filter(Boolean).join(' · ');
-        return `<button type="button" data-athlete="${i}" style="display:block;width:100%;padding:10px 12px;text-align:left;border:0;border-bottom:1px solid #edf2f0;background:#fff;cursor:pointer"><strong>${fullName(a)||a.id}</strong><br><span style="color:#677585;font-size:12px">${meta}</span></button>`;
+        return `<button type="button" data-athlete="${i}" style="display:block;width:100%;padding:10px 12px;text-align:left;border:0;border-bottom:1px solid #21405f;background:#0b1d33;color:#f4f7fb;cursor:pointer"><strong>${fullName(a)||a.id}</strong><br><span style="color:#aebed0;font-size:12px">${meta}</span></button>`;
       }).join('');
       box.querySelectorAll('[data-athlete]').forEach(btn=>btn.addEventListener('click',()=>select(visible[Number(btn.dataset.athlete)])));
       box.style.display='block';

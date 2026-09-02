@@ -13,15 +13,15 @@
     style.textContent=`
       #autoRankingBasisAllEvents{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:18px;align-items:stretch}
       #autoRankingBasisAllEvents .ranking-basis-left{min-width:0}
-      #autoRankingBasisAllEvents .ranking-score-card{background:#f7fbfa;border:1px solid #cfe2dc;border-radius:14px;padding:22px 18px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;box-shadow:0 4px 16px rgba(24,39,52,.05)}
-      #autoRankingBasisAllEvents .ranking-score-label{font-size:13px;letter-spacing:.12em;font-weight:900;color:#0f766e}
-      #autoRankingBasisAllEvents .ranking-score-value{font-size:52px;line-height:1;font-weight:900;color:#0b4f4a;margin:14px 0 10px}
-      #autoRankingBasisAllEvents .ranking-score-note{font-size:12px;color:#677585;line-height:1.4}
+      #autoRankingBasisAllEvents .ranking-score-card{background:#102a47;border:1px solid #21405f;border-radius:14px;padding:22px 18px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)}
+      #autoRankingBasisAllEvents .ranking-score-label{font-size:13px;letter-spacing:.12em;font-weight:900;color:#ff8a19}
+      #autoRankingBasisAllEvents .ranking-score-value{font-size:52px;line-height:1;font-weight:900;color:#fff;margin:14px 0 10px}
+      #autoRankingBasisAllEvents .ranking-score-note{font-size:12px;color:#aebed0;line-height:1.4}
       #autoRankingBasisAllEvents .event-type-badge{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:800;vertical-align:2px;white-space:nowrap}
-      #autoRankingBasisAllEvents .event-type-main{background:#e7f6f2;color:#087f5b}
-      #autoRankingBasisAllEvents .event-type-similar{background:#eef2f7;color:#526170}
-      #autoRankingBasisAllEvents .subevent-note{font-size:11px;color:#677585;margin-left:6px}
-      #autoRankingBasisAllEvents .basis-note{font-size:12px;color:#677585;margin-top:8px;line-height:1.45}
+      #autoRankingBasisAllEvents .event-type-main{background:#0d2b22;color:#45d483}
+      #autoRankingBasisAllEvents .event-type-similar{background:#16273a;color:#aebed0}
+      #autoRankingBasisAllEvents .subevent-note{font-size:11px;color:#aebed0;margin-left:6px}
+      #autoRankingBasisAllEvents .basis-note{font-size:12px;color:#aebed0;margin-top:8px;line-height:1.45}
       @media(max-width:850px){#autoRankingBasisAllEvents{grid-template-columns:1fr}.ranking-score-card{min-height:150px}}
     `;
     document.head.appendChild(style);
@@ -107,7 +107,7 @@
   // reconstructed locally - only the heading and the right-side card differ.
   function rowsTableHtml(list){
     if(!list.length)return `<span class="muted">Ingen gyldige WA-resultater funnet innenfor gjeldende rankingperiode.</span>`;
-    return `<div style="overflow-x:auto;margin-top:7px"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left;padding:6px">Dato</th><th style="text-align:left;padding:6px">Stevne</th><th style="text-align:left;padding:6px">Kat.</th><th style="text-align:left;padding:6px">Resultat</th><th style="text-align:right;padding:6px">Result Score</th><th style="text-align:right;padding:6px">Placing Score</th><th style="text-align:right;padding:6px">Performance Score</th></tr></thead><tbody>${list.map(x=>{const badge=x.type==='similar'?' <span class="event-type-badge event-type-similar">Similar Event</span>':'';const sub=x.source==='combined-event-subevent'?' <span class="subevent-note">fra mangekamp</span>':'';return `<tr style="border-top:1px solid #e5ecea"><td style="padding:6px">${fmtDate(x.date)}</td><td style="padding:6px">${esc(x.competition||'–')}${badge}${sub}</td><td style="padding:6px">${esc(String(x.category||'').toUpperCase()||'–')}</td><td style="padding:6px">${esc(x.mark??'–')}</td><td style="padding:6px;text-align:right">${x.resultScore??'–'}</td><td style="padding:6px;text-align:right">${x.placingScore??'–'}</td><td style="padding:6px;text-align:right;font-weight:700">${x.score??'–'}</td></tr>`;}).join('')}</tbody></table></div>`;
+    return `<div style="overflow-x:auto;margin-top:7px"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left;padding:6px">Dato</th><th style="text-align:left;padding:6px">Stevne</th><th style="text-align:left;padding:6px">Kat.</th><th style="text-align:left;padding:6px">Resultat</th><th style="text-align:right;padding:6px">Result Score</th><th style="text-align:right;padding:6px">Placing Score</th><th style="text-align:right;padding:6px">Performance Score</th></tr></thead><tbody>${list.map(x=>{const badge=x.type==='similar'?' <span class="event-type-badge event-type-similar">Similar Event</span>':'';const sub=x.source==='combined-event-subevent'?' <span class="subevent-note">fra mangekamp</span>':'';return `<tr style="border-top:1px solid #21405f"><td style="padding:6px">${fmtDate(x.date)}</td><td style="padding:6px">${esc(x.competition||'–')}${badge}${sub}</td><td style="padding:6px">${esc(String(x.category||'').toUpperCase()||'–')}</td><td style="padding:6px">${esc(x.mark??'–')}</td><td style="padding:6px;text-align:right">${x.resultScore??'–'}</td><td style="padding:6px;text-align:right">${x.placingScore??'–'}</td><td style="padding:6px;text-align:right;font-weight:700">${x.score??'–'}</td></tr>`;}).join('')}</tbody></table></div>`;
   }
 
   function exposeBasis(basis){
@@ -172,7 +172,7 @@
     const sameOfficial=official&&official.event===eventSelect.value&&Number(official.score)>0&&Array.isArray(official.basis)&&official.basis.length>0;
     if(sameOfficial)return;
     const box=document.createElement('div');box.id='autoRankingBasisAllEvents';
-    box.style.cssText='margin-top:14px;padding:14px;border:1px solid #d9e5e1;border-radius:10px;background:#fff';
+    box.style.cssText='margin-top:14px;padding:14px;border:1px solid #21405f;border-radius:10px;background:#0b1d33';
     const label=eventSelect.options[eventSelect.selectedIndex]?.textContent||eventSelect.value;
     // Same table shape as the official box (rowsTableHtml), so the layout looks the same whether
     // enough results were found or not - only the status note and the right-side card differ.

@@ -211,14 +211,14 @@ function itemHtml(x, ownMarkText){
   const improvement = Number.isFinite(x.improvement) ? x.improvement : null;
   const improvementLine = improvement != null
     ? (improvement > 0
-        ? `<small style="display:block;color:#087f5b;font-weight:700">+${improvement} poeng mot din nåværende Ranking Score.</small>`
-        : `<small style="display:block;color:#677585">${improvement} poeng mot din nåværende Ranking Score - fortsatt en sterk Performance Score, men ikke en forbedring akkurat nå.</small>`)
+        ? `<small style="display:block;color:#45d483;font-weight:700">+${improvement} poeng mot din nåværende Ranking Score.</small>`
+        : `<small style="display:block;color:#aebed0">${improvement} poeng mot din nåværende Ranking Score - fortsatt en sterk Performance Score, men ikke en forbedring akkurat nå.</small>`)
     : '';
   const yearBit = x.year ? ` (${x.year})` : '';
   const sourceLink = x.source ? ` · <a href="${esc(x.source)}" target="_blank" rel="noopener">Historisk nivå${yearBit}</a>` : '';
   // Clicking the card jumps down to the same meet's own full card (contact info, program,
   // "Historisk nivå" details) further down the page instead of duplicating all of that here.
-  return `<div data-jump-to-meet="${esc(x.meet.id)}" style="padding:14px 16px;border:1px solid #cfe2dc;border-radius:12px;background:#fff;cursor:pointer">
+  return `<div data-jump-to-meet="${esc(x.meet.id)}" style="padding:14px 16px;border:1px solid #21405f;border-radius:12px;background:#0b1d33;cursor:pointer">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div><strong>${esc(x.meet.name || 'Stevne')}</strong><div class="muted" style="font-size:12px;margin-top:2px">${esc(locationText(x.meet) || 'Sted ikke publisert')} · ${fmtDate(x.meet.start)}</div>${historicalLevelLine(x)}</div>
       <span class="cat" title="${esc(CATEGORY_DESCRIPTIONS[x.category]||'')}">${esc(x.category)}</span>
@@ -235,18 +235,18 @@ function renderHtml(result){
   if (!result || result.reason === 'not-ready' || result.reason === 'no-event') return '';
   if (result.reason === 'no-own-mark') {
     const months = rankingPeriodMonths(eventCode());
-    return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Utøver mangler resultater for øvelsen i perioden (siste ${months} måneder) - ingen stevneanbefalinger å vise.</p></div>`;
+    return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Utøver mangler resultater for øvelsen i perioden (siste ${months} måneder) - ingen stevneanbefalinger å vise.</p></div>`;
   }
   if (result.reason === 'no-result-score') {
-    return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Fant ikke Result Score for din beste prestasjon i valgt øvelse ennå.</p></div>`;
+    return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Fant ikke Result Score for din beste prestasjon i valgt øvelse ennå.</p></div>`;
   }
   const currentLine = Number.isFinite(result.currentRankingScore) ? ` Din nåværende Ranking Score: <strong>${result.currentRankingScore}</strong>.` : '';
   if (!result.top || !result.top.length) {
-    return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Fant ingen stevner med nok verifisert historisk nivå ennå til å gi konkrete anbefalinger (så langt sjekket ${result.probed} stevner).${currentLine}</p></div>`;
+    return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Fant ingen stevner med nok verifisert historisk nivå ennå til å gi konkrete anbefalinger (så langt sjekket ${result.probed} stevner).${currentLine}</p></div>`;
   }
   const ownMarkText = formatOwnMark(result);
   const items = result.top.map(x => ({ ...x, improvement: Number.isFinite(result.currentRankingScore) ? x.performanceScore - result.currentRankingScore : null }));
-  return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box">
+  return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">
     ${heading}
     <p class="muted" style="margin:8px 0 12px">Stevner der høy stevnekategori og et historisk sett svakt felt gir best mulighet til å forbedre rankingen din, basert på din beste tellende prestasjon (${ownMarkText}).${currentLine}</p>
     <div style="display:grid;gap:10px">${items.map(x => itemHtml(x, ownMarkText)).join('')}</div>
@@ -274,7 +274,7 @@ function ensureBlinkStyle(){
 }
 function loadingBoxHtml(text, blink){
   if (blink) ensureBlinkStyle();
-  return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #cfe2dc;border-radius:14px;background:#f5fbf9;box-sizing:border-box"><span class="eyebrow">ANBEFALTE STEVNER</span><p class="muted${blink ? ' rr-blink' : ''}" style="margin:8px 0 0">${esc(text)}</p></div>`;
+  return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box"><span class="eyebrow">ANBEFALTE STEVNER</span><p class="muted${blink ? ' rr-blink' : ''}" style="margin:8px 0 0">${esc(text)}</p></div>`;
 }
 
 let runId = 0;
@@ -341,7 +341,7 @@ function jumpToMeet(id){
   if (!card) return; // e.g. filtered out by the date/country/venue filters above - nothing to jump to
   card.scrollIntoView({ behavior: 'smooth', block: 'center' });
   card.style.transition = 'outline-color .3s ease';
-  card.style.outline = '3px solid #0f766e';
+  card.style.outline = '3px solid #ff8a19';
   card.style.outlineOffset = '2px';
   setTimeout(() => { card.style.outline = ''; card.style.outlineOffset = ''; }, 1800);
 }

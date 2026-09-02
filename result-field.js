@@ -89,7 +89,7 @@
       input.autocomplete = 'off';
       input.placeholder = placeholderFor(code, athleteSex);
       input.setAttribute('aria-label', 'Resultat, kun tall');
-      input.style.cssText = 'display:block;width:100%;height:48px;min-height:48px;margin:0;padding:0 14px;border:1px solid #c9d5dc;border-radius:12px;background:#fff;font-size:1.05rem;font-weight:700;box-sizing:border-box';
+      input.style.cssText = 'display:block;width:100%;height:48px;min-height:48px;margin:0;padding:0 14px;border:1px solid #3f6b92;border-radius:12px;background:#0d2743;font-size:1.05rem;font-weight:700;box-sizing:border-box';
       input.addEventListener('input', () => {
         const rawDigits = input.value.replace(/\D/g, '').slice(0, combined.has(code) ? 5 : 7);
         const formatted = formatDigits(code, rawDigits);
@@ -111,7 +111,7 @@
       editor.style.cssText = 'display:flex;align-items:center;width:100%;height:48px;min-height:48px;margin-top:7px';
       const input = document.createElement('input');
       input.type = 'text'; input.disabled = true; input.placeholder = 'Velg øvelse først';
-      input.style.cssText = 'display:block;width:100%;height:48px;min-height:48px;margin:0;padding:0 14px;border:1px solid #c9d5dc;border-radius:12px;background:#fff;font-size:1.05rem;font-weight:700;box-sizing:border-box;opacity:.7';
+      input.style.cssText = 'display:block;width:100%;height:48px;min-height:48px;margin:0;padding:0 14px;border:1px solid #3f6b92;border-radius:12px;background:#0d2743;font-size:1.05rem;font-weight:700;box-sizing:border-box;opacity:.7';
       editor.append(input);
       hint.textContent = 'Resultatformatet bestemmes automatisk av valgt øvelse.';
       publish('');

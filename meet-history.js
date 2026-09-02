@@ -185,9 +185,9 @@ function renderHtml(data, indoor){
     const worst = worstKnownMark(data.allMarks, ascending);
     const outsideKnownRange = pb != null && worst != null && (ascending ? pb > worst : pb < worst);
     placeLine = place != null
-      ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste tellende prestasjon (${formatMark(pb, event)}) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
+      ? `<small style="display:block;color:#45d483;font-weight:700">Din beste tellende prestasjon (${formatMark(pb, event)}) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
       : outsideKnownRange
-        ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste tellende prestasjon (${formatMark(pb, event)}) er svakere enn stevnets nivå (ned til ${formatMark(worst, event)}).</small>`
+        ? `<small style="display:block;color:#45d483;font-weight:700">Din beste tellende prestasjon (${formatMark(pb, event)}) er svakere enn stevnets nivå (ned til ${formatMark(worst, event)}).</small>`
         : '';
   } else {
     const eventLabel = document.getElementById('event')?.selectedOptions?.[0]?.textContent || event;
@@ -204,12 +204,12 @@ function renderHtml(data, indoor){
       const worst = worstKnownMark(data.allMarks, ascending);
       const outsideKnownRange = worst != null && (ascending ? altPb > worst : altPb < worst);
       placeLine = place != null
-        ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste egen ${esc(altLabel)}-tid (${formatMark(altPb, event)}) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
+        ? `<small style="display:block;color:#45d483;font-weight:700">Din beste egen ${esc(altLabel)}-tid (${formatMark(altPb, event)}) ville gitt ${ordinal(place)} plass i dette stevnet.</small>`
         : outsideKnownRange
-          ? `<small style="display:block;color:#087f5b;font-weight:700">Din beste egen ${esc(altLabel)}-tid (${formatMark(altPb, event)}) er svakere enn stevnets nivå (ned til ${formatMark(worst, event)}).</small>`
-          : `<small style="display:block;color:#677585">Stevnet var innendørs og kjørte ${esc(altLabel)} i stedet for ${esc(eventLabel)} - resultatene under viser stevnets nivå, men kan ikke sammenlignes direkte med din egen tid.</small>`;
+          ? `<small style="display:block;color:#45d483;font-weight:700">Din beste egen ${esc(altLabel)}-tid (${formatMark(altPb, event)}) er svakere enn stevnets nivå (ned til ${formatMark(worst, event)}).</small>`
+          : `<small style="display:block;color:#aebed0">Stevnet var innendørs og kjørte ${esc(altLabel)} i stedet for ${esc(eventLabel)} - resultatene under viser stevnets nivå, men kan ikke sammenlignes direkte med din egen tid.</small>`;
     } else {
-      placeLine = `<small style="display:block;color:#677585">Stevnet var innendørs og kjørte ${esc(altLabel)} i stedet for ${esc(eventLabel)} - du har ingen egne ${esc(altLabel)}-resultater registrert, så resultatene under viser kun stevnets nivå og kan ikke sammenlignes direkte med din egen tid.</small>`;
+      placeLine = `<small style="display:block;color:#aebed0">Stevnet var innendørs og kjørte ${esc(altLabel)} i stedet for ${esc(eventLabel)} - du har ingen egne ${esc(altLabel)}-resultater registrert, så resultatene under viser kun stevnets nivå og kan ikke sammenlignes direkte med din egen tid.</small>`;
     }
   }
   // Not every meet has a confirmed top 8 (or even top 3) - some sources only reported a

@@ -53,10 +53,10 @@
       if(types[i]) types[i].value=item?.type==='similar'?'similar':'main';
     });
   }
-  function showStatus(text,good=true){ profileStatus.textContent=text; profileStatus.style.color=good?'#087f5b':'#677585'; }
+  function showStatus(text,good=true){ profileStatus.textContent=text; profileStatus.style.color=good?'#45d483':'#aebed0'; }
   // Name/sex/WA-ID are already visible in the fields right above - the WA status line just
   // needs to say whether the search is running, succeeded or failed, not repeat them.
-  function setWaStatus(text,tone){ if(!waStatus)return; waStatus.textContent=text; waStatus.style.color=tone==='good'?'#087f5b':tone==='bad'?'#677585':''; }
+  function setWaStatus(text,tone){ if(!waStatus)return; waStatus.textContent=text; waStatus.style.color=tone==='good'?'#45d483':tone==='bad'?'#aebed0':''; }
   function normalizeEvent(s){
     return String(s||'').toLowerCase().replace(/metres?|meters?/g,'m').replace(/women'?s|woman'?s|men'?s/g,'').replace(/[^a-z0-9]+/g,'');
   }
@@ -140,7 +140,7 @@
     let basisHtml='';
     if(isCombinedSelected() && data.combinedBasis?.selected?.length){
       const rows=data.combinedBasis.selected.map(x=>`${x.mark} ${x.discipline} · ${x.resultScore} Result Score + ${x.placingScore} Placing Score = <strong>${x.score} Performance Score</strong> (${x.type==='main'?'Main Event':'Similar Event'})`).join('<br>');
-      basisHtml=`<div style="margin-top:10px;padding:10px;border-radius:8px;background:#eef8f5"><strong>Tellende Performance Scores:</strong><br>${rows}<br><strong>Ranking Score: ${data.combinedBasis.rankingScore}</strong></div>`;
+      basisHtml=`<div style="margin-top:10px;padding:10px;border-radius:8px;background:#0d2b22"><strong>Tellende Performance Scores:</strong><br>${rows}<br><strong>Ranking Score: ${data.combinedBasis.rankingScore}</strong></div>`;
     }else if(selectedRank){
       basisHtml=`<div class="muted" style="margin-top:8px">Rankingplasseringen er hentet. Automatisk uthenting av tellende Performance Scores for ${heading} bygges inn i neste datasteg.</div>`;
     }
@@ -178,7 +178,7 @@
       nameResults.innerHTML=data.results.map((a,i)=>{
         const full=`${a.firstName||''} ${a.lastName||''}`.trim();
         const meta=[a.country,a.birthDate?String(a.birthDate).slice(0,10):''].filter(Boolean).join(' · ');
-        return `<button type="button" data-athlete-index="${i}" style="display:block;width:100%;padding:11px 12px;text-align:left;border:0;border-bottom:1px solid #edf2f0;background:#fff;cursor:pointer"><strong>${full||a.id}</strong>${meta?`<br><span class="muted">${meta} · WA-ID ${a.id}</span>`:`<br><span class="muted">WA-ID ${a.id}</span>`}</button>`;
+        return `<button type="button" data-athlete-index="${i}" style="display:block;width:100%;padding:11px 12px;text-align:left;border:0;border-bottom:1px solid #21405f;background:#0b1d33;color:#f4f7fb;cursor:pointer"><strong>${full||a.id}</strong>${meta?`<br><span class="muted">${meta} · WA-ID ${a.id}</span>`:`<br><span class="muted">WA-ID ${a.id}</span>`}</button>`;
       }).join('');
       [...nameResults.querySelectorAll('[data-athlete-index]')].forEach(btn=>btn.addEventListener('click',()=>{
         const a=data.results[Number(btn.dataset.athleteIndex)];
