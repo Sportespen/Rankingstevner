@@ -1,15 +1,21 @@
 // Shared helpers only. Trinn 3 UI/logikk ligger nå kun i trinn3.js.
-(function(){function loadSearch(){if(document.querySelector('script[data-ranking-search-v090]'))return;const s=document.createElement('script');s.src='athlete-search-ui.js?v=090';s.dataset.rankingSearchV090='1';document.head.appendChild(s);}setTimeout(loadSearch,0);})();
-(function(){function loadLayout(){if(document.querySelector('script[data-ranking-layout-v016]'))return;const s=document.createElement('script');s.src='layout-v016.js?v=0160';s.dataset.rankingLayoutV016='1';document.head.appendChild(s);}setTimeout(loadLayout,0);})();
+(function(){function loadLayout(){if(document.querySelector('script[data-ranking-layout-v0168]'))return;const s=document.createElement('script');s.src='layout-v016.js?v=0168';s.dataset.rankingLayoutV0168='1';document.head.appendChild(s);}setTimeout(loadLayout,0);})();
 (function(){function loadCombinedFix(){if(document.querySelector('script[data-combined-ranking-fix-v0163]'))return;const s=document.createElement('script');s.src='combined-ranking-fix.js?v=0163';s.dataset.combinedRankingFixV0163='1';document.head.appendChild(s);}setTimeout(loadCombinedFix,0);})();
-(function(){function loadProfileUx(){if(document.querySelector('script[data-profile-ux-v0165]'))return;const s=document.createElement('script');s.src='profile-ux-v0165.js?v=0165';s.dataset.profileUxV0165='1';document.head.appendChild(s);}setTimeout(loadProfileUx,0);})();
+(function(){function loadProfileUx(){if(document.querySelector('script[data-profile-ux-v0167]'))return;const s=document.createElement('script');s.src='profile-ux-v0165.js?v=0167';s.dataset.profileUxV0167='1';document.head.appendChild(s);}setTimeout(loadProfileUx,0);})();
 (function(){function loadGenderReset(){if(document.querySelector('script[data-gender-reset-v0166]'))return;const s=document.createElement('script');s.src='gender-reset.js?v=0166';s.dataset.genderResetV0166='1';document.head.appendChild(s);}setTimeout(loadGenderReset,0);})();
 (function(){function loadRankingBasisReset(){if(document.querySelector('script[data-ranking-basis-reset-v0168]'))return;const s=document.createElement('script');s.src='ranking-basis-reset-v0168.js?v=0168';s.dataset.rankingBasisResetV0168='1';document.head.appendChild(s);}setTimeout(loadRankingBasisReset,0);})();
+(function(){function loadResultBoxReset(){if(document.querySelector('script[data-result-box-reset-v1]'))return;const s=document.createElement('script');s.src='result-box-reset.js?v=1';s.dataset.resultBoxResetV1='1';document.head.appendChild(s);}setTimeout(loadResultBoxReset,0);})();
 (function(){const eventSelect=document.getElementById('event'),sex=document.getElementById('sex');if(!eventSelect||!sex)return;function ensureCombinedEvent(){const code=sex.value==='W'?'Heptathlon':'Decathlon',label=sex.value==='W'?'Sjukamp':'Tikamp',other=sex.value==='W'?'Decathlon':'Heptathlon';const oldOther=eventSelect.querySelector(`option[value="${other}"]`);if(oldOther)oldOther.remove();if(!eventSelect.querySelector(`option[value="${code}"]`)){const opt=document.createElement('option');opt.value=code;opt.textContent=label;eventSelect.appendChild(opt);}}setTimeout(ensureCombinedEvent,700);sex.addEventListener('change',()=>setTimeout(ensureCombinedEvent,80));})();
 (function(){function removeDuplicateCombinedBox(){document.querySelectorAll('#waProfileDetails div').forEach(el=>{const strong=el.querySelector(':scope > strong');if(strong&&strong.textContent.trim().startsWith('Tellende Performance Scores:'))el.remove();});}const details=document.getElementById('waProfileDetails');if(details)new MutationObserver(removeDuplicateCombinedBox).observe(details,{childList:true,subtree:true});setTimeout(removeDuplicateCombinedBox,200);})();
 // v0.20.4: synlig WA-ranking med diagnostikk dersom kilden feiler.
 (function(){
-  function loadOfficialRanking(){if(document.querySelector('script[data-official-ranking-v204]'))return;const s=document.createElement('script');s.src='official-ranking.js?v=204';s.dataset.officialRankingV204='1';document.head.appendChild(s);s.addEventListener('load',()=>setTimeout(loadBasis,0));}
-  function loadBasis(){if(document.querySelector('script[data-ranking-basis-v200]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=200';s.dataset.rankingBasisV200='1';document.head.appendChild(s);}
+  function loadOfficialRanking(){if(document.querySelector('script[data-official-ranking-v313]'))return;const s=document.createElement('script');s.src='official-ranking.js?v=313';s.dataset.officialRankingV313='1';document.head.appendChild(s);s.addEventListener('load',()=>setTimeout(loadBasis,0));}
+  function loadBasis(){if(document.querySelector('script[data-ranking-basis-v226]'))return;const s=document.createElement('script');s.src='ranking-basis.js?v=226';s.dataset.rankingBasisV226='1';document.head.appendChild(s);}
   setTimeout(loadOfficialRanking,0);
+})();
+// v0.24.0: ekte WA-basert estimat for ny rankingplassering (worldathletics.org sin egen
+// offentlige rangeringsliste, ikke EA).
+(function(){
+  function loadRankPosition(){if(document.querySelector('script[data-rank-position-v2]'))return;const s=document.createElement('script');s.src='ranking-position-estimate.js?v=2';s.dataset.rankPositionV2='1';document.head.appendChild(s);}
+  setTimeout(loadRankPosition,0);
 })();

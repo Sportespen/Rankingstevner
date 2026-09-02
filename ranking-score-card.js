@@ -40,10 +40,10 @@
     if(!card){
       card=document.createElement('div');
       card.id='rankingScoreCard';
-      card.style.cssText='border:1px solid #cfe2dc;border-radius:12px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px 14px;text-align:center;min-height:120px';
+      card.style.cssText='border:1px solid #21405f;border-radius:12px;background:#0b1d33;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px 14px;text-align:center;min-height:120px';
       shell.appendChild(card);
     }
-    card.innerHTML=`<span style="font-size:13px;font-weight:800;color:#677585;margin-bottom:6px">RANKING SCORE</span><strong style="font-size:38px;line-height:1;color:#14202b">${score}</strong>`;
+    card.innerHTML=`<span style="font-size:13px;font-weight:800;color:#aebed0;margin-bottom:6px">RANKING SCORE</span><strong style="font-size:38px;line-height:1;color:#f4f7fb">${score}</strong>`;
 
     if(window.matchMedia('(max-width:700px)').matches){
       shell.style.gridTemplateColumns='1fr';

@@ -53,7 +53,10 @@
       if(types[i]) types[i].value=item?.type==='similar'?'similar':'main';
     });
   }
-  function showStatus(text,good=true){ profileStatus.textContent=text; profileStatus.style.color=good?'#087f5b':'#677585'; }
+  function showStatus(text,good=true){ profileStatus.textContent=text; profileStatus.style.color=good?'#45d483':'#aebed0'; }
+  // Name/sex/WA-ID are already visible in the fields right above - the WA status line just
+  // needs to say whether the search is running, succeeded or failed, not repeat them.
+  function setWaStatus(text,tone){ if(!waStatus)return; waStatus.textContent=text; waStatus.style.color=tone==='good'?'#45d483':tone==='bad'?'#aebed0':''; }
   function normalizeEvent(s){
     return String(s||'').toLowerCase().replace(/metres?|meters?/g,'m').replace(/women'?s|woman'?s|men'?s/g,'').replace(/[^a-z0-9]+/g,'');
   }
@@ -137,7 +140,7 @@
     let basisHtml='';
     if(isCombinedSelected() && data.combinedBasis?.selected?.length){
       const rows=data.combinedBasis.selected.map(x=>`${x.mark} ${x.discipline} · ${x.resultScore} Result Score + ${x.placingScore} Placing Score = <strong>${x.score} Performance Score</strong> (${x.type==='main'?'Main Event':'Similar Event'})`).join('<br>');
-      basisHtml=`<div style="margin-top:10px;padding:10px;border-radius:8px;background:#eef8f5"><strong>Tellende Performance Scores:</strong><br>${rows}<br><strong>Ranking Score: ${data.combinedBasis.rankingScore}</strong></div>`;
+      basisHtml=`<div style="margin-top:10px;padding:10px;border-radius:8px;background:#0d2b22"><strong>Tellende Performance Scores:</strong><br>${rows}<br><strong>Ranking Score: ${data.combinedBasis.rankingScore}</strong></div>`;
     }else if(selectedRank){
       basisHtml=`<div class="muted" style="margin-top:8px">Rankingplasseringen er hentet. Automatisk uthenting av tellende Performance Scores for ${heading} bygges inn i neste datasteg.</div>`;
     }
@@ -168,14 +171,14 @@
     nameResults.style.display='block';
     nameResults.innerHTML='<div style="padding:12px" class="muted">Søker…</div>';
     try{
-      const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=081`,{cache:'no-store'});
+      const res=await fetch(`/api/athlete-search?q=${encodeURIComponent(q)}&v=081&t=${Date.now()}`,{cache:'no-store'});
       const data=await res.json();
       if(!data.ok) throw new Error(data.error||'Søk feilet');
       if(!data.results?.length){nameResults.innerHTML='<div style="padding:12px" class="muted">Ingen utøvere funnet.</div>';return;}
       nameResults.innerHTML=data.results.map((a,i)=>{
         const full=`${a.firstName||''} ${a.lastName||''}`.trim();
         const meta=[a.country,a.birthDate?String(a.birthDate).slice(0,10):''].filter(Boolean).join(' · ');
-        return `<button type="button" data-athlete-index="${i}" style="display:block;width:100%;padding:11px 12px;text-align:left;border:0;border-bottom:1px solid #edf2f0;background:#fff;cursor:pointer"><strong>${full||a.id}</strong>${meta?`<br><span class="muted">${meta} · WA-ID ${a.id}</span>`:`<br><span class="muted">WA-ID ${a.id}</span>`}</button>`;
+        return `<button type="button" data-athlete-index="${i}" style="display:block;width:100%;padding:11px 12px;text-align:left;border:0;border-bottom:1px solid #21405f;background:#0b1d33;color:#f4f7fb;cursor:pointer"><strong>${full||a.id}</strong>${meta?`<br><span class="muted">${meta} · WA-ID ${a.id}</span>`:`<br><span class="muted">WA-ID ${a.id}</span>`}</button>`;
       }).join('');
       [...nameResults.querySelectorAll('[data-athlete-index]')].forEach(btn=>btn.addEventListener('click',()=>{
         const a=data.results[Number(btn.dataset.athleteIndex)];
@@ -191,19 +194,32 @@
   async function loadAthlete(id){
     if(!id) return;
     if(waBtn) waBtn.disabled=true;
-    waStatus.textContent='Henter World Athletics-profil og rankinggrunnlag…';
+    setWaStatus('Søker …');
     try{
-      const [profileRes,rankRes,resultsRes]=await Promise.all([
-        fetch(`/api/athlete?id=${encodeURIComponent(id)}&v=081`,{cache:'no-store'}),
-        fetch(`/api/wa-rank?id=${encodeURIComponent(id)}&v=081`,{cache:'no-store'}),
-        fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=081`,{cache:'no-store'})
+      // /api/athlete used to also be fetched here - a legacy scraper doing dozens of sequential
+      // fetches per athlete (up to 6 events x 7 pages x 2 sexes, each retrying through a
+      // third-party r.jina.ai proxy on top) that was almost single-handedly why "Søker …" stayed
+      // up long after the real ranking box (official-ranking.js, via the fast nimarion-backed
+      // endpoints below) had already finished. Its own visible output went into #waProfileDetails,
+      // which index.html permanently hides via `display:none!important` - confirmed dead, and its
+      // one real side effect (auto-filling combined-event scores) is already duplicated by
+      // ranking-basis.js's own faster fillScores(). Worse, a failure in that scraper threw here
+      // and showed "Fant ikke WA-profil" even when the real data sources had succeeded.
+      // `t` is a real per-request cache-buster (not just a static version tag) so a bad
+      // response Cloudflare's edge ever caches for one exact URL (confirmed live: this exact
+      // /api/wa-rank?id=... URL got stuck serving a stale response) can never permanently wedge
+      // this specific athlete's lookup - every call is a guaranteed-fresh URL.
+      const cacheBust=Date.now();
+      const [rankRes,resultsRes]=await Promise.all([
+        fetch(`/api/wa-rank?id=${encodeURIComponent(id)}&v=081&t=${cacheBust}`,{cache:'no-store'}),
+        fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=081&t=${cacheBust}`,{cache:'no-store'})
       ]);
-      const data=await profileRes.json(), rankData=await rankRes.json(), resultsData=await resultsRes.json();
-      if(!data.ok) throw new Error(data.error||'Profiloppslag feilet');
+      const rankData=await rankRes.json(), resultsData=await resultsRes.json();
+      if(!rankData.ok) throw new Error(rankData.error||'Profiloppslag feilet');
 
-      if(rankData?.ok&&Array.isArray(rankData.currentWorldRankings)){
+      const data={id:rankData.id,name:rankData.name,sex:rankData.sex,country:rankData.country||null,url:`https://worldathletics.org/athletes/-/${rankData.id}`};
+      if(Array.isArray(rankData.currentWorldRankings)){
         data.rankings=rankData.currentWorldRankings.map(r=>({rank:Number(r.place),event:normalizeProxyEventGroup(r.eventGroup)})).filter(r=>Number.isFinite(r.rank)&&r.event);
-        if(!data.sex&&rankData.sex) data.sex=rankData.sex;
       }
       if(resultsData?.ok&&Array.isArray(resultsData.combined)){
         const basis=buildCombinedRankingBasis(resultsData.combined,data.sex);
@@ -222,20 +238,18 @@
         sex.value=data.sex; sex.dispatchEvent(new Event('change')); store.sex=data.sex;
       }
       store.event=eventSelect.value; writeStore(store);
-      const sexLabel=data.sex==='W'?'Kvinner':data.sex==='M'?'Menn':'';
-      waStatus.innerHTML=`<strong>WA-profil funnet:</strong> ${data.name||data.id}${sexLabel?' · '+sexLabel:''} · WA-ID ${data.id}`;
+      setWaStatus('Koblet til World Athletics.','good');
       renderWaDetails(data);
       applyBasisForSelectedEvent(data);
-      showStatus(`Koblet til World Athletics: ${data.name||data.id}`);
     }catch(e){
-      waStatus.textContent=`Kunne ikke hente WA-profil: ${e.message}`;
+      setWaStatus('Fant ikke WA-profil.');
       if(waDetails){waDetails.innerHTML='';waDetails.style.display='none';}
     }finally{ if(waBtn) waBtn.disabled=false; }
   }
 
   waBtn?.addEventListener('click',()=>{
     const id=waInput.value.trim().match(/(\d{7,9})/)?.[1];
-    if(!id){waStatus.textContent='Skriv inn en gyldig WA-ID eller profil-lenke.';return;}
+    if(!id){setWaStatus('Skriv inn en gyldig WA-ID.');return;}
     loadAthlete(id);
   });
 
@@ -253,7 +267,21 @@
     showStatus(`Lagret for ${store.name}: ${currentEventLabel()}`);
   });
   clearProfileBtn.addEventListener('click',()=>{
-    localStorage.removeItem(STORAGE_KEY); profileName.value=''; if(nameSearch) nameSearch.value=''; if(waInput) waInput.value=''; if(waStatus) waStatus.textContent='Velg en utøver for å hente rankinggrunnlaget.'; if(waDetails){waDetails.innerHTML='';waDetails.style.display='none';} clearScores(); showStatus('Profil og lagrede scores er slettet.',false);
+    localStorage.removeItem(STORAGE_KEY); profileName.value=''; if(nameSearch) nameSearch.value=''; if(waInput) waInput.value=''; setWaStatus('Ingen WA-profil valgt.'); if(waDetails){waDetails.innerHTML='';waDetails.style.display='none';} clearScores();
+    // "Nullstill profil" only cleared the profile fields themselves - the øvelse dropdown and
+    // the official/local ranking boxes below (owned by official-ranking.js/ranking-basis.js,
+    // separate scripts) kept showing whatever was last selected. Those two scripts' own 'change'
+    // handlers no-op on an empty WA-ID (there's nothing to look up), so their boxes have to be
+    // cleared here directly rather than relying on the dispatched events below alone.
+    if(eventSelect.options.length)eventSelect.selectedIndex=0;
+    const officialMount=document.getElementById('officialWaRankingDetails');if(officialMount)officialMount.innerHTML='';
+    document.getElementById('autoRankingBasisAllEvents')?.remove();
+    document.getElementById('rawCombinedDebugBox')?.remove();
+    window.__rankingstevnerOfficialRanking=null;
+    window.__rankingstevnerOfficialPending=false;
+    window.__rankingstevnerReconstructedBasis=null;
+    eventSelect.dispatchEvent(new Event('change',{bubbles:true}));
+    if(waInput)waInput.dispatchEvent(new Event('change',{bubbles:true}));
   });
 
   function restoreProfile(){
@@ -261,8 +289,7 @@
     if(store.name){profileName.value=store.name;if(nameSearch)nameSearch.value=store.name;}
     if(waInput&&store.waId)waInput.value=store.waId;
     if(store.sex&&[...sex.options].some(o=>o.value===store.sex))sex.value=store.sex;
-    if(store.name)showStatus(`Profil lastet: ${store.name}`);else showStatus('Ingen lagret profil ennå.',false);
-    if(store.waName&&waStatus)waStatus.textContent=`WA koblet: ${store.waName}${store.waId?' · WA-ID '+store.waId:''}`;
+    if(store.waName)setWaStatus('Koblet til World Athletics.','good');
     setTimeout(()=>{
       if(store.event&&[...eventSelect.options].some(o=>o.value===store.event))eventSelect.value=store.event;
       eventSelect.dispatchEvent(new Event('change'));

@@ -4,12 +4,6 @@
   'use strict';
   let scheduled=false;
 
-  function setBox(card,label,value){
-    const box=[...card.querySelectorAll('.meet-facts>div')].find(x=>x.querySelector('span')?.textContent.trim()===label);
-    const strong=box?.querySelector('strong');
-    if(strong && strong.textContent!==value) strong.textContent=value;
-  }
-
   function relabelEventOption(){
     const event=document.getElementById('event');
     if(!event) return;
@@ -29,7 +23,8 @@
     const code=event.value;
     if(code!=='Decathlon'&&code!=='Heptathlon') return;
 
-    host.querySelectorAll('.meet-card-v1').forEach(card=>setBox(card,'Øvelse','Mangekamp'));
+    // Per-card "Øvelse" already shows the correct sex-specific label (Tikamp/Sjukamp)
+    // from meet-finder-v1.js's render(); only the ranking-group heading below is generic.
 
     const summary=host.querySelector('.finder-summary h4');
     if(summary && summary.textContent!=='Mangekamp') summary.textContent='Mangekamp';

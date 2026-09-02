@@ -1,0 +1,383 @@
+// Anbefalte stevner - de 3 stevnene i valgt øvelse der utøveren har best sjanse til å forbedre sin
+// ranking: en kombinasjon av høy stevnekategori (gir høyere Placing Score-bonus for samme
+// plassering) og lavt historisk nivå (svakere felt gir bedre forventet plassering med egen PB) -
+// nøyaktig den kombinasjonen som faktisk avgjør Performance Score (= Result Score + Placing Score)
+// i WA sitt eget rankingsystem. Gjenbruker byggeklossene resten av appen allerede har og har
+// verifisert (Result Score-tabeller og Placing Score-tabeller fra ranking-basis.js, egen PB fra
+// window.__rankingstevnerOwnResults, historisk feltstyrke fra meet-history.js sin "Historisk
+// nivå"-pipeline, stevnelisten fra meet-finder-v1.js) i stedet for en egen, potensielt
+// inkonsistent beregning.
+(() => {
+'use strict';
+
+function esc(s){ return String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+// Same descriptions as meet-finder-v1.js's own category badges - duplicated (small, static data)
+// rather than exposed, same reasoning as placementFor()/TRACK_EVENTS below.
+const CATEGORY_DESCRIPTIONS = {
+  OW: 'Olympiske leker / VM - høyeste stevnekategori',
+  DF: 'Diamond League-finale',
+  GW: 'Diamond League (ordinær runde)',
+  GL: 'Gold Label / Continental Tour Gold - store internasjonale stevner',
+  A: 'Continental Tour Silver-nivå - høyt internasjonalt stevne',
+  B: 'Continental Tour Bronse-nivå - solid internasjonalt/nasjonalt stevne',
+  C: 'Mindre internasjonalt eller stort nasjonalt stevne',
+  D: 'Nasjonalt/regionalt stevne',
+  E: 'Mindre regionalt stevne',
+  F: 'Lokalt/klubbstevne - laveste stevnekategori'
+};
+// OW/DF/GW (Olympics/VM, Diamond League final, Diamond League) are invite-only for the world's
+// established elite - live feedback caught this box recommending a Diamond League final to an
+// athlete ranked #3532 in the world, something they have no realistic path into regardless of what
+// the Performance Score math says. Recommending only from categories a developing/regional athlete
+// can actually get into (national federation entry, standard qualifying times, direct contact to
+// the organiser) also sidesteps the closed-tiny-field problem that only really shows up at the
+// elite invite-only tiers: a meet nobody outside a small invited field can enter at all shouldn't
+// be recommended no matter how good the estimated placing looks. Left GL out too, out of caution -
+// Gold Label/Continental Tour Gold meets are still a strong, largely invited field in practice.
+const ACCESSIBLE_CATEGORIES = new Set(['A', 'B', 'C', 'D', 'E', 'F']);
+// Highest to lowest, matching meet-finder-v1.js's own RANKING_CATEGORIES order - used to search
+// higher categories FIRST. The pool used to sort purely by date, and the search stops as soon as
+// it has 3 valid candidates - live feedback caught this settling for 3 F-category meets that
+// happened to resolve first chronologically, without the search ever having reached whatever
+// A/B/C/D/E meets existed further down the date-sorted list. The whole point of this box is
+// finding the HIGHEST category with a low enough field to be realistic, not just "the first 3
+// meets that work" - sorting by category rank first (date only as a tie-breaker within the same
+// category) means a real A/B/C meet, if one exists and has usable data, gets checked well before
+// the search would ever fall back to F.
+const CATEGORY_RANK = { A: 0, B: 1, C: 2, D: 3, E: 4, F: 5 };
+function eventCode(){ return document.getElementById('event')?.value || ''; }
+function eventLabel(){ return document.getElementById('event')?.selectedOptions?.[0]?.textContent || 'valgt øvelse'; }
+function athleteSex(){ return document.getElementById('sex')?.value === 'W' ? 'W' : 'M'; }
+function isCombinedCode(event){ return event === 'Decathlon' || event === 'Heptathlon'; }
+// Matches ranking-basis.js's own validDate() cutoff exactly (18 months for combined events/10000m,
+// 12 months for everything else) - shown to the user so "no own mark" reads as a real, understood
+// fact about the ranking period rather than a vague "fill in your WA-ID" prompt that's actively
+// wrong when a WA-ID IS already filled in and simply has no result for this specific event.
+function rankingPeriodMonths(event){ return (isCombinedCode(event) || event === '10000m') ? 18 : 12; }
+
+// Same "which direction is better" list meet-history.js already uses for the green comparison
+// line - lower time wins for track events, higher mark wins for jumps/throws/combined events.
+const TRACK_EVENTS = new Set(['100m', '200m', '400m', '800m', '1500m', '5000m', '10000m', '100mH', '110mH', '400mH', '3000mSC']);
+function isAscending(event){ return TRACK_EVENTS.has(event); }
+
+// Same placement-estimate logic as meet-history.js's green comparison line, duplicated here
+// (rather than exposed and imported) since it's a tiny, self-contained 8-line function - not worth
+// a cross-file API just for this.
+function placementFor(allMarks, mark, ascending){
+  if (!Array.isArray(allMarks) || !allMarks.length || !Number.isFinite(mark)) return null;
+  if (ascending) {
+    if (mark > Math.max(...allMarks)) return null;
+    return allMarks.filter(m => m < mark).length + 1;
+  }
+  if (mark < Math.min(...allMarks)) return null;
+  return allMarks.filter(m => m > mark).length + 1;
+}
+
+// Athlete's own best mark for the selected event, same source (and same 'main'-type-only rule) as
+// meet-history.js's bestOwnMark() - the indoor 'similar' substitute marks (e.g. 60m for 100m)
+// aren't a fair comparison against an outdoor field's marks, so only real same-distance marks count.
+function ownBestMark(event){
+  const own = window.__rankingstevnerOwnResults;
+  if (!own || own.event !== event) return null;
+  const marks = (Array.isArray(own.rows) ? own.rows : []).filter(r => r.type === 'main').map(r => Number(r.mark)).filter(Number.isFinite);
+  if (!marks.length) return null;
+  return isAscending(event) ? Math.min(...marks) : Math.max(...marks);
+}
+
+function ordinal(n){ return `${n}.`; }
+
+// Checking only the first 10 (highest-category, then soonest) accessible-category meets was fast
+// but, per live feedback, often came back empty - not because there was nothing to recommend, just
+// because the sample was too small (many meets fail the check for mundane reasons: no confirmed
+// historical data yet, or the athlete's own mark falls outside that particular field's known
+// range). "No recommendation" should mean genuinely exhausted the real candidates, not "gave up
+// after 10". Works through the full list (highest category first, then soonest) in small batches
+// instead, stopping as soon as there are 3 good candidates rather than always checking everything
+// (still means a higher category gets checked well before ever falling back to a lower one) -
+// onProgress lets
+// the caller show what's happening while this runs, since it can take a while on a full search.
+const BATCH_SIZE = 10;
+const POOL_CEILING = 80; // generous but bounded - protects against a pathologically long search
+
+async function computeRecommendations(onProgress){
+  const finder = window.RankingstevnerMeetFinder;
+  const history = window.RankingstevnerMeetHistory;
+  const scoring = window.RankingstevnerScoring;
+  if (!finder || !history || !scoring) return { reason: 'not-ready' };
+
+  const event = eventCode();
+  if (!event) return { reason: 'no-event' };
+
+  await history.waitForOwnResults();
+  const pb = ownBestMark(event);
+  if (pb == null) return { reason: 'no-own-mark' };
+
+  await scoring.ready();
+  const ascending = isAscending(event);
+  const resultScore = scoring.resultScore(event, pb);
+  if (resultScore == null) return { reason: 'no-result-score' };
+
+  const candidates = finder.currentMatches()
+    .filter(m => m.id && m.name && m.start && ACCESSIBLE_CATEGORIES.has(String(m.rankingCategory || '').trim()))
+    .sort((a, b) => {
+      const catDiff = CATEGORY_RANK[String(a.rankingCategory || '').trim()] - CATEGORY_RANK[String(b.rankingCategory || '').trim()];
+      return catDiff !== 0 ? catDiff : new Date(a.start) - new Date(b.start);
+    })
+    .slice(0, POOL_CEILING);
+
+  const currentRankingScore = scoring.currentRankingScore();
+  let scored = [];
+  let checked = 0;
+
+  for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+    const batch = candidates.slice(i, i + BATCH_SIZE);
+    const results = await Promise.all(batch.map(async m => {
+      const category = String(m.rankingCategory || '').trim();
+      const data = await history.dataAsync(m.name, m.start);
+      if (!data?.found || data.comparable === false || !Array.isArray(data.allMarks) || !data.allMarks.length) return null;
+      let place = placementFor(data.allMarks, pb, ascending);
+      let lastPlaceEstimate = false;
+      // placementFor() returns null when the athlete's mark is worse than every recorded mark -
+      // deliberately, since a WA results page might only publish the top finishers, not the whole
+      // field, and claiming a specific place beyond what's listed could overclaim. But a SMALL
+      // recorded field (fewer than 8) is very likely the complete field - small domestic/club meets
+      // normally report everyone who competed, not a curated top list - so a "would have finished
+      // last" estimate is trustworthy there, and worth showing if it would still score points for
+      // this category (several categories' Placing Score tables pay down past 8th place).
+      if (place == null && data.allMarks.length < 8) {
+        const estimatedPlace = data.allMarks.length + 1;
+        const estimatedScore = scoring.placingScore(event, category, estimatedPlace);
+        if (estimatedScore != null && estimatedScore > 0) {
+          place = estimatedPlace;
+          lastPlaceEstimate = true;
+        }
+      }
+      if (place == null) return null;
+      const placingScore = scoring.placingScore(event, category, place);
+      if (placingScore == null) return null;
+      return {
+        meet: m, place, category, lastPlaceEstimate,
+        resultScore, placingScore,
+        performanceScore: resultScore + placingScore,
+        year: data.year || null,
+        source: data.source || null,
+        winnerMark: data.winnerMark ?? null,
+        top3: Array.isArray(data.top3) ? data.top3 : null,
+        top8: Array.isArray(data.top8) ? data.top8 : null,
+      };
+    }));
+    checked += batch.length;
+    scored = scored.concat(results.filter(Boolean)).sort((a, b) => b.performanceScore - a.performanceScore);
+    if (scored.length >= 3) break;
+    onProgress?.(checked, candidates.length);
+  }
+
+  return { pb, resultScore, currentRankingScore, probed: checked, top: scored.slice(0, 3) };
+}
+
+// Exact copy of meet-finder-v1.js's own locationText() - the API sometimes returns location as a
+// plain string, sometimes as an object ({venue,city,country,countryCode,area}), and a version that
+// only handled the string shape silently fell back to "Sted ikke publisert" for every meet using
+// the object shape, even though the card below (using the real function) showed a real location.
+function locationText(m){
+  const loc = m?.location;
+  if (!loc) return '';
+  if (typeof loc === 'string') return loc;
+  if (typeof loc === 'object') return [loc.venue, loc.city, loc.country, loc.countryCode, loc.area].filter(Boolean).join(' ');
+  return String(loc);
+}
+function fmtDate(v){
+  const d = v ? new Date(v) : null;
+  if (!d || Number.isNaN(d.getTime())) return '–';
+  return d.toLocaleDateString('no-NO', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+function avg(a){ return a.reduce((s, v) => s + v, 0) / a.length; }
+
+// Same "2024: vinner 13.16 · topp 3 snitt 13.21 · topp 8 snitt 13.29" summary meet-history.js's
+// own "Historisk nivå" card shows, so the actual level behind the estimated placing is visible
+// here too instead of only the derived numbers (Performance Score etc.) - live feedback wanted the
+// real marks shown, not just what they translate to.
+function historicalLevelLine(x){
+  const fmt = window.RankingstevnerMeetHistory?.formatMark;
+  if (typeof fmt !== 'function' || !Number.isFinite(x.winnerMark)) return '';
+  const event = eventCode();
+  const segments = [`vinner ${fmt(x.winnerMark, event)}`];
+  if (x.top3?.length > 1) segments.push(`topp ${x.top3.length} snitt ${fmt(avg(x.top3), event)}`);
+  if (x.top8?.length > (x.top3?.length || 0)) segments.push(`topp ${x.top8.length} snitt ${fmt(avg(x.top8), event)}`);
+  const yearBit = x.year ? `${x.year}: ` : '';
+  return `<small class="muted" style="display:block;margin-top:2px">${yearBit}${segments.join(' · ')}</small>`;
+}
+
+function itemHtml(x, ownMarkText){
+  const improvement = Number.isFinite(x.improvement) ? x.improvement : null;
+  const improvementLine = improvement != null
+    ? (improvement > 0
+        ? `<small style="display:block;color:#45d483;font-weight:700">+${improvement} poeng mot din nåværende Ranking Score.</small>`
+        : `<small style="display:block;color:#aebed0">${improvement} poeng mot din nåværende Ranking Score - fortsatt en sterk Performance Score, men ikke en forbedring akkurat nå.</small>`)
+    : '';
+  const yearBit = x.year ? ` (${x.year})` : '';
+  const sourceLink = x.source ? ` · <a href="${esc(x.source)}" target="_blank" rel="noopener">Historisk nivå${yearBit}</a>` : '';
+  // Clicking the card jumps down to the same meet's own full card (contact info, program,
+  // "Historisk nivå" details) further down the page instead of duplicating all of that here.
+  return `<div data-jump-to-meet="${esc(x.meet.id)}" style="padding:14px 16px;border:1px solid #21405f;border-radius:12px;background:#0b1d33;cursor:pointer">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <div><strong>${esc(x.meet.name || 'Stevne')}</strong><div class="muted" style="font-size:12px;margin-top:2px">${esc(locationText(x.meet) || 'Sted ikke publisert')} · ${fmtDate(x.meet.start)}</div>${historicalLevelLine(x)}</div>
+      <span class="cat" title="${esc(CATEGORY_DESCRIPTIONS[x.category]||'')}">${esc(x.category)}</span>
+    </div>
+    <small style="display:block;margin-top:8px">Forventet ${ordinal(x.place)} plass med din beste tellende prestasjon (<strong>${esc(ownMarkText)}</strong>) → <strong>Performance Score ${x.performanceScore}</strong> (Result Score ${x.resultScore} + Placing Score ${x.placingScore})${sourceLink}</small>
+    ${x.lastPlaceEstimate ? `<small class="muted" style="display:block;margin-top:2px">Anslag: din prestasjon var svakere enn alle ${x.place - 1} kjente resultatene, men feltet var lite nok til at sisteplass trolig fortsatt gir rankingpoeng.</small>` : ''}
+    ${improvementLine}
+    <small class="muted" style="display:block;margin-top:8px">Trykk for å se hele stevnekortet ↓</small>
+  </div>`;
+}
+
+function renderHtml(result){
+  const heading = `<span class="eyebrow">ANBEFALTE STEVNER</span><h4 style="margin:6px 0 0;font-size:20px;color:#fff">${esc(eventLabel())}</h4>`;
+  if (!result || result.reason === 'not-ready' || result.reason === 'no-event') return '';
+  if (result.reason === 'no-own-mark') {
+    const months = rankingPeriodMonths(eventCode());
+    return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Utøver mangler resultater for øvelsen i perioden (siste ${months} måneder) - ingen stevneanbefalinger å vise.</p></div>`;
+  }
+  if (result.reason === 'no-result-score') {
+    return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Fant ikke Result Score for din beste prestasjon i valgt øvelse ennå.</p></div>`;
+  }
+  const currentLine = Number.isFinite(result.currentRankingScore) ? ` Din nåværende Ranking Score: <strong>${result.currentRankingScore}</strong>.` : '';
+  if (!result.top || !result.top.length) {
+    return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Fant ingen stevner med nok verifisert historisk nivå ennå til å gi konkrete anbefalinger (så langt sjekket ${result.probed} stevner).${currentLine}</p></div>`;
+  }
+  const ownMarkText = formatOwnMark(result);
+  const items = result.top.map(x => ({ ...x, improvement: Number.isFinite(result.currentRankingScore) ? x.performanceScore - result.currentRankingScore : null }));
+  return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">
+    ${heading}
+    <p class="muted" style="margin:8px 0 12px">Stevner der høy stevnekategori og et historisk sett svakt felt gir best mulighet til å forbedre rankingen din, basert på din beste tellende prestasjon (${ownMarkText}).${currentLine}</p>
+    <div style="display:grid;gap:10px">${items.map(x => itemHtml(x, ownMarkText)).join('')}</div>
+  </div>`;
+}
+
+// Uses meet-history.js's own formatting (already loaded, same event code conventions) so a time
+// looks like "10.72"/"1:45.20" rather than a raw seconds float.
+function formatOwnMark(result){
+  const fmt = window.RankingstevnerMeetHistory?.formatMark;
+  if (typeof fmt === 'function') return fmt(result.pb, eventCode());
+  return String(result.pb);
+}
+
+// Blinking (not just static "loading") text specifically for the progress state, per explicit
+// request - a full search across many meets can take a while, and a static message reads as stuck
+// the same way the earlier permanently-blank bug did; a visibly animated one makes it obvious this
+// is still actively working.
+function ensureBlinkStyle(){
+  if (document.getElementById('rankingRecommendationsBlinkStyle')) return;
+  const style = document.createElement('style');
+  style.id = 'rankingRecommendationsBlinkStyle';
+  style.textContent = '.rr-blink{animation:rrBlinkPulse 1.2s ease-in-out infinite}@keyframes rrBlinkPulse{0%,100%{opacity:1}50%{opacity:.35}}@keyframes rrSpin{to{transform:rotate(360deg)}}.rr-spinner{display:inline-block;width:14px;height:14px;margin-right:7px;border:2px solid #21405f;border-top-color:#ff8a19;border-radius:50%;vertical-align:-2px;animation:rrSpin .75s linear infinite}';
+  document.head.appendChild(style);
+}
+function loadingBoxHtml(text, blink){
+  ensureBlinkStyle();
+  return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box"><span class="eyebrow">ANBEFALTE STEVNER</span><h4 style="margin:6px 0 0;font-size:20px;color:#fff">${esc(eventLabel())}</h4><p class="muted${blink ? ' rr-blink' : ''}" style="margin:8px 0 0"><span class="rr-spinner" aria-hidden="true"></span>${esc(text)}</p></div>`;
+}
+
+let runId = 0;
+let computing = false;
+// ranking-basis.js (window.RankingstevnerScoring) loads via a three-hop chain (target-score.js
+// schedules official-ranking.js, which only injects ranking-basis.js once ITS OWN script has
+// finished loading) - confirmed live twice now that this can take longer than expected, or
+// possibly not resolve at all in a given page load. A capped retry (tried once already, 20x500ms)
+// still left the box permanently blank when that chain took longer than the cap - there's no real
+// cost to checking a few object references, so 'not-ready' now retries indefinitely on a gentle
+// cadence instead of giving up. Genuinely nothing to show (no WA-ID, no candidates found) still
+// renders an explanatory message via the other `reason` branches below - only 'not-ready' (the
+// scripts themselves not being loaded yet) keeps trying forever.
+async function recompute(){
+  const box = document.getElementById('rankingRecommendations');
+  if (!box) return;
+  // Shown immediately whenever the box is currently empty, so it's never an invisible blank space
+  // while a computation runs - live evidence showed users reading "nothing there" as broken rather
+  // than loading. This used to be gated behind an "only the very first time ever" flag, which broke
+  // on an event/sex change: meet-finder-v1.js rebuilds the ENTIRE meet list (a fresh, empty
+  // #rankingRecommendations div included) on every such change, so "first time ever" had already
+  // happened once for a previous event and the flag suppressed the loading text for every event
+  // switch after that - leaving a genuinely empty box with nothing shown while it recomputed.
+  // Checking the box's own current content instead of a one-shot flag fixes that for every event
+  // change, not just the very first render.
+  if (!box.innerHTML) {
+    box.innerHTML = loadingBoxHtml('Beregner anbefalinger …', false);
+  }
+  const myRun = ++runId;
+  if (computing) return; // a newer trigger will run right after this one finishes anyway
+  computing = true;
+  try {
+    const result = await computeRecommendations((checked, total) => {
+      if (myRun !== runId) return; // superseded - don't fight the newer run's own rendering
+      box.innerHTML = loadingBoxHtml(`Jobber med å ta frem anbefalte rankingstevner basert på din ranking (sjekket ${checked} av ${total} stevner) …`, true);
+    });
+    if (myRun !== runId) return; // event/sex changed again while this was in flight
+    if (result?.reason === 'not-ready') {
+      scheduleRecompute(1000);
+      return; // leave the loading state (or whatever was already showing) rather than blanking it
+    }
+    box.innerHTML = renderHtml(result);
+  } finally {
+    computing = false;
+    // If something else asked for a recompute while this one was running, run once more now
+    // instead of leaving stale data showing.
+    if (myRun !== runId) recompute();
+  }
+}
+
+let debounceTimer = null;
+function scheduleRecompute(delay){
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(recompute, delay);
+}
+
+// Scrolls to and briefly highlights the same meet's own full card further down the page (contact
+// info, program, "Historisk nivå" details) instead of duplicating all of that inside this box.
+// Delegated on document (not the box itself) so it survives the box's innerHTML being replaced on
+// every recompute - meet-finder-v1.js now stamps data-meet-id on each card for this to match on.
+function jumpToMeet(id){
+  if (!id) return;
+  const card = document.querySelector(`.meet-card-v1[data-meet-id="${CSS.escape(String(id))}"]`);
+  if (!card) return; // e.g. filtered out by the date/country/venue filters above - nothing to jump to
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  card.style.transition = 'outline-color .3s ease';
+  card.style.outline = '3px solid #ff8a19';
+  card.style.outlineOffset = '2px';
+  setTimeout(() => { card.style.outline = ''; card.style.outlineOffset = ''; }, 1800);
+}
+document.addEventListener('click', e => {
+  const item = e.target.closest('[data-jump-to-meet]');
+  if (!item || e.target.closest('a')) return; // let the "Historisk nivå" link open normally
+  jumpToMeet(item.dataset.jumpToMeet);
+});
+
+// Puts the loading text up immediately, synchronously - separate from the actual (debounced,
+// potentially slow) recompute. Live feedback: it's fine for the recommendations themselves to take
+// a while to fill in, but the box going blank and only showing "Beregner..." after the debounce
+// delay (500-700ms) read as broken in that gap. Wired into every trigger below, not just the
+// event/sex change listeners: meet-finder-v1.js rebuilds #rankingRecommendations as a fresh empty
+// div on its OWN render cycle (itself triggered by the same event/sex change, independently of this
+// file), and that rebuild reliably lands between this file's own listener firing and its debounced
+// recompute actually running - so meetlistrendered needs this too, not only the raw DOM event.
+function showWorkingNow(){
+  const box = document.getElementById('rankingRecommendations');
+  if (box && !box.querySelector('[data-jump-to-meet]')) box.innerHTML = loadingBoxHtml('Beregner anbefalinger …', false);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  scheduleRecompute(300);
+  // Delayed a bit more than before (50ms -> 500ms) so the visible cards' own history fetches
+  // (meet-history-ui.js's apply(), triggered by this same event) get a head start claiming the
+  // shared queue/cache first - since this box's own probe pool normally overlaps heavily with the
+  // visible cards, letting cards go first means more of this box's own lookups arrive as instant
+  // cache hits instead of adding a second, competing burst of fresh queue entries on top.
+  window.addEventListener('meetlistrendered', () => { showWorkingNow(); scheduleRecompute(500); });
+  // The athlete's own PB, current Ranking Score, and the scoring tables all become available via
+  // this same event (ranking-basis.js) - a second trigger for cases where the box's first attempt
+  // ran before any of that was ready and no event/sex change happens afterward to prompt a retry.
+  window.addEventListener('rankingbasisupdated', () => scheduleRecompute(300));
+  document.getElementById('event')?.addEventListener('change', () => { showWorkingNow(); scheduleRecompute(600); });
+  document.getElementById('sex')?.addEventListener('change', () => { showWorkingNow(); scheduleRecompute(700); });
+});
+})();

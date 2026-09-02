@@ -15,7 +15,7 @@
     if(id===lastId) return;
     lastId=id;
     try{
-      const res=await fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=202`,{cache:'no-store'});
+      const res=await fetch(`/api/wa-results?id=${encodeURIComponent(id)}&v=202&t=${Date.now()}`,{cache:'no-store'});
       const data=await res.json();
       existingBonus=Number.isFinite(Number(data?.worldRecordBonus))?Number(data.worldRecordBonus):0;
       window.__WA2026_COMBINED_WR_BONUS__={existing:existingBonus,performances:data?.worldRecordPerformances||[]};

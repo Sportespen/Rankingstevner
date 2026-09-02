@@ -22,6 +22,12 @@ export async function onRequestGet(context) {
     if (score > 0) merged.set(String(a.id), {...a,_score:score});
   }
 
+  // Tried removing this two-stage search (reasoning the frontend's own parallel first/last/full
+  // queries made it redundant), but that broke real name search live - WA's own search backend
+  // very likely matches against a single name field, not a concatenated "Firstname Lastname"
+  // string, so searching with the full multi-word query alone can come back empty even for a
+  // real, findable athlete. Restored: search with just the first word first (matches WA's own
+  // behavior), and only fall back to the full string if that came up empty.
   try {
     const primaryQuery = parts.length > 1 && parts[0].length >= 2 ? parts[0] : q;
     const primary = await searchWaFast(primaryQuery);

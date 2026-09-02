@@ -27,13 +27,13 @@
     const style=document.createElement('style');
     style.textContent=`
       @keyframes waSpin0165{to{transform:rotate(360deg)}}
-      .wa-spinner-0165{display:inline-block;width:14px;height:14px;margin-right:7px;border:2px solid #c5d6d2;border-top-color:#0f766e;border-radius:50%;vertical-align:-2px;animation:waSpin0165 .75s linear infinite}
+      .wa-spinner-0165{display:inline-block;width:14px;height:14px;margin-right:7px;border:2px solid #21405f;border-top-color:#ff8a19;border-radius:50%;vertical-align:-2px;animation:waSpin0165 .75s linear infinite}
     `;
     document.head.appendChild(style);
 
     function decorateLoading(){
       const txt=(waStatus.textContent||'').trim();
-      if(/^Henter World Athletics-profil og rankinggrunnlag/i.test(txt) && !waStatus.querySelector('.wa-spinner-0165')){
+      if(/^Søker/i.test(txt) && !waStatus.querySelector('.wa-spinner-0165')){
         const spinner=document.createElement('span');
         spinner.className='wa-spinner-0165';
         spinner.setAttribute('aria-hidden','true');
