@@ -315,9 +315,20 @@ let computing = false;
 // cadence instead of giving up. Genuinely nothing to show (no WA-ID, no candidates found) still
 // renders an explanatory message via the other `reason` branches below - only 'not-ready' (the
 // scripts themselves not being loaded yet) keeps trying forever.
+// Always re-fetches the live element instead of reusing one grabbed at the start of recompute() -
+// meet-finder-v1.js's render() replaces #kvalifiseringBoxes' entire innerHTML (a fresh, empty
+// #rankingRecommendations div included) on every filter/event/sex change AND on unrelated triggers
+// (a MutationObserver on the athlete-profile status element, which can fire more than once while a
+// profile is still loading). If that happens while a computeRecommendations() run is mid-flight, a
+// box reference captured once at the top of recompute() silently becomes a DETACHED node - every
+// later write via that stale reference (progress updates, the final result) still "succeeds" as far
+// as the code is concerned, but is invisible, since the visible tree now has a *different* element
+// with the same id. Confirmed live: this is why the box could sit on the initial static text
+// indefinitely no matter how long a search actually took - every write was landing on a node nobody
+// could see. Re-querying by id right before each write always targets whatever is currently on screen.
+function box(){ return document.getElementById('rankingRecommendations'); }
 async function recompute(){
-  const box = document.getElementById('rankingRecommendations');
-  if (!box) return;
+  if (!box()) return;
   // Shown immediately whenever the box is currently empty, so it's never an invisible blank space
   // while a computation runs - live evidence showed users reading "nothing there" as broken rather
   // than loading. This used to be gated behind an "only the very first time ever" flag, which broke
@@ -327,8 +338,8 @@ async function recompute(){
   // switch after that - leaving a genuinely empty box with nothing shown while it recomputed.
   // Checking the box's own current content instead of a one-shot flag fixes that for every event
   // change, not just the very first render.
-  if (!box.innerHTML) {
-    box.innerHTML = loadingBoxHtml('Beregner anbefalinger …', false);
+  if (!box().innerHTML) {
+    box().innerHTML = loadingBoxHtml('Beregner anbefalinger …', false);
   }
   const myRun = ++runId;
   if (computing) return; // a newer trigger will run right after this one finishes anyway
@@ -338,14 +349,14 @@ async function recompute(){
     const result = await computeRecommendations((checked, total) => {
       if (myRun !== runId) return; // superseded - don't fight the newer run's own rendering
       const eta = formatEta(estimateSecondsRemaining(startedAt, checked, total));
-      box.innerHTML = loadingBoxHtml(`Jobber med å ta frem anbefalte rankingstevner basert på din ranking (sjekket ${checked} av ${total} stevner${eta}) …`, true);
+      const b = box(); if (b) b.innerHTML = loadingBoxHtml(`Jobber med å ta frem anbefalte rankingstevner basert på din ranking (sjekket ${checked} av ${total} stevner${eta}) …`, true);
     });
     if (myRun !== runId) return; // event/sex changed again while this was in flight
     if (result?.reason === 'not-ready') {
       scheduleRecompute(1000);
       return; // leave the loading state (or whatever was already showing) rather than blanking it
     }
-    box.innerHTML = renderHtml(result);
+    const b = box(); if (b) b.innerHTML = renderHtml(result);
   } finally {
     computing = false;
     // If something else asked for a recompute while this one was running, run once more now
@@ -427,8 +438,8 @@ function showBackButton(){
 // file), and that rebuild reliably lands between this file's own listener firing and its debounced
 // recompute actually running - so meetlistrendered needs this too, not only the raw DOM event.
 function showWorkingNow(){
-  const box = document.getElementById('rankingRecommendations');
-  if (box && !box.querySelector('[data-jump-to-meet]')) box.innerHTML = loadingBoxHtml('Beregner anbefalinger …', false);
+  const b = box();
+  if (b && !b.querySelector('[data-jump-to-meet]')) b.innerHTML = loadingBoxHtml('Beregner anbefalinger …', false);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
