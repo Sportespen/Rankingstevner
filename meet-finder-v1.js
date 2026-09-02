@@ -19,7 +19,21 @@ const CHAMPIONSHIP={
     // qualification tracker (published in WA's Stats Zone) - two different official pages.
     qualificationUrl:'https://worldathletics.org/competitions/world-athletics-championships/beijing27/news/press-releases/qualification-system-world-athletics-championships-beijing-27',
     roadUrl:'https://worldathletics.org/stats-zone',
-    entryStandards:{Decathlon:8620,Heptathlon:6550},
+    // Full entry-standard table per event/sex for Beijing 27 (WA qualification system press
+    // release, May 2026) - stored as ready-to-show strings (already carrying the right unit:
+    // time, "X.XX m" or "X p") rather than raw numbers, since the three event families use
+    // different formats and this avoids building a separate mark-formatter just for this box.
+    entryStandards:{
+      '100m':{M:'9.95',W:'10.96'},'200m':{M:'20.07',W:'22.45'},'400m':{M:'44.45',W:'50.00'},
+      '800m':{M:'1:43.00',W:'1:57.50'},'1500m':{M:'3:30.00',W:'3:58.00'},
+      '5000m':{M:'12:50.00',W:'14:36.00'},'10000m':{M:'26:48.00',W:'30:40.00'},
+      '110mH':{M:'13.18'},'100mH':{W:'12.60'},'400mH':{M:'48.00',W:'54.00'},
+      '3000mSC':{M:'8:08.00',W:'9:06.50'},
+      HJ:{M:'2.30 m',W:'1.96 m'},PV:{M:'5.90 m',W:'4.75 m'},LJ:{M:'8.25 m',W:'6.86 m'},
+      TJ:{M:'17.35 m',W:'14.40 m'},SP:{M:'21.50 m',W:'19.30 m'},DT:{M:'67.20 m',W:'64.50 m'},
+      HT:{M:'78.30 m',W:'74.00 m'},JT:{M:'85.50 m',W:'63.40 m'},
+      Decathlon:{M:'8620 p'},Heptathlon:{W:'6550 p'},
+    },
     rankingUrl:{Decathlon:'https://worldathletics.org/world-rankings/decathlon/men',Heptathlon:'https://worldathletics.org/world-rankings/heptathlon/women'},
     // Beijing 27's own target field size per event isn't published anywhere reachable from
     // here, so this uses the confirmed number of starters at the previous edition (Tokyo 25,
@@ -386,13 +400,13 @@ function championshipStripHTML(){
     const topUrl=toplistUrlFor(code,indoor,sex);
     const topLabel=c.body==='WA'?'WA Toplist':'EA Toplist';
     const topHref=c.body==='WA'&&topUrl?topUrl:(c.body==='WA'?WA_CALENDAR:EA_TOPLIST_URL);
-    const standard=c.entryStandards[code];
+    const standard=c.entryStandards[code]?.[sexCode()];
     // Just the number, no links - a link here would duplicate the WA/EA Toplist button below.
     // Indoor combined events lean heavily on ranking rather than a fixed standard (Apeldoorn
     // 2025: only 3 of 14 heptathlon slots went via entry standard, 11 via World/European
     // Ranking), and no Valencia 2027 standard figure could be confirmed anyway, so indoor
     // just points at Toplist instead of showing a number.
-    const req=standard?`Kvalifiseringskrav: ${standard} p`:'Ingen direktekrav – kun Toplist';
+    const req=standard?`Kvalifiseringskrav: ${standard}`:'Ingen direktekrav – kun Toplist';
     const prevSize=c.previousFieldSize?.[code];
     const places=prevSize?` · ${prevSize} plasser (som ${esc(c.previousChampionship)})`:'';
     return `<div><div style="font-weight:800">${indoor?'Innendørs':'Utendørs'} · ${esc(c.name)}</div><div class="muted" style="margin-top:4px">${req}${places}</div><div style="margin-top:6px"><a class="buttonlike" href="${esc(topHref)}" target="_blank" rel="noopener">${topLabel}</a> <a class="buttonlike" href="${esc(c.roadUrl)}" target="_blank" rel="noopener">Road to ${esc(c.name)}</a></div></div>`;
