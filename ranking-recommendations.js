@@ -46,6 +46,7 @@ const ACCESSIBLE_CATEGORIES = new Set(['A', 'B', 'C', 'D', 'E', 'F']);
 // the search would ever fall back to F.
 const CATEGORY_RANK = { A: 0, B: 1, C: 2, D: 3, E: 4, F: 5 };
 function eventCode(){ return document.getElementById('event')?.value || ''; }
+function eventLabel(){ return document.getElementById('event')?.selectedOptions?.[0]?.textContent || 'valgt øvelse'; }
 function athleteSex(){ return document.getElementById('sex')?.value === 'W' ? 'W' : 'M'; }
 function isCombinedCode(event){ return event === 'Decathlon' || event === 'Heptathlon'; }
 // Matches ranking-basis.js's own validDate() cutoff exactly (18 months for combined events/10000m,
@@ -231,7 +232,7 @@ function itemHtml(x, ownMarkText){
 }
 
 function renderHtml(result){
-  const heading = `<span class="eyebrow">ANBEFALTE STEVNER</span>`;
+  const heading = `<span class="eyebrow">ANBEFALTE STEVNER</span><h4 style="margin:6px 0 0;font-size:20px;color:#fff">${esc(eventLabel())}</h4>`;
   if (!result || result.reason === 'not-ready' || result.reason === 'no-event') return '';
   if (result.reason === 'no-own-mark') {
     const months = rankingPeriodMonths(eventCode());
@@ -269,12 +270,13 @@ function ensureBlinkStyle(){
   if (document.getElementById('rankingRecommendationsBlinkStyle')) return;
   const style = document.createElement('style');
   style.id = 'rankingRecommendationsBlinkStyle';
-  style.textContent = '.rr-blink{animation:rrBlinkPulse 1.2s ease-in-out infinite}@keyframes rrBlinkPulse{0%,100%{opacity:1}50%{opacity:.35}}';
+  style.textContent = '.rr-blink{animation:rrBlinkPulse 1.2s ease-in-out infinite}@keyframes rrBlinkPulse{0%,100%{opacity:1}50%{opacity:.35}}@keyframes rrSpin{to{transform:rotate(360deg)}}.rr-spinner{display:inline-block;width:14px;height:14px;margin-right:7px;border:2px solid #21405f;border-top-color:#ff8a19;border-radius:50%;vertical-align:-2px;animation:rrSpin .75s linear infinite}';
   document.head.appendChild(style);
 }
 function loadingBoxHtml(text, blink){
   if (blink) ensureBlinkStyle();
-  return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box"><span class="eyebrow">ANBEFALTE STEVNER</span><p class="muted${blink ? ' rr-blink' : ''}" style="margin:8px 0 0">${esc(text)}</p></div>`;
+  const spinner = blink ? '<span class="rr-spinner" aria-hidden="true"></span>' : '';
+  return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box"><span class="eyebrow">ANBEFALTE STEVNER</span><h4 style="margin:6px 0 0;font-size:20px;color:#fff">${esc(eventLabel())}</h4><p class="muted${blink ? ' rr-blink' : ''}" style="margin:8px 0 0">${spinner}${esc(text)}</p></div>`;
 }
 
 let runId = 0;
