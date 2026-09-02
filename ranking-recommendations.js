@@ -274,9 +274,8 @@ function ensureBlinkStyle(){
   document.head.appendChild(style);
 }
 function loadingBoxHtml(text, blink){
-  if (blink) ensureBlinkStyle();
-  const spinner = blink ? '<span class="rr-spinner" aria-hidden="true"></span>' : '';
-  return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box"><span class="eyebrow">ANBEFALTE STEVNER</span><h4 style="margin:6px 0 0;font-size:20px;color:#fff">${esc(eventLabel())}</h4><p class="muted${blink ? ' rr-blink' : ''}" style="margin:8px 0 0">${spinner}${esc(text)}</p></div>`;
+  ensureBlinkStyle();
+  return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box"><span class="eyebrow">ANBEFALTE STEVNER</span><h4 style="margin:6px 0 0;font-size:20px;color:#fff">${esc(eventLabel())}</h4><p class="muted${blink ? ' rr-blink' : ''}" style="margin:8px 0 0"><span class="rr-spinner" aria-hidden="true"></span>${esc(text)}</p></div>`;
 }
 
 let runId = 0;
