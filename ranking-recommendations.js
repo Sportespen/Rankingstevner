@@ -134,6 +134,13 @@ async function computeRecommendations(onProgress){
     const results = await Promise.all(batch.map(async m => {
       const category = String(m.rankingCategory || '').trim();
       const data = await history.dataAsync(m.name, m.start);
+      // Reported per meet, right as each one's (potentially slow, uncached) fetch resolves - not
+      // just once per whole batch of 10. A batch-level report left the box showing nothing but the
+      // static "Beregner anbefalinger …" for as long as the SLOWEST fetch in the first batch took,
+      // which for a busy event (e.g. 100 m) with a cold cache could be the entire wait with zero
+      // feedback and no data for the time estimate to work from.
+      checked += 1;
+      onProgress?.(checked, candidates.length);
       if (!data?.found || data.comparable === false || !Array.isArray(data.allMarks) || !data.allMarks.length) return null;
       let place = placementFor(data.allMarks, pb, ascending);
       let lastPlaceEstimate = false;
@@ -166,13 +173,7 @@ async function computeRecommendations(onProgress){
         top8: Array.isArray(data.top8) ? data.top8 : null,
       };
     }));
-    checked += batch.length;
     scored = scored.concat(results.filter(Boolean)).sort((a, b) => b.performanceScore - a.performanceScore);
-    // Report progress before the early-exit check, not after - otherwise a search that finds its 3
-    // candidates in the very first batch (common for a smaller field, e.g. Stav) never calls
-    // onProgress at all, and the loading box (and its time estimate) never shows anything besides
-    // the initial static "Beregner anbefalinger …" the whole way through.
-    onProgress?.(checked, candidates.length);
     if (scored.length >= 3) break;
   }
 
