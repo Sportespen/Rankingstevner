@@ -276,10 +276,11 @@ function loadRankPositions(items){
 }
 function itemHtml(x, ownMarkText){
   const improvement = Number.isFinite(x.improvement) ? x.improvement : null;
+  const newScoreBit = Number.isFinite(x.rankProjected) ? ` (ny Ranking Score: ${x.rankProjected})` : '';
   const improvementLine = improvement != null
     ? (improvement > 0
-        ? `<small style="display:block;color:#45d483;font-weight:700">+${improvement} poeng mot din nåværende Ranking Score.</small>`
-        : `<small style="display:block;color:#aebed0">${improvement} poeng mot din nåværende Ranking Score - fortsatt en sterk Performance Score, men ikke en forbedring akkurat nå.</small>`)
+        ? `<small style="display:block;color:#45d483;font-weight:700">+${improvement} poeng mot din nåværende Ranking Score${newScoreBit}.</small>`
+        : `<small style="display:block;color:#aebed0">${improvement} poeng mot din nåværende Ranking Score${newScoreBit} - fortsatt en sterk Performance Score, men ikke en forbedring akkurat nå.</small>`)
     // No established Ranking Score to compare against yet (too few tellende resultater i perioden) -
     // silently showing nothing here read as a missing/broken feature rather than what it actually is:
     // this result would BE the (start of the) ranking grunnlag, not an improvement on one that doesn't

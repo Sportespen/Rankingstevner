@@ -99,7 +99,23 @@ function bestValidSelection(entries,n,minMain){const valid=combinations(entries,
 document.getElementById("calculate").addEventListener("click",()=>{
   const details=adjustedResultDetails();if(!details){alert("Skriv inn et gyldig resultat som finnes innenfor World Athletics-tabellen.");return;}
   if(windEvents.has(eventSelect.value)&&parseWind(windInput.value)===null){alert("Legg inn vind, eller skriv NWI dersom vindinformasjon mangler.");return;}
-  const req=requirements[activeGroup],scoreEls=[...document.querySelectorAll(".existingScore")],typeEls=[...document.querySelectorAll(".existingType")];const existing=scoreEls.map((el,i)=>({score:Number(el.value),type:typeEls[i].value,label:`Score ${i+1}`})).filter(x=>Number.isFinite(x.score)&&x.score>0);
+  const req=requirements[activeGroup],scoreEls=[...document.querySelectorAll(".existingScore")],typeEls=[...document.querySelectorAll(".existingType")];
+  // The 5 "Score N" fields are normally auto-filled by ranking-basis.js's fillScores() on its own
+  // 140ms timer, decoupled from whenever the user actually clicks "Beregn" - "Anbefalte stevner"
+  // (ranking-recommendations.js) computes its own current/projected Ranking Score straight from
+  // window.__rankingstevnerReconstructedBasis with no such timer in between. Confirmed live: the
+  // two can disagree (+13 shown in a recommendation card vs +15 here for the identical hypothetical
+  // result) purely because these DOM fields still held an earlier snapshot than the basis the box
+  // just computed with, even though bestValidSelection() itself is the exact same algorithm in both
+  // places. Re-syncing these fields from that same always-fresh global right before reading them -
+  // only when it matches the currently selected øvelse and has enough entries, i.e. the athlete has
+  // an auto-detected WA profile - guarantees this calculator can never again disagree with the box
+  // over the same input, while manual entry (no WA profile loaded) is untouched.
+  const liveBasis=window.__rankingstevnerReconstructedBasis;
+  if(liveBasis&&liveBasis.event===eventSelect.value&&Array.isArray(liveBasis.selected)&&liveBasis.selected.length>=req.n){
+    liveBasis.selected.slice(0,scoreEls.length).forEach((x,i)=>{scoreEls[i].value=String(x.performanceScore);if(typeEls[i])typeEls[i].value=x.type||"main";});
+  }
+  const existing=scoreEls.map((el,i)=>({score:Number(el.value),type:typeEls[i].value,label:`Score ${i+1}`})).filter(x=>Number.isFinite(x.score)&&x.score>0);
   if(existing.length<req.n){alert(`Legg inn ${req.n} nåværende Performance Scores først.`);return;}
   const currentSel=bestValidSelection(existing,req.n,req.minMain);if(!currentSel){alert(`De nåværende resultatene må inneholde minst ${req.minMain} Main Event-resultat${req.minMain>1?"er":""}.`);return;}
   const ps=(placingTables[activeGroup][category.value]||[])[Number(placing.value)-1]||0;const newPerf=details.adjusted+ps;const currentRank=Math.floor(currentSel.reduce((s,x)=>s+x.score,0)/req.n);
