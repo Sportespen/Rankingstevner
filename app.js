@@ -63,6 +63,15 @@ function lookupScoreFor(code,raw){const evt=scoringData?.[sex.value]?.[code];if(
 function parseWind(raw){const s=String(raw).trim().toUpperCase().replace(",",".");if(!s)return null;if(s==="NWI")return"NWI";const v=Number(s);return Number.isFinite(v)?v:null;}
 function windModFor(raw){const w=parseWind(raw);if(w===null)return null;if(w==="NWI")return-30;if(w<0)return Math.abs(w)*6;if(w>2)return-w*6;return 0;}
 
+// A WA Result Score is always a whole number - it's a direct lookup in an integer-valued scoring
+// table, never a computed fraction. windModFor()'s formula (points per m/s of excess wind) can
+// legitimately land on a fractional value for a non-round wind reading (e.g. +2.2 m/s -> -13.2),
+// and nothing downstream ever rounded that back to a real WA score before using or displaying it -
+// confirmed live as "974,8"/"1009,8" Result/Performance Scores, which cannot be real WA values and
+// then fed straight into the Ranking Score average, making a comma-bearing Result Score not just a
+// display glitch but a genuine input error into everything computed from it. Rounding to the
+// nearest whole point here, at the source, fixes it for every consumer at once (this file's own
+// calculate() handler, trinn3.js's live preview, and anything reading resultScore.value downstream).
 function adjustedResultDetails(){
   const code=eventSelect.value;const base=lookupScoreFor(code,markInput.value);if(base==null)return null;
   if(activeGroup==="combined"){const mod=combinedWindStatus.value==="normal"?0:-24;return{base,adjusted:base+mod,windMod:mod,usedBLJ:false};}
@@ -73,7 +82,7 @@ function adjustedResultDetails(){
     const legalWind=parseWind(bljWind.value);const bljBase=lookupScoreFor(code,bljMark.value);
     if(bljBase!=null&&typeof legalWind==="number"&&legalWind<=2){const bljMod=windModFor(bljWind.value)??0;const bljAdjusted=bljBase+bljMod;if(bljAdjusted>best){best=bljAdjusted;usedBLJ=true;}}
   }}
-  return{base,adjusted:best,windMod:mod,usedBLJ};
+  return{base,adjusted:Math.round(best),windMod:mod,usedBLJ};
 }
 
 function refreshResultScore(){const d=adjustedResultDetails();resultScoreInput.value=d?fmt(d.adjusted):"";if(windEvents.has(eventSelect.value)){const mod=windModFor(windInput.value);windAdjustment.value=mod===null?"–":`${mod>0?"+":""}${fmt(mod)}`;}else if(activeGroup==="combined")windAdjustment.value=combinedWindStatus.value==="normal"?"0":"-24";}

@@ -604,5 +604,13 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('rankingbasisupdated', () => scheduleRecompute(300));
   document.getElementById('event')?.addEventListener('change', () => { showWorkingNow(); scheduleRecompute(600); });
   document.getElementById('sex')?.addEventListener('change', () => { showWorkingNow(); scheduleRecompute(700); });
+  // Confirmed live: this box's own improvement/rank figures can go stale relative to whatever the
+  // "Ny prestasjon" calculator shows a moment later, if the athlete's local ranking grunnlag
+  // (allResults) changed anywhere in the time since this box last computed - projectedRankingScore()
+  // itself always reads that data fresh when called, but nothing forced this box to CALL it again
+  // just because the user is actively comparing the two right now. Clicking "Beregn rankingeffekt"
+  // is exactly the moment a live, side-by-side comparison happens, so re-running this box's own
+  // search right then keeps the two as close to the same instant of truth as this architecture allows.
+  document.getElementById('calculate')?.addEventListener('click', () => scheduleRecompute(400));
 });
 })();
