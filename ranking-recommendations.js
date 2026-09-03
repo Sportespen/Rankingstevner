@@ -355,12 +355,35 @@ async function recompute(){
   const myRun = ++runId;
   if (computing) return; // a newer trigger will run right after this one finishes anyway
   computing = true;
-  const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const now = () => typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const startedAt = now();
+  let lastUpdateAt = startedAt;
+  let lastProgress = null; // {checked, total} from the most recent real onProgress call, if any
+  function writeProgress(checked, total){
+    lastUpdateAt = now();
+    lastProgress = { checked, total };
+    const eta = formatEta(estimateSecondsRemaining(startedAt, checked, total));
+    const b = box(); if (b) b.innerHTML = loadingBoxHtml(`Jobber med å ta frem anbefalte rankingstevner basert på din ranking (sjekket ${checked} av ${total} stevner${eta}) …`, true);
+  }
+  // A single slow lookup (e.g. the one meet in a small candidate pool for Mangekamp, whose history
+  // lookup alone took ~45s live) meant NO onProgress call at all for the whole wait - the box just
+  // sat on the static initial text with zero feedback the entire time. This ticks every 2s and, if
+  // nothing has updated the box in the last 10s, writes something anyway: the live progress line
+  // with a freshly recalculated ETA if we have at least one real data point to extrapolate from, or
+  // - before that first data point ever arrives - a plain elapsed-time line, so "still working" is
+  // never more than ~10s away from being visible no matter how the search is currently spending its time.
+  const heartbeat = setInterval(() => {
+    if (myRun !== runId) { clearInterval(heartbeat); return; }
+    if (now() - lastUpdateAt < 10000) return;
+    if (lastProgress) { writeProgress(lastProgress.checked, lastProgress.total); return; }
+    lastUpdateAt = now();
+    const elapsed = Math.round((now() - startedAt) / 1000);
+    const b = box(); if (b) b.innerHTML = loadingBoxHtml(`Beregner anbefalinger … (${elapsed} sek, dette tar litt tid) …`, true);
+  }, 2000);
   try {
     const result = await computeRecommendations((checked, total) => {
       if (myRun !== runId) return; // superseded - don't fight the newer run's own rendering
-      const eta = formatEta(estimateSecondsRemaining(startedAt, checked, total));
-      const b = box(); if (b) b.innerHTML = loadingBoxHtml(`Jobber med å ta frem anbefalte rankingstevner basert på din ranking (sjekket ${checked} av ${total} stevner${eta}) …`, true);
+      writeProgress(checked, total);
     });
     if (myRun !== runId) return; // event/sex changed again while this was in flight
     if (result?.reason === 'not-ready') {
@@ -369,6 +392,7 @@ async function recompute(){
     }
     const b = box(); if (b) b.innerHTML = renderHtml(result);
   } finally {
+    clearInterval(heartbeat);
     computing = false;
     // If something else asked for a recompute while this one was running, run once more now
     // instead of leaving stale data showing.
