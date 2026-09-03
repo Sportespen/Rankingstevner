@@ -114,7 +114,18 @@ async function computeRecommendations(onProgress){
 
   await scoring.ready();
   const ascending = isAscending(event);
-  const resultScore = scoring.resultScore(event, pb);
+  // scoring.resultScore() (ranking-basis.js's scoreFromTable) only knows the individual-event
+  // scoring tables (scoringData[sex][code]) - Decathlon/Heptathlon have no entry there at all, so it
+  // always returned null for combined events, even though the athlete plainly HAS a Result Score
+  // (shown in their own ranking grunnlag above). combined-ranking-fix.js patches the page-wide
+  // window.lookupScoreFor to route Decathlon/Heptathlon through its own combinedScore()
+  // (table-or-interpolated-anchors) instead - the same function the "Ny prestasjon" calculator uses
+  // for a manually entered combined-event mark. Preferring it here too, with the old path as a
+  // fallback in case that patch hasn't loaded for some reason, fixes combined events without
+  // duplicating the points->Result Score logic a second time.
+  const resultScore = typeof window.lookupScoreFor === 'function'
+    ? window.lookupScoreFor(event, pb)
+    : scoring.resultScore(event, pb);
   if (resultScore == null) return { reason: 'no-result-score' };
 
   const candidates = finder.currentMatches()
