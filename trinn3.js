@@ -3,12 +3,17 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
-  const placingTables = {
-    standard:{OW:[260,230,210,190,175,160,150,140,91,84,77,70,66,63,60,57],DF:[170,150,130,120,110,100,95,90,63,56,49,42],GW:[140,120,110,100,90,80,75,70,49,42,35,32],GL:[120,105,95,85,75,70,65,60,42,35,31,28],A:[100,84,77,70,63,56,49,42,35,31,27,24],B:[70,56,49,42,38,34,30,27,24,21,18,15],C:[42,35,31,28,25,22,19,16,14,12,10,8],D:[28,24,21,18,15,13,12,11],E:[18,15,13,11,9,7],F:[11,7,4]},
-    distance:{OW:[215,190,170,155,140,130],DF:[130,115,100,87,80,73],GW:[115,95,85,77,70,63],GL:[95,85,77,70,63,56],A:[70,63,56,49,42,35],B:[50,42,35,31,27,24],C:[35,28,24,21,18,16],D:[25,19,15,13,11,9],E:[14,11,9,8,7,6],F:[8,5,3]},
-    tenk:{OW:[200,175,160,145,130,120,110,100],DF:[125,105,95,85,75,67,60,53],GW:[100,85,75,65,56,49,42,35],GL:[80,65,55,46,39,35,31,28],A:[56,49,42,35,31,27,24,21],B:[42,35,31,27,24,21,18,15],C:[32,27,22,18,15,13,12,11],D:[21,15,13,11,10,9,8,7],E:[14,10,7,6,5,4],F:[7,4,2]},
-    combined:{OW:[280,250,225,205,185,170,155,145,95,85,75,65,60,55,50,46],DF:[175,150,135,120,105,95,85,75,50,40,35,30],GW:[140,120,105,90,80,70,60,50,35,30,24,18],GL:[110,90,75,65,55,50,45,40,30,25,20,15],A:[80,70,60,50,45,40,35,30],B:[60,50,45,40,35,30,25,20],C:[45,38,32,26,22,19,17,15],D:[30,22,18,16,14,12,11,10],E:[20,14,10,8,7,6],F:[10,6,3]}
-  };
+  // Was its own, THIRD independent copy of this table (a fourth exists in ranking-basis.js, now
+  // fixed) - stale (this file's combined values were the pre-audit 2026 draft; distance/tenk were
+  // truncated to only the first 6/8 places) and, because it's declared here, unreachable by
+  // wa2026-placing-audit.js's patchEngine() patch (that only reaches the bare global `placingTables`
+  // app.js declares - a `const` of the same name in this file's own IIFE shadows it instead of
+  // being patched). The live preview text happened to still end up correct in practice only because
+  // wa2026-placing-audit.js's own DOM writes run later and overwrite whatever this file set moments
+  // before - fragile, and only true for the preview, not for anything computed here. Reading the
+  // shared global instead of shadowing it means this file gets the real, current, audited table -
+  // both the initial correct values AND any future patch - same object as everyone else, no more
+  // independent copies to go stale.
   function groupFor(code){if(code==='5000m'||code==='3000mSC')return'distance';if(code==='10000m')return'tenk';if(code==='Decathlon'||code==='Heptathlon')return'combined';return'standard';}
   function init(){
     const event=$('event'),category=$('category'),placing=$('placing'),resultScore=$('resultScore'),mark=$('mark'),wind=$('wind'),bljMark=$('bljMark'),bljWind=$('bljWind'),combinedWindStatus=$('combinedWindStatus'),resultOut=$('resultScoreMirror'),placingOut=$('placingScorePreview'),performanceOut=$('performanceScorePreview');
