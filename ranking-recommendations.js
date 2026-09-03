@@ -263,7 +263,13 @@ function renderHtml(result){
     return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Fant ingen stevner med nok verifisert historisk nivå ennå til å gi konkrete anbefalinger (så langt sjekket ${result.probed} stevner).${currentLine}</p></div>`;
   }
   const ownMarkText = formatOwnMark(result);
-  const items = result.top.map(x => ({ ...x, improvement: Number.isFinite(result.currentRankingScore) ? x.performanceScore - result.currentRankingScore : null }));
+  // The 3 candidates are CHOSEN by highest Performance Score (computeRecommendations' own sort) -
+  // that selection logic is unchanged. Only the DISPLAY order is different: nearest meet first, so
+  // the list reads like a practical shortlist of what's coming up rather than a ranked-by-score table.
+  const items = result.top
+    .slice()
+    .sort((a, b) => new Date(a.meet.start) - new Date(b.meet.start))
+    .map(x => ({ ...x, improvement: Number.isFinite(result.currentRankingScore) ? x.performanceScore - result.currentRankingScore : null }));
   return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">
     ${heading}
     <p class="muted" style="margin:8px 0 12px">Stevner der høy stevnekategori og et historisk sett svakt felt gir best mulighet til å forbedre rankingen din, basert på din beste tellende prestasjon (${ownMarkText}).${currentLine}</p>
