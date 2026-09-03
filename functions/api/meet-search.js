@@ -13,6 +13,22 @@ async function fetchWithTimeout(url,options){
 }
 
 export async function onRequestGet(context){
+  // Every external call already has its own try/catch + 8s deadline (see fetchWithTimeout above),
+  // so nothing WITHIN this function should be able to throw past onRequestGet's own return - but
+  // "should" isn't "can't", and the one failure mode this can never protect against is Cloudflare's
+  // own platform-level request duration limit killing the whole invocation before the JSON response
+  // line is reached, which returns Cloudflare's own HTML error page instead. Wrapping the entire
+  // body means any OTHER unexpected exception (a future edit, an unhandled edge case) still returns
+  // valid JSON from THIS function rather than letting a raw error surface as "<!DOCTYPE..." on the
+  // frontend - the one thing genuinely outside this function's control stays outside it either way.
+  try{
+    return await handleMeetSearch(context);
+  }catch(e){
+    return json({ok:false,error:String(e?.message||e),results:[]},200);
+  }
+}
+
+async function handleMeetSearch(context){
   const url=new URL(context.request.url);
   const event=(url.searchParams.get('event')||'').trim();
   const combined=event==='Decathlon'||event==='Heptathlon';
