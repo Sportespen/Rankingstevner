@@ -318,6 +318,11 @@ function loadingBoxHtml(text, blink){
 
 let runId = 0;
 let computing = false;
+// Set the first time a 'not-ready' result is seen, cleared again as soon as a run gets past that
+// gate - survives across the whole retry streak (unlike anything declared inside recompute()
+// itself), so elapsed time can be tracked even though each individual attempt below resolves in
+// under a millisecond and dies long before its own per-run heartbeat could ever tick even once.
+let notReadySince = null;
 // ranking-basis.js (window.RankingstevnerScoring) loads via a three-hop chain (target-score.js
 // schedules official-ranking.js, which only injects ranking-basis.js once ITS OWN script has
 // finished loading) - confirmed live twice now that this can take longer than expected, or
@@ -388,9 +393,22 @@ async function recompute(){
     });
     if (myRun !== runId) return; // event/sex changed again while this was in flight
     if (result?.reason === 'not-ready') {
+      // Confirmed live: ranking-basis.js's own three-hop load chain can genuinely take minutes, not
+      // just seconds, in a bad case - and every single one-second retry attempt here resolves near-
+      // instantly (the not-ready check is the very first line of computeRecommendations), so the
+      // per-run heartbeat above never gets anywhere near its own 10s threshold before being torn
+      // down again. Tracking elapsed time across the whole retry streak instead - not just within
+      // one attempt - means a long wait for dependencies alone is now just as visible as a long wait
+      // during the actual search.
+      if (notReadySince == null) notReadySince = now();
+      const waited = now() - notReadySince;
+      if (waited >= 10000 && !box().querySelector('[data-jump-to-meet]')) {
+        const b = box(); if (b) b.innerHTML = loadingBoxHtml(`Beregner anbefalinger … (${Math.round(waited / 1000)} sek, dette tar litt tid) …`, true);
+      }
       scheduleRecompute(1000);
       return; // leave the loading state (or whatever was already showing) rather than blanking it
     }
+    notReadySince = null;
     const b = box(); if (b) b.innerHTML = renderHtml(result);
   } finally {
     clearInterval(heartbeat);
