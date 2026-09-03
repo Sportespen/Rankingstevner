@@ -251,8 +251,11 @@ function itemHtml(x, ownMarkText){
     // No established Ranking Score to compare against yet (too few tellende resultater i perioden) -
     // silently showing nothing here read as a missing/broken feature rather than what it actually is:
     // this result would BE the (start of the) ranking grunnlag, not an improvement on one that doesn't
-    // exist yet.
-    : `<small style="display:block;color:#45d483;font-weight:700">Du har ingen etablert Ranking Score i denne øvelsen ennå - dette resultatet vil telle med i grunnlaget.</small>`;
+    // exist yet. Distinct from x.hasCurrentScore being true but the delta calc itself not having
+    // resolved yet - that case shows NOTHING here rather than either message, since neither "no score
+    // yet" nor a fabricated number would be true - the box's own rankingbasisupdated listener re-runs
+    // this once the real numbers are ready.
+    : (x.hasCurrentScore ? '' : `<small style="display:block;color:#45d483;font-weight:700">Du har ingen etablert Ranking Score i denne øvelsen ennå - dette resultatet vil telle med i grunnlaget.</small>`);
   const yearBit = x.year ? ` (${x.year})` : '';
   const sourceLink = x.source ? ` · <a href="${esc(x.source)}" target="_blank" rel="noopener">Historisk nivå${yearBit}</a>` : '';
   // Clicking the card jumps down to the same meet's own full card (contact info, program,
@@ -294,19 +297,25 @@ function renderHtml(result){
     .map(x => {
       // A Ranking Score is the AVERAGE of the athlete's best counted Performance Scores, not any
       // single meet's Performance Score on its own - diffing performanceScore straight against
-      // currentRankingScore (the old approach) overstated the improvement whenever a strong result
-      // was already counting toward that average. projectedRankingScore() now returns BOTH current
-      // and projected from the exact same selection (the "Ny prestasjon" calculator's own DOM-backed,
-      // Main-Event-aware search), not projected alone diffed against a separately-sourced current -
-      // that first fix still disagreed with the calculator (+12 vs its +9 for the same hypothetical
-      // result) because this box's "current" preferred WA's cached official score while the
-      // calculator's is always the local reconstruction; diffing two numbers from one shared call
-      // instead of two independently-sourced ones is what actually guarantees they agree.
+      // currentRankingScore overstates the improvement whenever a strong result already counts
+      // toward that average. projectedRankingScore() returns BOTH current and projected from the
+      // exact same selection (mirroring the "Ny prestasjon" calculator's own Main-Event-aware
+      // search), so the two numbers can only agree with each other, never independently disagree.
+      //
+      // Deliberately no numeric fallback when it returns null (e.g. the local reconstruction
+      // hasn't finished loading all counted results yet, or genuinely can't satisfy the Main Event
+      // requirement from what's loaded so far) - confirmed live that showing performanceScore minus
+      // currentRankingScore "just to show something" produced a WRONG number that didn't match the
+      // calculator (+24 shown here vs its +10 for the identical hypothetical result). An honest
+      // "not shown yet" is strictly better than a plausible-looking wrong one - and since this box
+      // already re-runs on rankingbasisupdated (fired whenever the local basis genuinely changes),
+      // a transient "still loading" case corrects itself on its own the moment real data lands,
+      // without ever having shown a fabricated number in the meantime.
       const delta = scoring?.projectedRankingScore?.(eventCode(), x.performanceScore);
       const improvement = Number.isFinite(delta?.current) && Number.isFinite(delta?.projected)
         ? delta.projected - delta.current
-        : (Number.isFinite(result.currentRankingScore) ? x.performanceScore - result.currentRankingScore : null);
-      return { ...x, improvement };
+        : null;
+      return { ...x, improvement, hasCurrentScore: Number.isFinite(result.currentRankingScore) };
     });
   return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">
     ${heading}
