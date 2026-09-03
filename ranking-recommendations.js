@@ -242,6 +242,38 @@ function historicalLevelLine(x){
   return `<small class="muted" style="display:block;margin-top:2px">${yearBit}${segments.join(' · ')}</small>`;
 }
 
+// Estimated new WORLD RANKING POSITION for each recommended meet (the same live World Athletics
+// world-rankings lookup the "Ny prestasjon" calculator's own "Ny ranking" field uses), fired off in
+// the background after the cards already have their Performance Score/improvement text - this is a
+// slow, best-effort external lookup (a binary search over WA's own public ranking pages), so it must
+// never hold up the cards themselves. Silently leaves the placeholder empty on failure/timeout
+// (never a fabricated position), same policy as the improvement figure above.
+function loadRankPositions(items){
+  const waId = (document.getElementById('waProfileId')?.value || '').trim().match(/(\d{7,9})/)?.[1];
+  if (!waId) return;
+  const event = eventCode();
+  const sex = athleteSex();
+  for (const x of items) {
+    if (!Number.isFinite(x.rankProjected) || !x.meet?.id) continue;
+    const meetId = x.meet.id;
+    (async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      try {
+        const res = await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(waId)}&event=${encodeURIComponent(event)}&sex=${encodeURIComponent(sex)}&newScore=${encodeURIComponent(x.rankProjected)}&v=1`, { cache: 'no-store', signal: controller.signal });
+        const data = await res.json();
+        const ok = Number.isFinite(data?.estimatedNewRank) && data.estimatedNewRank > 0;
+        if (!ok) return;
+        const el = document.getElementById(`rrRank-${meetId}`);
+        if (el) el.textContent = `Ny ranking: #${data.estimatedNewRank}`;
+      } catch (_) {
+        // timeout/network failure - leave the placeholder empty rather than guess
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    })();
+  }
+}
 function itemHtml(x, ownMarkText){
   const improvement = Number.isFinite(x.improvement) ? x.improvement : null;
   const improvementLine = improvement != null
@@ -268,7 +300,10 @@ function itemHtml(x, ownMarkText){
     <small style="display:block;margin-top:8px">Forventet ${ordinal(x.place)} plass med din beste tellende prestasjon (<strong>${esc(ownMarkText)}</strong>) → <strong>Performance Score ${x.performanceScore}</strong> (Result Score ${x.resultScore} + Placing Score ${x.placingScore})${sourceLink}</small>
     ${x.lastPlaceEstimate ? `<small class="muted" style="display:block;margin-top:2px">Anslag: din prestasjon var svakere enn alle ${x.place - 1} kjente resultatene, men feltet var lite nok til at sisteplass trolig fortsatt gir rankingpoeng.</small>` : ''}
     ${improvementLine}
-    <small class="muted" style="display:block;margin-top:8px">Trykk for å se hele stevnekortet ↓</small>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:8px">
+      <small class="muted">Trykk for å se hele stevnekortet ↓</small>
+      ${Number.isFinite(x.rankProjected) ? `<small id="rrRank-${esc(x.meet.id)}" style="color:#45d483;font-weight:700;white-space:nowrap"></small>` : ''}
+    </div>
   </div>`;
 }
 
@@ -315,8 +350,9 @@ function renderHtml(result){
       const improvement = Number.isFinite(delta?.current) && Number.isFinite(delta?.projected)
         ? delta.projected - delta.current
         : null;
-      return { ...x, improvement, hasCurrentScore: Number.isFinite(result.currentRankingScore) };
+      return { ...x, improvement, hasCurrentScore: Number.isFinite(result.currentRankingScore), rankProjected: Number.isFinite(delta?.projected) ? delta.projected : null };
     });
+  loadRankPositions(items);
   return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">
     ${heading}
     <p class="muted" style="margin:8px 0 12px">Stevner der høy stevnekategori og et historisk sett svakt felt gir best mulighet til å forbedre rankingen din, basert på din beste tellende prestasjon (${ownMarkText}).${currentLine}</p>
