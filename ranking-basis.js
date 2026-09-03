@@ -100,30 +100,41 @@
   function candidate(r,code){const g=group(code),type=g==='combined'?combinedType(r.discipline,code):individualType(r.discipline,code);if(!type||r.legal===false||!validDate(r,code))return null;let rs=Number(r.resultScore);if((!Number.isFinite(rs)||rs<=0)&&g!=='combined')rs=scoreFromTable(code,r.mark);const place=Number(r.place),cat=String(r.category||'').toUpperCase();const ps=placingScoreFor(g,cat,place);if(!Number.isFinite(rs)||rs<=0||!Number.isFinite(place)||ps==null)return null;return {...r,type,resultScore:rs,placingScore:ps,score:rs+ps};}
   function basisFor(code){const needed=req[group(code)];const candidates=allResults.map(r=>candidate(r,code)).filter(Boolean).sort((a,b)=>b.score-a.score);if(group(code)==='combined'){const validPairs=[];for(let i=0;i<candidates.length;i++)for(let j=i+1;j<candidates.length;j++){const pair=[candidates[i],candidates[j]];if(pair.some(x=>x.type==='main'))validPairs.push(pair);}if(!validPairs.length)return {selected:candidates.slice(0,needed),candidates,needed,complete:false};validPairs.sort((a,b)=>(b[0].score+b[1].score)-(a[0].score+a[1].score));const selected=validPairs[0].sort((a,b)=>b.score-a.score);return {selected,candidates,needed,complete:true,rankingScore:Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed)};}const selected=candidates.slice(0,needed);return {selected,candidates,needed,complete:selected.length>=needed,rankingScore:selected.length>=needed?Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed):null};}
   // What would the Ranking Score (the AVERAGE of the best `needed` counted results, not a single
-  // Performance Score on its own) become if this hypothetical new result is added to the pool? Reuses
-  // basisFor()'s own selection strategy per group - the combined branch's proper best-VALID-pair
-  // search (respecting the Main Event requirement), a plain top-N-by-score slice otherwise - just
-  // with the new entry mixed into the candidate pool, so a caller (the "Anbefalte stevner" box) can
-  // show the real ranking-score effect instead of naively diffing a single meet's Performance Score
-  // against the current Ranking Score average, which overstates the improvement whenever the
-  // athlete already has a strong result counting toward that average.
+  // Performance Score on its own) become if this hypothetical new result is added to the pool?
+  //
+  // First version of this recomputed the "current" candidate pool independently from allResults via
+  // basisFor()'s own (Main-Event-BLIND for non-combined groups) top-N-by-score slice - confirmed
+  // live this could disagree with the "Ny prestasjon" calculator's own number for the exact same
+  // hypothetical result (+12 shown here vs the calculator's +9). The calculator's currentSel/newSel
+  // (app.js's update() handler) is a proper exhaustive search over the athlete's EXISTING counted
+  // results - the .existingScore/.existingType input values, auto-filled from basisFor() itself -
+  // that also enforces the minMain requirement (e.g. standard events need >=3 Main Event results
+  // among the 5 counted), which basisFor()'s own simple slice does not. Reading those same DOM
+  // values and running the identical combinations()/bestValidSelection() search (mirrored from
+  // app.js, not re-derived) guarantees this always agrees with what the calculator would show for
+  // the same input, instead of two independently-arrived-at numbers that can quietly diverge.
+  function combinations(arr,k){const out=[];function rec(start,pick){if(pick.length===k){out.push([...pick]);return;}for(let i=start;i<=arr.length-(k-pick.length);i++){pick.push(arr[i]);rec(i+1,pick);pick.pop();}}rec(0,[]);return out;}
+  function bestValidSelection(entries,n,minMain){const valid=combinations(entries,n).filter(c=>c.filter(x=>x.type==='main').length>=minMain);if(!valid.length)return null;valid.sort((a,b)=>b.reduce((s,x)=>s+x.score,0)-a.reduce((s,x)=>s+x.score,0));return valid[0];}
+  const MIN_MAIN={standard:3,distance:2,tenk:1,combined:1};
+  // Returns {current, projected} from the SAME selection, not projected alone paired against a
+  // separately-sourced "current" (e.g. currentRankingScore(), which prefers WA's own official score
+  // when cached) - a caller diffing projected against a DIFFERENT current than the one this was
+  // actually computed relative to could still disagree with the calculator even with the DOM-backed
+  // selection above, if official and locally-reconstructed current happen to differ.
   function projectedRankingScore(code,newScore){
     if(!Number.isFinite(newScore))return null;
-    const needed=req[group(code)];
-    const newEntry={type:'main',score:newScore};
-    const candidates=[...allResults.map(r=>candidate(r,code)).filter(Boolean),newEntry];
-    if(group(code)==='combined'){
-      let best=null;
-      for(let i=0;i<candidates.length;i++)for(let j=i+1;j<candidates.length;j++){
-        const pair=[candidates[i],candidates[j]];
-        if(!pair.some(x=>x.type==='main'))continue;
-        const total=pair[0].score+pair[1].score;
-        if(!best||total>best)best=total;
-      }
-      return best==null?null:Math.floor(best/needed);
-    }
-    const selected=candidates.sort((a,b)=>b.score-a.score).slice(0,needed);
-    return selected.length>=needed?Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed):null;
+    const g=group(code),needed=req[g],minMain=MIN_MAIN[g];
+    const scoreEls=[...document.querySelectorAll('.existingScore')],typeEls=[...document.querySelectorAll('.existingType')];
+    const existing=scoreEls.map((el,i)=>({score:Number(el.value),type:typeEls[i]?.value||'main'})).filter(x=>Number.isFinite(x.score)&&x.score>0);
+    if(existing.length<needed)return null;
+    const currentSel=bestValidSelection(existing,needed,minMain);
+    if(!currentSel)return null;
+    const newSel=bestValidSelection([...existing,{score:newScore,type:'main'}],needed,minMain);
+    if(!newSel)return null;
+    return {
+      current:Math.floor(currentSel.reduce((s,x)=>s+x.score,0)/needed),
+      projected:Math.floor(newSel.reduce((s,x)=>s+x.score,0)/needed)
+    };
   }
   function fillScores(basis){setTimeout(()=>{const scores=[...document.querySelectorAll('.existingScore')],types=[...document.querySelectorAll('.existingType')];if(!scores.length)return;scores.forEach(el=>el.value='');types.forEach(el=>el.value='main');basis.selected.slice(0,scores.length).forEach((x,i)=>{scores[i].value=String(x.score);if(types[i])types[i].value=x.type;});scores.forEach(el=>el.dispatchEvent(new Event('input',{bubbles:true})));},140);}
   const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));

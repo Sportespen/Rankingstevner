@@ -295,14 +295,16 @@ function renderHtml(result){
       // A Ranking Score is the AVERAGE of the athlete's best counted Performance Scores, not any
       // single meet's Performance Score on its own - diffing performanceScore straight against
       // currentRankingScore (the old approach) overstated the improvement whenever a strong result
-      // was already counting toward that average, exactly like the "Ny prestasjon" calculator's own
-      // (correct) figure for the same hypothetical meet. projectedRankingScore() re-runs the same
-      // best-N selection with this result mixed in, so the two numbers agree.
-      const projected = typeof scoring?.projectedRankingScore === 'function'
-        ? scoring.projectedRankingScore(eventCode(), x.performanceScore)
-        : null;
-      const improvement = Number.isFinite(projected) && Number.isFinite(result.currentRankingScore)
-        ? projected - result.currentRankingScore
+      // was already counting toward that average. projectedRankingScore() now returns BOTH current
+      // and projected from the exact same selection (the "Ny prestasjon" calculator's own DOM-backed,
+      // Main-Event-aware search), not projected alone diffed against a separately-sourced current -
+      // that first fix still disagreed with the calculator (+12 vs its +9 for the same hypothetical
+      // result) because this box's "current" preferred WA's cached official score while the
+      // calculator's is always the local reconstruction; diffing two numbers from one shared call
+      // instead of two independently-sourced ones is what actually guarantees they agree.
+      const delta = scoring?.projectedRankingScore?.(eventCode(), x.performanceScore);
+      const improvement = Number.isFinite(delta?.current) && Number.isFinite(delta?.projected)
+        ? delta.projected - delta.current
         : (Number.isFinite(result.currentRankingScore) ? x.performanceScore - result.currentRankingScore : null);
       return { ...x, improvement };
     });
