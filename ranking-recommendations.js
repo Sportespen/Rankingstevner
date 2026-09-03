@@ -77,10 +77,27 @@ function placementFor(allMarks, mark, ascending){
 // Athlete's own best mark for the selected event, same source (and same 'main'-type-only rule) as
 // meet-history.js's bestOwnMark() - the indoor 'similar' substitute marks (e.g. 60m for 100m)
 // aren't a fair comparison against an outdoor field's marks, so only real same-distance marks count.
+// WA's own API returns a track mark exactly as it displays it - "2:14.73" for anything a minute or
+// longer, plain "10.87" under that - not a raw seconds number. A naive Number(r.mark) silently
+// produced NaN for every colon-formatted mark, which a plain Number.isFinite filter then dropped -
+// so this only ever worked for the events whose marks stay under a minute (100m, 400m, jumps/throws,
+// combined-event points), and always found "no own mark" for 800m/1500m/5000m/10000m/steeplechase
+// even when the athlete plainly had recent, valid results in period (visible in their own ranking
+// grunnlag table above the box).
+function parseOwnMark(raw){
+  const s = String(raw ?? '').trim().replace(',', '.');
+  if (!s) return NaN;
+  if (s.includes(':')) {
+    const parts = s.split(':').map(Number);
+    if (parts.some(v => !Number.isFinite(v))) return NaN;
+    return parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+  }
+  return Number(s);
+}
 function ownBestMark(event){
   const own = window.__rankingstevnerOwnResults;
   if (!own || own.event !== event) return null;
-  const marks = (Array.isArray(own.rows) ? own.rows : []).filter(r => r.type === 'main').map(r => Number(r.mark)).filter(Number.isFinite);
+  const marks = (Array.isArray(own.rows) ? own.rows : []).filter(r => r.type === 'main').map(r => parseOwnMark(r.mark)).filter(Number.isFinite);
   if (!marks.length) return null;
   return isAscending(event) ? Math.min(...marks) : Math.max(...marks);
 }
