@@ -13,6 +13,23 @@ function eventCode(){ return document.getElementById('event')?.value || ''; }
 function athleteSex(){ return document.getElementById('sex')?.value === 'W' ? 'W' : 'M'; }
 function isCombinedCode(event){ return event === 'Decathlon' || event === 'Heptathlon'; }
 function avg(a){ return a.reduce((s,x)=>s+x,0)/a.length; }
+// WA's own API returns a track mark exactly as it displays it - "2:14.73" for anything a minute or
+// longer, plain "10.87" under that - not a raw seconds number. A naive Number(r.mark) silently
+// produces NaN for every colon-formatted mark, which Number.isFinite then drops - confirmed live
+// this broke bestOwnMark()/bestOwnMarkForCode() below for every track event a minute or longer
+// (800m, 1500m, 5000m, 10000m, 3000mSC), always reporting "no own mark" even with real, valid,
+// in-period results, while sub-minute events (100m, 400m, ...) worked fine since their marks never
+// contain a colon to begin with.
+function parseOwnMark(raw){
+  const s = String(raw ?? '').trim().replace(',', '.');
+  if (!s) return NaN;
+  if (s.includes(':')) {
+    const parts = s.split(':').map(Number);
+    if (parts.some(v => !Number.isFinite(v))) return NaN;
+    return parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+  }
+  return Number(s);
+}
 
 function fetchHistory(name, date){
   const event = eventCode();
@@ -87,7 +104,7 @@ function bestOwnMark(indoor, ascending){
   const wantType = isCombinedCode(event) ? (indoor ? 'similar' : 'main') : 'main';
   diag.rowEntries = rows.map(r => ({ discipline: r.discipline, mark: r.mark, type: r.type, matched: r.type === wantType }));
   const relevant = rows.filter(r => r.type === wantType);
-  const marks = relevant.map(r => Number(r.mark)).filter(Number.isFinite);
+  const marks = relevant.map(r => parseOwnMark(r.mark)).filter(Number.isFinite);
   if (!marks.length) return { mark: null, diag };
   return { mark: ascending ? Math.min(...marks) : Math.max(...marks), diag };
 }
@@ -119,7 +136,7 @@ function bestOwnMarkForCode(altCode, ascending){
   if (!Array.isArray(rows) || !rows.length) return { mark: null, diag };
   diag.rowEntries = rows.map(r => ({ discipline: r.discipline, mark: r.mark, type: r.type, normDiscipline: normDiscipline(r.discipline), matched: r.type === 'similar' && normDiscipline(r.discipline) === wantDisc }));
   const relevant = rows.filter(r => r.type === 'similar' && normDiscipline(r.discipline) === wantDisc);
-  const marks = relevant.map(r => Number(r.mark)).filter(Number.isFinite);
+  const marks = relevant.map(r => parseOwnMark(r.mark)).filter(Number.isFinite);
   if (!marks.length) return { mark: null, diag };
   return { mark: ascending ? Math.min(...marks) : Math.max(...marks), diag };
 }
