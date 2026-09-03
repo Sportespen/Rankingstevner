@@ -324,34 +324,64 @@ function loadingBoxHtml(text, blink){
 
 let runId = 0;
 let computing = false;
-// Set the first time a 'not-ready' result is seen, cleared again as soon as a run gets past that
-// gate - survives across the whole retry streak (unlike anything declared inside recompute()
-// itself), so elapsed time can be tracked even though each individual attempt below resolves in
-// under a millisecond and dies long before its own per-run heartbeat could ever tick even once.
-let notReadySince = null;
-// ranking-basis.js (window.RankingstevnerScoring) loads via a three-hop chain (target-score.js
-// schedules official-ranking.js, which only injects ranking-basis.js once ITS OWN script has
-// finished loading) - confirmed live twice now that this can take longer than expected, or
-// possibly not resolve at all in a given page load. A capped retry (tried once already, 20x500ms)
-// still left the box permanently blank when that chain took longer than the cap - there's no real
-// cost to checking a few object references, so 'not-ready' now retries indefinitely on a gentle
-// cadence instead of giving up. Genuinely nothing to show (no WA-ID, no candidates found) still
-// renders an explanatory message via the other `reason` branches below - only 'not-ready' (the
-// scripts themselves not being loaded yet) keeps trying forever.
+const now = () => typeof performance !== 'undefined' ? performance.now() : Date.now();
+// Elapsed-time tracking lives at module level, keyed by event+sex, deliberately OUTSIDE recompute()
+// itself - live evidence showed a per-call heartbeat (a setInterval started fresh inside each
+// recompute() invocation) never actually got a chance to fire: meet-finder-v1.js's render() can
+// restart the whole search (via 'meetlistrendered' -> scheduleRecompute) more often than every 10
+// seconds - a MutationObserver on the athlete-profile status element alone can fire several times
+// while a profile is still loading - so every individual attempt died in its own `finally` well
+// before its own local timer ever reached 10s, no matter how long the user had actually been
+// waiting in total. Tracking "when did THIS logical search start" and "when did the box last show
+// something new" here instead survives any number of such restarts for the same event+sex.
+let searchKey = null;
+let searchStartedAt = null;
+let lastBoxUpdateAt = null;
+function box(){ return document.getElementById('rankingRecommendations'); }
+function noteBoxUpdate(){ lastBoxUpdateAt = now(); }
+// meet-finder-v1.js's render() doesn't just clear the box's content, it replaces the whole element
+// with a brand new, always-empty one - so "only fill an empty box" alone still fell back to the
+// bare, context-free default text on every single restart, even 30+ seconds into the same logical
+// search: the fresh node has no way to know that on its own. Consulting searchStartedAt (which does
+// survive the node being swapped out) whenever ANYTHING fills an empty box closes that gap - a
+// restart deep into an already-slow search shows the elapsed time immediately, instead of only
+// after the next heartbeat tick finds this new node 10s later.
+function initialLoadingHtml(){
+  const elapsed = searchStartedAt ? now() - searchStartedAt : 0;
+  if (elapsed >= 10000) {
+    return loadingBoxHtml(`Beregner anbefalinger … (${Math.round(elapsed / 1000)} sek, dette tar litt tid) …`, true);
+  }
+  return loadingBoxHtml('Beregner anbefalinger …', false);
+}
+// Runs for the page's whole lifetime (never cleared) rather than per search attempt. Only acts
+// while the box is both present and still genuinely in a loading state - renderHtml()'s finished
+// output (a real result OR a dead-end explanatory message) never contains the spinner markup
+// loadingBoxHtml() always includes, so that's a reliable "still working" signal that also correctly
+// stops this once a search actually finishes, instead of stacking elapsed-time text on top of a
+// completed message forever.
+setInterval(() => {
+  if (!searchStartedAt || lastBoxUpdateAt == null) return;
+  const b = box();
+  if (!b || !b.querySelector('.rr-spinner')) return;
+  if (now() - lastBoxUpdateAt < 10000) return;
+  const elapsed = Math.round((now() - searchStartedAt) / 1000);
+  b.innerHTML = loadingBoxHtml(`Beregner anbefalinger … (${elapsed} sek, dette tar litt tid) …`, true);
+  noteBoxUpdate();
+}, 2000);
 // Always re-fetches the live element instead of reusing one grabbed at the start of recompute() -
 // meet-finder-v1.js's render() replaces #kvalifiseringBoxes' entire innerHTML (a fresh, empty
 // #rankingRecommendations div included) on every filter/event/sex change AND on unrelated triggers
-// (a MutationObserver on the athlete-profile status element, which can fire more than once while a
-// profile is still loading). If that happens while a computeRecommendations() run is mid-flight, a
-// box reference captured once at the top of recompute() silently becomes a DETACHED node - every
-// later write via that stale reference (progress updates, the final result) still "succeeds" as far
-// as the code is concerned, but is invisible, since the visible tree now has a *different* element
-// with the same id. Confirmed live: this is why the box could sit on the initial static text
-// indefinitely no matter how long a search actually took - every write was landing on a node nobody
-// could see. Re-querying by id right before each write always targets whatever is currently on screen.
-function box(){ return document.getElementById('rankingRecommendations'); }
+// (see above). If that happens while a computeRecommendations() run is mid-flight, a box reference
+// captured once at the top of recompute() silently becomes a DETACHED node - every later write via
+// that stale reference (progress updates, the final result) still "succeeds" as far as the code is
+// concerned, but is invisible, since the visible tree now has a *different* element with the same
+// id. Confirmed live: this is why the box could sit on the initial static text indefinitely no
+// matter how long a search actually took - every write was landing on a node nobody could see.
+// Re-querying by id right before each write always targets whatever is currently on screen.
 async function recompute(){
   if (!box()) return;
+  const key = `${eventCode()}|${athleteSex()}`;
+  if (key !== searchKey) { searchKey = key; searchStartedAt = now(); }
   // Shown immediately whenever the box is currently empty, so it's never an invisible blank space
   // while a computation runs - live evidence showed users reading "nothing there" as broken rather
   // than loading. This used to be gated behind an "only the very first time ever" flag, which broke
@@ -362,36 +392,18 @@ async function recompute(){
   // Checking the box's own current content instead of a one-shot flag fixes that for every event
   // change, not just the very first render.
   if (!box().innerHTML) {
-    box().innerHTML = loadingBoxHtml('Beregner anbefalinger …', false);
+    box().innerHTML = initialLoadingHtml();
+    noteBoxUpdate();
   }
   const myRun = ++runId;
   if (computing) return; // a newer trigger will run right after this one finishes anyway
   computing = true;
-  const now = () => typeof performance !== 'undefined' ? performance.now() : Date.now();
   const startedAt = now();
-  let lastUpdateAt = startedAt;
-  let lastProgress = null; // {checked, total} from the most recent real onProgress call, if any
   function writeProgress(checked, total){
-    lastUpdateAt = now();
-    lastProgress = { checked, total };
+    noteBoxUpdate();
     const eta = formatEta(estimateSecondsRemaining(startedAt, checked, total));
     const b = box(); if (b) b.innerHTML = loadingBoxHtml(`Jobber med å ta frem anbefalte rankingstevner basert på din ranking (sjekket ${checked} av ${total} stevner${eta}) …`, true);
   }
-  // A single slow lookup (e.g. the one meet in a small candidate pool for Mangekamp, whose history
-  // lookup alone took ~45s live) meant NO onProgress call at all for the whole wait - the box just
-  // sat on the static initial text with zero feedback the entire time. This ticks every 2s and, if
-  // nothing has updated the box in the last 10s, writes something anyway: the live progress line
-  // with a freshly recalculated ETA if we have at least one real data point to extrapolate from, or
-  // - before that first data point ever arrives - a plain elapsed-time line, so "still working" is
-  // never more than ~10s away from being visible no matter how the search is currently spending its time.
-  const heartbeat = setInterval(() => {
-    if (myRun !== runId) { clearInterval(heartbeat); return; }
-    if (now() - lastUpdateAt < 10000) return;
-    if (lastProgress) { writeProgress(lastProgress.checked, lastProgress.total); return; }
-    lastUpdateAt = now();
-    const elapsed = Math.round((now() - startedAt) / 1000);
-    const b = box(); if (b) b.innerHTML = loadingBoxHtml(`Beregner anbefalinger … (${elapsed} sek, dette tar litt tid) …`, true);
-  }, 2000);
   try {
     const result = await computeRecommendations((checked, total) => {
       if (myRun !== runId) return; // superseded - don't fight the newer run's own rendering
@@ -399,25 +411,11 @@ async function recompute(){
     });
     if (myRun !== runId) return; // event/sex changed again while this was in flight
     if (result?.reason === 'not-ready') {
-      // Confirmed live: ranking-basis.js's own three-hop load chain can genuinely take minutes, not
-      // just seconds, in a bad case - and every single one-second retry attempt here resolves near-
-      // instantly (the not-ready check is the very first line of computeRecommendations), so the
-      // per-run heartbeat above never gets anywhere near its own 10s threshold before being torn
-      // down again. Tracking elapsed time across the whole retry streak instead - not just within
-      // one attempt - means a long wait for dependencies alone is now just as visible as a long wait
-      // during the actual search.
-      if (notReadySince == null) notReadySince = now();
-      const waited = now() - notReadySince;
-      if (waited >= 10000 && !box().querySelector('[data-jump-to-meet]')) {
-        const b = box(); if (b) b.innerHTML = loadingBoxHtml(`Beregner anbefalinger … (${Math.round(waited / 1000)} sek, dette tar litt tid) …`, true);
-      }
       scheduleRecompute(1000);
-      return; // leave the loading state (or whatever was already showing) rather than blanking it
+      return; // leave the loading state (or whatever was already showing) rather than blanking it - the module-level heartbeat above covers a long wait here too
     }
-    notReadySince = null;
     const b = box(); if (b) b.innerHTML = renderHtml(result);
   } finally {
-    clearInterval(heartbeat);
     computing = false;
     // If something else asked for a recompute while this one was running, run once more now
     // instead of leaving stale data showing.
@@ -499,7 +497,14 @@ function showBackButton(){
 // recompute actually running - so meetlistrendered needs this too, not only the raw DOM event.
 function showWorkingNow(){
   const b = box();
-  if (b && !b.querySelector('[data-jump-to-meet]')) b.innerHTML = loadingBoxHtml('Beregner anbefalinger …', false);
+  // Only fills in a genuinely EMPTY box (a fresh node meet-finder-v1.js's render() just created),
+  // never overwrites one that already has ANY content - this used to unconditionally reset back to
+  // the bare "Beregner anbefalinger …" on every single meetlistrendered event (an athlete-profile
+  // status change can fire that repeatedly, faster than every 10s, while a profile is still
+  // loading), which wiped out the module-level heartbeat's own elapsed-time updates again and again
+  // before a user ever got the chance to actually see one - the timestamps kept advancing correctly
+  // underneath, but the DISPLAYED text kept getting stomped back to the plain default.
+  if (b && !b.innerHTML) { b.innerHTML = initialLoadingHtml(); noteBoxUpdate(); }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
