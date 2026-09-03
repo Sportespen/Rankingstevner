@@ -132,8 +132,20 @@
   function projectedRankingScore(code,newScore){
     if(!Number.isFinite(newScore))return null;
     const g=group(code),needed=req[g],minMain=MIN_MAIN[g];
-    const scoreEls=[...document.querySelectorAll('.existingScore')],typeEls=[...document.querySelectorAll('.existingType')];
-    const existing=scoreEls.map((el,i)=>({score:Number(el.value),type:typeEls[i]?.value||'main'})).filter(x=>Number.isFinite(x.score)&&x.score>0);
+    // Reading .existingScore/.existingType directly (first version of this fix) made the result
+    // depend on fillScores() having ALREADY populated those DOM fields for the CURRENT athlete and
+    // event - fillScores() itself runs on its own 140ms setTimeout, decoupled from whenever this
+    // function happens to be called. Confirmed live: the "Anbefalte stevner" box calls this on its
+    // own schedule, independent of that timer, and lost the race often enough to matter - when
+    // existing.length<needed at that moment, this silently fell back to the old, wrong "diff a
+    // single Performance Score straight against the current average" behaviour (the exact bug this
+    // was supposed to have fixed), producing a DIFFERENT number than the calculator for the same
+    // input (+3 here vs the calculator's +6 moments later, once the fields WERE filled).
+    // basisFor(code).selected is the same underlying data fillScores() reads FROM in the first
+    // place (computed fresh from allResults, no DOM, no timer, no race) - using it directly here
+    // mirrors the calculator's own two-step pipeline (basisFor's top-N candidates, then a proper
+    // bestValidSelection over them) without the DOM as an unnecessary, timing-fragile middleman.
+    const existing=basisFor(code).selected.map(x=>({score:x.score,type:x.type}));
     if(existing.length<needed)return null;
     const currentSel=bestValidSelection(existing,needed,minMain);
     if(!currentSel)return null;
