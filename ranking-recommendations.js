@@ -231,7 +231,11 @@ function itemHtml(x, ownMarkText){
     ? (improvement > 0
         ? `<small style="display:block;color:#45d483;font-weight:700">+${improvement} poeng mot din nåværende Ranking Score.</small>`
         : `<small style="display:block;color:#aebed0">${improvement} poeng mot din nåværende Ranking Score - fortsatt en sterk Performance Score, men ikke en forbedring akkurat nå.</small>`)
-    : '';
+    // No established Ranking Score to compare against yet (too few tellende resultater i perioden) -
+    // silently showing nothing here read as a missing/broken feature rather than what it actually is:
+    // this result would BE the (start of the) ranking grunnlag, not an improvement on one that doesn't
+    // exist yet.
+    : `<small style="display:block;color:#45d483;font-weight:700">Du har ingen etablert Ranking Score i denne øvelsen ennå - dette resultatet vil telle med i grunnlaget.</small>`;
   const yearBit = x.year ? ` (${x.year})` : '';
   const sourceLink = x.source ? ` · <a href="${esc(x.source)}" target="_blank" rel="noopener">Historisk nivå${yearBit}</a>` : '';
   // Clicking the card jumps down to the same meet's own full card (contact info, program,
