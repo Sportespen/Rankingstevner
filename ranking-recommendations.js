@@ -32,9 +32,10 @@ const CATEGORY_DESCRIPTIONS = {
 // can actually get into (national federation entry, standard qualifying times, direct contact to
 // the organiser) also sidesteps the closed-tiny-field problem that only really shows up at the
 // elite invite-only tiers: a meet nobody outside a small invited field can enter at all shouldn't
-// be recommended no matter how good the estimated placing looks. Left GL out too, out of caution -
-// Gold Label/Continental Tour Gold meets are still a strong, largely invited field in practice.
-const ACCESSIBLE_CATEGORIES = new Set(['A', 'B', 'C', 'D', 'E', 'F']);
+// be recommended no matter how good the estimated placing looks. GL (Gold Label/Continental Tour
+// Gold - e.g. Décastar) was excluded too at first, out of the same caution, but per explicit
+// request it's back in: unlike OW/DF/GW it's not reliably a closed invited field in practice.
+const ACCESSIBLE_CATEGORIES = new Set(['GL', 'A', 'B', 'C', 'D', 'E', 'F']);
 // Highest to lowest, matching meet-finder-v1.js's own RANKING_CATEGORIES order - used to search
 // higher categories FIRST. The pool used to sort purely by date, and the search stops as soon as
 // it has 3 valid candidates - live feedback caught this settling for 3 F-category meets that
@@ -44,7 +45,7 @@ const ACCESSIBLE_CATEGORIES = new Set(['A', 'B', 'C', 'D', 'E', 'F']);
 // meets that work" - sorting by category rank first (date only as a tie-breaker within the same
 // category) means a real A/B/C meet, if one exists and has usable data, gets checked well before
 // the search would ever fall back to F.
-const CATEGORY_RANK = { A: 0, B: 1, C: 2, D: 3, E: 4, F: 5 };
+const CATEGORY_RANK = { GL: 0, A: 1, B: 2, C: 3, D: 4, E: 5, F: 6 };
 function eventCode(){ return document.getElementById('event')?.value || ''; }
 function eventLabel(){ return document.getElementById('event')?.selectedOptions?.[0]?.textContent || 'valgt øvelse'; }
 function athleteSex(){ return document.getElementById('sex')?.value === 'W' ? 'W' : 'M'; }
