@@ -112,8 +112,20 @@ document.getElementById("calculate").addEventListener("click",()=>{
   // an auto-detected WA profile - guarantees this calculator can never again disagree with the box
   // over the same input, while manual entry (no WA profile loaded) is untouched.
   const liveBasis=window.__rankingstevnerReconstructedBasis;
-  if(liveBasis&&liveBasis.event===eventSelect.value&&Array.isArray(liveBasis.selected)&&liveBasis.selected.length>=req.n){
+  const waIdLoaded=!!document.getElementById("waProfileId")?.value.trim();
+  if(liveBasis&&liveBasis.event===eventSelect.value&&Array.isArray(liveBasis.selected)){
     liveBasis.selected.slice(0,scoreEls.length).forEach((x,i)=>{scoreEls[i].value=String(x.performanceScore);if(typeEls[i])typeEls[i].value=x.type||"main";});
+    for(let i=liveBasis.selected.length;i<scoreEls.length;i++){scoreEls[i].value="";}
+  }else if(waIdLoaded){
+    // A WA-profil er lastet (automatisk modus), men det ferske rankinggrunnlaget (satt av
+    // ranking-basis.js sin egen 180ms-timer etter et øvelse-/kjønnsbytte eller ny profil) har ikke
+    // kommet fram ennå, eller gjelder fortsatt forrige øvelse. Å regne ut på skjemaets rå
+    // DOM-verdier her ville nødvendigvis brukt et enda eldre, garantert utdatert øyeblikksbilde -
+    // bekreftet live som årsaken til at "Beregn" kunne vise "må ha minst 3 Main Event-resultater"
+    // selv når den synlige tabellen allerede viste 3 gyldige Main Event-resultater. Å be brukeren
+    // vente og prøve igjen er ærlig; å late som om skjemaet er ferskt er det som ga feil svar.
+    alert("Rankinggrunnlaget lastes fortsatt inn. Vent noen sekunder og trykk Beregn på nytt.");
+    return;
   }
   const existing=scoreEls.map((el,i)=>({score:Number(el.value),type:typeEls[i].value,label:`Score ${i+1}`})).filter(x=>Number.isFinite(x.score)&&x.score>0);
   if(existing.length<req.n){alert(`Legg inn ${req.n} nåværende Performance Scores først.`);return;}
