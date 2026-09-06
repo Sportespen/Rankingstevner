@@ -43,6 +43,7 @@
     combined:{OW:[200,175,160,145,130,120,110,100,67,60,53,46,42,38,35,32],DF:[125,105,95,85,75,67,60,53,35,28,24,21],GW:[100,85,75,65,56,49,42,35,25,21,17,13],GL:[80,65,55,46,39,35,31,28,21,17,14,11],A:[56,49,42,35,31,27,24,21,15,13,11,9],B:[42,35,31,27,24,21,18,15,13,11,9,8],C:[32,27,22,18,15,13,12,11,10,9,8,7],D:[21,15,13,11,10,9,8,7],E:[14,10,7,6,5,4],F:[7,4,2]}
   };
   const req={standard:5,distance:3,tenk:2,combined:2};
+  const MIN_MAIN={standard:3,distance:2,tenk:1,combined:1};
   let currentId='',allResults=[],loading=false,scoringData=null;
   // Lets meet-history.js's "Historisk nivå" tell a genuine "no results for this athlete/event yet"
   // apart from "results haven't been fetched yet at all" - confirmed live as the real cause of the
@@ -105,8 +106,38 @@
   // whole result" (confirmed live: it silently dropped a real, legal, in-period Shot Put result)
   // was wrong - it's "no bonus", not "invalid".
   function placingScoreFor(g,cat,place){if(!Number.isFinite(place)||place<1)return null;const ps=placingTables[g]?.[cat]?.[place-1];return Number.isFinite(ps)?ps:0;}
+  // The naive "top N by score" slice basisFor() used for standard/distance/tenk groups (unlike the
+  // combined-event branch just below it, which already does a real minMain-aware search over pairs)
+  // can silently exclude a real Main Event result whenever enough Similar Event results (e.g. 60m
+  // times counted toward 100m) happen to score higher - even though the athlete has more than
+  // enough Main Event results overall. Confirmed live: "Beregn rankingeffekt" then failed with "må
+  // ha minst 3 Main Event-resultater" on a top-5 slice with only 2 Main entries, while the athlete's
+  // full result list had plenty more further down that never got a chance because a slice, not a
+  // minMain-aware search, decided the top 5. A full combinations() search over every candidate
+  // (already used elsewhere in this file) doesn't scale here - an in-form athlete can have dozens of
+  // legal results, and combinations(candidates, needed) grows combinatorially with pool size. Since
+  // candidates are already sorted by score, the optimal minMain-satisfying selection is a simple,
+  // provably-correct exchange instead: start from the naive top-`needed` slice; if it already has
+  // enough Main entries, it's optimal as-is (nothing beats the highest scores when the constraint is
+  // already met); otherwise, pull in just enough of the highest-scoring Main entries from OUTSIDE the
+  // slice to meet minMain, swapping out the LOWEST-scoring non-Main entries already in the slice to
+  // make room - since anything outside the top-`needed` slice can only score at or below anything
+  // kept in it, this is never worse than any other way of fixing the same shortfall.
+  function bestValidFromPool(candidates,needed,minMain){
+    const top=candidates.slice(0,needed);
+    const mainCount=top.filter(x=>x.type==='main').length;
+    if(mainCount>=minMain)return top;
+    const need=minMain-mainCount;
+    const topSet=new Set(top);
+    const extraMains=candidates.filter(x=>x.type==='main'&&!topSet.has(x)).slice(0,need);
+    if(extraMains.length<need)return null;
+    const removable=top.filter(x=>x.type!=='main').sort((a,b)=>a.score-b.score).slice(0,need);
+    const removeSet=new Set(removable);
+    const kept=top.filter(x=>!removeSet.has(x));
+    return [...kept,...extraMains].sort((a,b)=>b.score-a.score);
+  }
   function candidate(r,code){const g=group(code),type=g==='combined'?combinedType(r.discipline,code):individualType(r.discipline,code);if(!type||r.legal===false||!validDate(r,code))return null;let rs=Number(r.resultScore);if((!Number.isFinite(rs)||rs<=0)&&g!=='combined')rs=scoreFromTable(code,r.mark);const place=Number(r.place),cat=String(r.category||'').toUpperCase();const ps=placingScoreFor(g,cat,place);if(!Number.isFinite(rs)||rs<=0||!Number.isFinite(place)||ps==null)return null;return {...r,type,resultScore:rs,placingScore:ps,score:rs+ps};}
-  function basisFor(code){const needed=req[group(code)];const candidates=allResults.map(r=>candidate(r,code)).filter(Boolean).sort((a,b)=>b.score-a.score);if(group(code)==='combined'){const validPairs=[];for(let i=0;i<candidates.length;i++)for(let j=i+1;j<candidates.length;j++){const pair=[candidates[i],candidates[j]];if(pair.some(x=>x.type==='main'))validPairs.push(pair);}if(!validPairs.length)return {selected:candidates.slice(0,needed),candidates,needed,complete:false};validPairs.sort((a,b)=>(b[0].score+b[1].score)-(a[0].score+a[1].score));const selected=validPairs[0].sort((a,b)=>b.score-a.score);return {selected,candidates,needed,complete:true,rankingScore:Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed)};}const selected=candidates.slice(0,needed);return {selected,candidates,needed,complete:selected.length>=needed,rankingScore:selected.length>=needed?Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed):null};}
+  function basisFor(code){const needed=req[group(code)];const candidates=allResults.map(r=>candidate(r,code)).filter(Boolean).sort((a,b)=>b.score-a.score);if(group(code)==='combined'){const validPairs=[];for(let i=0;i<candidates.length;i++)for(let j=i+1;j<candidates.length;j++){const pair=[candidates[i],candidates[j]];if(pair.some(x=>x.type==='main'))validPairs.push(pair);}if(!validPairs.length)return {selected:candidates.slice(0,needed),candidates,needed,complete:false};validPairs.sort((a,b)=>(b[0].score+b[1].score)-(a[0].score+a[1].score));const selected=validPairs[0].sort((a,b)=>b.score-a.score);return {selected,candidates,needed,complete:true,rankingScore:Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed)};}const naive=candidates.slice(0,needed);const selected=candidates.length>=needed?(bestValidFromPool(candidates,needed,MIN_MAIN[group(code)])||naive):naive;return {selected,candidates,needed,complete:selected.length>=needed,rankingScore:selected.length>=needed?Math.floor(selected.reduce((s,x)=>s+x.score,0)/needed):null};}
   // What would the Ranking Score (the AVERAGE of the best `needed` counted results, not a single
   // Performance Score on its own) become if this hypothetical new result is added to the pool?
   //
@@ -123,7 +154,6 @@
   // the same input, instead of two independently-arrived-at numbers that can quietly diverge.
   function combinations(arr,k){const out=[];function rec(start,pick){if(pick.length===k){out.push([...pick]);return;}for(let i=start;i<=arr.length-(k-pick.length);i++){pick.push(arr[i]);rec(i+1,pick);pick.pop();}}rec(0,[]);return out;}
   function bestValidSelection(entries,n,minMain){const valid=combinations(entries,n).filter(c=>c.filter(x=>x.type==='main').length>=minMain);if(!valid.length)return null;valid.sort((a,b)=>b.reduce((s,x)=>s+x.score,0)-a.reduce((s,x)=>s+x.score,0));return valid[0];}
-  const MIN_MAIN={standard:3,distance:2,tenk:1,combined:1};
   // Returns {current, projected} from the SAME selection, not projected alone paired against a
   // separately-sourced "current" (e.g. currentRankingScore(), which prefers WA's own official score
   // when cached) - a caller diffing projected against a DIFFERENT current than the one this was
