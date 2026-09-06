@@ -181,13 +181,29 @@ async function fetchWorldRankingRowByRank(slug,genderPath,knownRank,diagnostics)
 // 100 rows/page, strictly descending by score) - no AJAX call, no API key, nothing
 // from EA. This walks that list with a binary search over pages to find exactly
 // where a hypothetical score would land.
+// Several recommended-meet cards for the SAME athlete/event/sex each trigger their own call to
+// this endpoint, and estimateNewWorldRank()'s binary search over these pages depends only on
+// (event, sex, target score) - not on which card asked. Since the cards' target scores are
+// usually close together, their searches frequently land on the exact same WA page independently,
+// multiplying real external HTTP calls against worldathletics.org for no benefit. Cloudflare's
+// edge Cache API lets a page fetched for one card be reused by the next one moments later - a
+// short TTL (rankings don't change second-to-second) turns that redundant work into a fast cache
+// hit instead of a second real fetch, without changing anything about the page-parsing logic below.
 async function fetchWorldRankingPage(slug,genderPath,page,diagnostics){
   const pageUrl=`https://worldathletics.org/world-rankings/${slug}/${genderPath}?page=${page}`;
+  const cacheKey=new Request(pageUrl);
   let html;
   try{
-    const r=await fetchWithTimeout(pageUrl,{headers:{Accept:'text/html','User-Agent':'Mozilla/5.0 Rankingstevner/1.0'}});
-    if(!r.ok){diagnostics.push({source:'wa-world-rankings',slug,genderPath,page,status:r.status});return null;}
-    html=await r.text();
+    const cached=await caches.default.match(cacheKey);
+    if(cached){
+      html=await cached.text();
+      diagnostics.push({source:'wa-world-rankings-cache',slug,genderPath,page});
+    }else{
+      const r=await fetchWithTimeout(pageUrl,{headers:{Accept:'text/html','User-Agent':'Mozilla/5.0 Rankingstevner/1.0'}});
+      if(!r.ok){diagnostics.push({source:'wa-world-rankings',slug,genderPath,page,status:r.status});return null;}
+      html=await r.text();
+      try{await caches.default.put(cacheKey,new Response(html,{headers:{'Cache-Control':'public, max-age=60'}}));}catch(_){/* caching is best-effort, never fatal */}
+    }
   }catch(e){diagnostics.push({source:'wa-world-rankings',slug,genderPath,page,error:String(e?.message||e)});return null;}
 
   const rows=[];
