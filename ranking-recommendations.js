@@ -253,26 +253,34 @@ function loadRankPositions(items){
   if (!waId) return;
   const event = eventCode();
   const sex = athleteSex();
-  for (const x of items) {
-    if (!Number.isFinite(x.rankProjected) || !x.meet?.id) continue;
-    const meetId = x.meet.id;
-    (async () => {
+  // Confirmed live: firing all cards' lookups at once left only one of three cards with a
+  // position - each lookup is itself a small chain of external fetches against World Athletics'
+  // own pages on the backend (see wa-official-ranking.js), so N cards in parallel means up to N
+  // times the concurrent external load, making timeouts/rejections on some of them far more
+  // likely than any one lookup failing on its own. Running them one at a time (awaiting each
+  // before starting the next) costs a bit more total wall-clock time but lets each lookup run
+  // without competing with the others for the same external resource.
+  (async () => {
+    for (const x of items) {
+      if (!Number.isFinite(x.rankProjected) || !x.meet?.id) continue;
+      const meetId = x.meet.id;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 20000);
       try {
         const res = await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(waId)}&event=${encodeURIComponent(event)}&sex=${encodeURIComponent(sex)}&newScore=${encodeURIComponent(x.rankProjected)}&v=1`, { cache: 'no-store', signal: controller.signal });
         const data = await res.json();
         const ok = Number.isFinite(data?.estimatedNewRank) && data.estimatedNewRank > 0;
-        if (!ok) return;
-        const el = document.getElementById(`rrRank-${meetId}`);
-        if (el) el.textContent = `Ny ranking: #${data.estimatedNewRank}`;
+        if (ok) {
+          const el = document.getElementById(`rrRank-${meetId}`);
+          if (el) el.textContent = `Ny ranking: #${data.estimatedNewRank}`;
+        }
       } catch (_) {
         // timeout/network failure - leave the placeholder empty rather than guess
       } finally {
         clearTimeout(timeoutId);
       }
-    })();
-  }
+    }
+  })();
 }
 function itemHtml(x, ownMarkText){
   const improvement = Number.isFinite(x.improvement) ? x.improvement : null;
