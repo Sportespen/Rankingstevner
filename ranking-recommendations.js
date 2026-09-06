@@ -355,11 +355,17 @@ function itemHtml(x, ownMarkText, isCareerBest){
     : (x.hasCurrentScore ? '' : `<small style="display:block;color:#45d483;font-weight:700">Du har ingen etablert Ranking Score i denne øvelsen ennå - dette resultatet vil telle med i grunnlaget.</small>`);
   const yearBit = x.year ? ` (${x.year})` : '';
   const sourceLink = x.source ? ` · <a href="${esc(x.source)}" target="_blank" rel="noopener">Historisk nivå${yearBit}</a>` : '';
+  // Same indoor/outdoor detection meet-finder-v1.js's own full card already uses (via its
+  // exposed venueType(), not a duplicated reimplementation - see that file's own comment on why)
+  // - this summary card doesn't otherwise show venue at all, unlike the full card further down.
+  const indoor = window.RankingstevnerMeetFinder?.venueType?.(x.meet) === 'indoor';
+  const indoorBadge = indoor ? `<span title="Innendørs" style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1.5px solid #aebed0;color:#aebed0;font-size:10px;font-weight:800;flex:none">i</span>` : '';
   // Clicking the card jumps down to the same meet's own full card (contact info, program,
   // "Historisk nivå" details) further down the page instead of duplicating all of that here.
   return `<div data-jump-to-meet="${esc(x.meet.id)}" style="padding:14px 16px;border:1px solid #21405f;border-radius:12px;background:#0b1d33;cursor:pointer">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div><strong>${esc(x.meet.name || 'Stevne')}</strong><div class="muted" style="font-size:12px;margin-top:2px">${esc(locationText(x.meet) || 'Sted ikke publisert')} · ${fmtDate(x.meet.start)}</div>${historicalLevelLine(x)}</div>
+      ${indoorBadge}
       <span class="cat" title="${esc(CATEGORY_DESCRIPTIONS[x.category]||'')}">${esc(x.category)}</span>
     </div>
     <small style="display:block;margin-top:8px">Forventet ${ordinal(x.place)} plass med ${isCareerBest ? 'din pers' : 'din beste tellende prestasjon'} (<strong>${esc(ownMarkText)}</strong>) → <strong>Performance Score ${x.performanceScore}</strong> (Result Score ${x.resultScore} + Placing Score ${x.placingScore})${sourceLink}</small>

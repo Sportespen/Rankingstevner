@@ -594,5 +594,9 @@ function install(){const panel=$('meetList')?.closest('.panel');if(panel){const 
 }if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
 // Lets the "Anbefalte stevner" box reuse the exact same event/sex/eligibility/program-confirmation
 // filtering this file already does, instead of a second, potentially-inconsistent reimplementation.
-window.RankingstevnerMeetFinder={currentMatches:baseMatches};
+// venueType is exposed too (rather than duplicated) since it isn't a small, self-contained
+// function like the box's other duplicated helpers - it leans on norm()/disciplineBlob()/
+// parseDate()/locationText() from this same file, so re-deriving it elsewhere risks drifting out
+// of sync with the real indoor/outdoor labelling shown on each meet's own full card.
+window.RankingstevnerMeetFinder={currentMatches:baseMatches,venueType};
 })();
