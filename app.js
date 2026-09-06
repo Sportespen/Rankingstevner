@@ -97,6 +97,13 @@ function combinations(arr,k){const out=[];function rec(start,pick){if(pick.lengt
 function bestValidSelection(entries,n,minMain){const valid=combinations(entries,n).filter(c=>c.filter(x=>x.type==="main").length>=minMain);if(!valid.length)return null;valid.sort((a,b)=>b.reduce((s,x)=>s+x.score,0)-a.reduce((s,x)=>s+x.score,0));return valid[0];}
 
 document.getElementById("calculate").addEventListener("click",()=>{
+  // input-controller.js sitt eget vind-stepper-UI (+/-/NWI-knappene) skriver til dette skjulte
+  // #wind-feltet via en egen sync()-funksjon som kjører når du klikker en knapp eller taster et
+  // siffer - men en mellomliggende omregning (recalcBase, trigges av å endre Resultat/Kategori/
+  // Plassering) kunne la selve vindverdien-visningen henge igjen utdatert et øyeblikk. Å alltid be
+  // om en fersk synkronisering her, helt først, garanterer at valideringen under alltid ser nøyaktig
+  // det den synlige vindkontrollen faktisk viser - uansett hva som skjedde rett før klikket.
+  if(typeof window.__rankingstevnerSyncWind==="function")window.__rankingstevnerSyncWind();
   const details=adjustedResultDetails();if(!details){alert("Skriv inn et gyldig resultat som finnes innenfor World Athletics-tabellen.");return;}
   if(windEvents.has(eventSelect.value)&&parseWind(windInput.value)===null){alert("Legg inn vind, eller skriv NWI dersom vindinformasjon mangler.");return;}
   const req=requirements[activeGroup],scoreEls=[...document.querySelectorAll(".existingScore")],typeEls=[...document.querySelectorAll(".existingType")];
