@@ -19,7 +19,10 @@ const signWrap=document.createElement('div');signWrap.style.cssText='display:fle
 const amount=document.createElement('input');amount.id='windAmount';amount.type='text';amount.inputMode='numeric';amount.autocomplete='off';amount.placeholder='f.eks. 2,4';amount.style.marginTop='0';amount.dataset.digits='';
 originalWind.parentNode.insertBefore(wrap,originalWind);wrap.append(toggleWrap,detailsWrap);detailsWrap.append(signWrap,amount);
 let windMatters=false;
-function paintToggle(){Object.entries(toggleBtns).forEach(([k,b])=>{const a=(k==='on')===windMatters;b.style.background=a?'#ff8a19':'#0d2743';b.style.color=a?'#061426':'#f4f7fb';b.style.borderColor=a?'#ff8a19':'#3f6b92'});detailsWrap.style.display=windMatters?'grid':'none'}
+const windAdjustmentHint=document.getElementById('windAdjustmentHint');
+const HINT_OFF='Gjelder når vinden er mellom 0 og +2,0 m/s medvind, eller er ukjent - ingen justering da.';
+const HINT_ON='Motvind gir tillegg, sterk medvind gir trekk.';
+function paintToggle(){Object.entries(toggleBtns).forEach(([k,b])=>{const a=(k==='on')===windMatters;b.style.background=a?'#ff8a19':'#0d2743';b.style.color=a?'#061426':'#f4f7fb';b.style.borderColor=a?'#ff8a19':'#3f6b92'});detailsWrap.style.display=windMatters?'grid':'none';if(windAdjustmentHint)windAdjustmentHint.textContent=windMatters?HINT_ON:HINT_OFF}
 toggleBtns.off.onclick=()=>{windMatters=false;selectedSign='';Object.values(buttons).forEach(b=>{b.style.background='#0d2743';b.style.color='#f4f7fb';b.style.borderColor='#3f6b92'});amount.dataset.digits='';amount.value='';amount.disabled=false;paintToggle();sync()};
 toggleBtns.on.onclick=()=>{windMatters=true;paintToggle();sync()};
 paintToggle();
