@@ -12,7 +12,7 @@ function value(){const d=amount.dataset.digits||'';if(!d)return null;return Numb
 function raw(){if(selectedSign==='NWI')return'NWI';const n=value();if(!selectedSign||n===null)return'';return selectedSign+n.toFixed(1).replace('.',',')}
 function windMod(r){const s=String(r).replace(',','.');if(!s)return null;if(s==='NWI')return-30;const w=Number(s);if(!Number.isFinite(w))return null;if(w<0)return Math.abs(w)*6;if(w>2)return-w*6;return 0}
 function fmt(v){return Number.isInteger(v)?String(v):v.toFixed(1).replace('.',',')}
-function sync(){amount.value=format(amount.dataset.digits||'');originalWind.value=raw();const m=windMod(originalWind.value);windAdjustment.value=m===null?'–':`${m>0?'+':''}${fmt(m)}`}
+function sync(){amount.value=format(amount.dataset.digits||'');originalWind.value=raw();const m=windMod(originalWind.value);windAdjustment.value=m===null?'0':`${m>0?'+':''}${fmt(m)}`}
 window.__rankingstevnerSyncWind=sync;
 amount.addEventListener('beforeinput',e=>{if(e.inputType==='insertText'&&e.data&&/\D/.test(e.data))e.preventDefault()});
 amount.addEventListener('input',()=>{const incoming=amount.value.replace(/\D/g,'');amount.dataset.digits=incoming.slice(0,2);sync()});
@@ -20,7 +20,10 @@ amount.addEventListener('keydown',e=>{if(e.key==='Backspace'||e.key==='Delete'){
 event.addEventListener('change',()=>{selectedSign='';Object.values(buttons).forEach(b=>{b.style.background='#0d2743';b.style.color='#f4f7fb';b.style.borderColor='#3f6b92'});amount.dataset.digits='';amount.value='';amount.disabled=false;originalWind.value='';windAdjustment.value='–'});
 function recalcBase(){const saved=originalWind.value;originalWind.value='';try{if(typeof refreshResultScore==='function')refreshResultScore()}finally{originalWind.value=saved;sync()}}
 mark.addEventListener('input',recalcBase);mark.addEventListener('change',recalcBase);category.addEventListener('change',recalcBase);placing.addEventListener('change',recalcBase);
-calculate.addEventListener('click',e=>{if(originalWind.closest('#windSection')?.style.display!=='none'){if(!selectedSign){e.preventDefault();e.stopImmediatePropagation();alert('Velg + for medvind, − for motvind eller NWI før du beregner.');return}if(selectedSign!=='NWI'&&!amount.dataset.digits){e.preventDefault();e.stopImmediatePropagation();alert('Skriv vindstyrken. Du trenger ikke skrive komma.');amount.focus()}}},true);
+// Vind er valgfritt - som "Innenfor grensene" er standardvalget for mangekamp sin vindstatus, skal
+// fravær av vind her tilsvare lovlig vind uten justering, ikke noe man må velge bort for hvert
+// resultat. sync() (kalt fra "Beregn"-klikket i app.js) setter allerede originalWind.value='' når
+// ingen tegn/siffer er valgt, og windModFor('') gir riktig "ingen justering" - ingenting å blokkere.
 calculate.addEventListener('click',()=>setTimeout(()=>{try{if(typeof adjustedResultDetails!=='function')return;const d=adjustedResultDetails();if(!d)return;const a=d.adjusted;resultScore.value=Number.isInteger(a)?String(a):String(a).replace('.',',');resultScore.dispatchEvent(new Event('input',{bubbles:true}));resultScore.dispatchEvent(new Event('change',{bubbles:true}))}catch(err){console.error(err)}},0));sync();}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();

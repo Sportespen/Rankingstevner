@@ -85,7 +85,7 @@ function adjustedResultDetails(){
   return{base,adjusted:Math.round(best),windMod:mod,usedBLJ};
 }
 
-function refreshResultScore(){const d=adjustedResultDetails();resultScoreInput.value=d?fmt(d.adjusted):"";if(windEvents.has(eventSelect.value)){const mod=windModFor(windInput.value);windAdjustment.value=mod===null?"–":`${mod>0?"+":""}${fmt(mod)}`;}else if(activeGroup==="combined")windAdjustment.value=combinedWindStatus.value==="normal"?"0":"-24";}
+function refreshResultScore(){const d=adjustedResultDetails();resultScoreInput.value=d?fmt(d.adjusted):"";if(windEvents.has(eventSelect.value)){const mod=windModFor(windInput.value);windAdjustment.value=mod===null?"0":`${mod>0?"+":""}${fmt(mod)}`;}else if(activeGroup==="combined")windAdjustment.value=combinedWindStatus.value==="normal"?"0":"-24";}
 function rebuildPlacing(){const table=placingTables[activeGroup]?.[category.value]||[];placing.innerHTML=table.map((_,i)=>`<option value="${i+1}">${i+1}. plass</option>`).join("");}
 function rebuildScores(){const req=requirements[activeGroup];requiredText.textContent=req.text;scoreInputs.innerHTML=Array.from({length:req.n},(_,i)=>`<label>Score ${i+1}<input class="existingScore" type="number" min="0" step="0.1" placeholder="f.eks. 1185"><select class="existingType" style="margin-top:6px"><option value="main">Main Event</option><option value="similar">Similar Event</option></select></label>`).join("");}
 
@@ -105,7 +105,9 @@ document.getElementById("calculate").addEventListener("click",()=>{
   // det den synlige vindkontrollen faktisk viser - uansett hva som skjedde rett før klikket.
   if(typeof window.__rankingstevnerSyncWind==="function")window.__rankingstevnerSyncWind();
   const details=adjustedResultDetails();if(!details){alert("Skriv inn et gyldig resultat som finnes innenfor World Athletics-tabellen.");return;}
-  if(windEvents.has(eventSelect.value)&&parseWind(windInput.value)===null){alert("Legg inn vind, eller skriv NWI dersom vindinformasjon mangler.");return;}
+  // Vind er valgfritt, ikke påkrevd: adjustedResultDetails() behandler allerede fravær av vind som
+  // lovlig vind uten justering (adjusted=base), så det er ikke noe å blokkere her - brukeren kan
+  // oppgi vind for å få riktig bonus/trekk hvis de vil, men trenger ikke gjøre det for hvert resultat.
   const req=requirements[activeGroup],scoreEls=[...document.querySelectorAll(".existingScore")],typeEls=[...document.querySelectorAll(".existingType")];
   // The 5 "Score N" fields are normally auto-filled by ranking-basis.js's fillScores() on its own
   // 140ms timer, decoupled from whenever the user actually clicks "Beregn" - "Anbefalte stevner"
