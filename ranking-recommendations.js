@@ -282,6 +282,16 @@ function loadRankPositions(items){
       clearTimeout(timeoutId);
     }
   }
+  // Cards are looked up one at a time (see above), which can take up to a minute for the last
+  // card in the list - but an empty placeholder looks identical whether a card simply hasn't been
+  // reached yet or has already failed for good, so it read as "the engine stopped after the first
+  // one" even though the loop below always keeps going through every card. Marking every pending
+  // card as still-checking up front makes the ongoing work visible instead of looking finished.
+  for (const x of items) {
+    if (!Number.isFinite(x.rankProjected) || !x.meet?.id) continue;
+    const el = document.getElementById(`rrRank-${x.meet.id}`);
+    if (el) el.textContent = 'Sjekker ranking …';
+  }
   (async () => {
     for (const x of items) {
       if (!Number.isFinite(x.rankProjected) || !x.meet?.id) continue;
@@ -290,10 +300,8 @@ function loadRankPositions(items){
       // Same reasoning as meet-history.js's retry: an immediate second attempt can still land
       // inside the same brief external outage/rate-limit window as the first.
       if (rank == null) { await new Promise(r => setTimeout(r, 500)); rank = await attemptRankFetch(x); }
-      if (rank != null) {
-        const el = document.getElementById(`rrRank-${meetId}`);
-        if (el) el.textContent = `Ny ranking: #${rank}`;
-      }
+      const el = document.getElementById(`rrRank-${meetId}`);
+      if (el) el.textContent = rank != null ? `Ny ranking: #${rank}` : '';
     }
   })();
 }
