@@ -208,19 +208,57 @@ async function fetchWorldRankingPage(slug,genderPath,page,diagnostics){
 
 async function estimateNewWorldRank(slug,genderPath,targetScore,knownRank,diagnostics){
   const pageSize=100;
-  const first=await fetchWorldRankingPage(slug,genderPath,1,diagnostics);
-  if(!first||!first.rows.length)return null;
-  const maxPage=first.maxPage;
-  if(targetScore>=first.rows[0].score)return 1;
-
-  let lo=1,hi=maxPage,foundPage=null;
-  const pageData={1:first};
+  const pageData={};
   const budget=10;
-  let fetches=1;
+  let fetches=0;
+  async function getPage(page){
+    if(page in pageData)return pageData[page];
+    fetches++;
+    return pageData[page]=await fetchWorldRankingPage(slug,genderPath,page,diagnostics);
+  }
+  function findOnPage(page,data){
+    let idx=data.rows.findIndex(r=>r.score<=targetScore);
+    if(idx===-1)idx=data.rows.length;
+    return (page-1)*pageSize+idx+1;
+  }
+
+  let lo=1,hi=null,maxPage=null;
+
+  // A target score built from the athlete's own already-known rank is normally a modest
+  // improvement over their current score - and since the list is sorted descending by score,
+  // that means the new rank lands on or shortly before their current page, not anywhere in the
+  // whole list. Checking that page first turns the common case into a single fetch instead of a
+  // blind binary search starting from page 1 across the entire ranking (previously up to ~10
+  // sequential fetches for a deep field like 100m). If the known page turns out stale, the
+  // ordinary binary search below still runs - just narrowed to the side of it the score fits.
+  if(validRank(knownRank)){
+    const knownPage=Math.max(1,Math.ceil(Number(knownRank)/pageSize));
+    const data=await getPage(knownPage);
+    if(data&&data.rows.length){
+      maxPage=data.maxPage;
+      const top=data.rows[0].score,bottom=data.rows[data.rows.length-1].score;
+      if(targetScore>=bottom&&targetScore<=top)return findOnPage(knownPage,data);
+      if(targetScore>top){
+        if(knownPage===1)return 1;
+        hi=knownPage-1;
+      }else{
+        lo=knownPage+1;hi=maxPage;
+      }
+    }
+  }
+
+  if(hi==null){
+    const first=await getPage(1);
+    if(!first||!first.rows.length)return null;
+    maxPage=first.maxPage;
+    if(targetScore>=first.rows[0].score)return 1;
+    hi=maxPage;
+  }
+
+  let foundPage=null;
   while(lo<=hi&&fetches<budget){
     const mid=Math.ceil((lo+hi)/2);
-    let data=pageData[mid];
-    if(!data){data=await fetchWorldRankingPage(slug,genderPath,mid,diagnostics);fetches++;pageData[mid]=data;}
+    const data=await getPage(mid);
     if(!data||!data.rows.length){hi=mid-1;continue;}
     const top=data.rows[0].score,bottom=data.rows[data.rows.length-1].score;
     if(targetScore>top)hi=mid-1;
@@ -229,14 +267,12 @@ async function estimateNewWorldRank(slug,genderPath,targetScore,knownRank,diagno
   }
   if(foundPage==null){
     foundPage=Math.min(maxPage,Math.max(1,lo));
-    if(!pageData[foundPage]){pageData[foundPage]=await fetchWorldRankingPage(slug,genderPath,foundPage,diagnostics);fetches++;}
+    await getPage(foundPage);
   }
   const data=pageData[foundPage];
   if(!data||!data.rows.length)return null;
   if(foundPage===maxPage&&targetScore<data.rows[data.rows.length-1].score)return null;
-  let idx=data.rows.findIndex(r=>r.score<=targetScore);
-  if(idx===-1)idx=data.rows.length;
-  return (foundPage-1)*pageSize+idx+1;
+  return findOnPage(foundPage,data);
 }
 
 async function fetchRankingCalculation(calculationId,diagnostics){
