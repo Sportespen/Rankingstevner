@@ -222,10 +222,14 @@ async function computeRecommendations(onProgress){
 
   const currentRankingScore = scoring.currentRankingScore();
   // Kept around (not just the resulting top 3) so a "Forny" click can pick up exactly where this
-  // search left off instead of starting a whole new one from scratch.
-  const state = { candidates, pb, resultScore, currentRankingScore, event, ascending, checkedIndex: 0, scoredAll: [], shownIds: new Set() };
+  // search left off instead of starting a whole new one from scratch. pages/pageIndex remember
+  // every batch of 3 ever shown (not just the newest), so "Tilbake" can step to an earlier page
+  // instantly - it's already fully computed - instead of the box only ever being able to move
+  // forward until it runs out of stevner.
+  const state = { candidates, pb, resultScore, currentRankingScore, event, ascending, checkedIndex: 0, scoredAll: [], shownIds: new Set(), pages: [], pageIndex: -1 };
   await ensureUnshown(state, 3, onProgress);
   const top = takeNext(state, 3);
+  if (top.length) { state.pages.push(top); state.pageIndex = 0; }
 
   return { pb, resultScore, currentRankingScore, probed: state.checkedIndex, top, state };
 }
@@ -393,21 +397,42 @@ function buildDisplayItems(top, currentRankingScore){
 function descriptionText(ownMarkText, currentLine){
   return `Stevner der høy stevnekategori og et historisk sett svakt felt gir best mulighet til å forbedre rankingen din, basert på din beste tellende prestasjon (${ownMarkText}).${currentLine}`;
 }
-// "Forny" reuses this exact markup for both the very first render and every later renewal, so a
-// renewed card looks and behaves identically to the original three - same layout, same "Historisk
-// nivå" line, same live ranking-position lookup.
-function cardsBoxHtml(heading, description, items, ownMarkText, canRenew){
-  const renewBit = canRenew
+// Forward/back nav bar for the top-right corner. Going back always just replays an earlier page
+// that's already fully computed (state.pages), so it's instant and never re-fetches anything -
+// only going forward past the last cached page can require extending the search.
+function navBarHtml(canBack, canForward){
+  const back = canBack ? `<button type="button" id="rrBackBtn" style="flex:none;border:1px solid #3f6b92;border-radius:999px;padding:7px 14px;font-weight:800;font-size:12.5px;background:#0d2743;color:#f4f7fb;cursor:pointer;white-space:nowrap">‹ Tilbake</button>` : '';
+  const forward = canForward
     ? `<button type="button" id="rrRenewBtn" style="flex:none;border:1px solid #ff8a19;border-radius:999px;padding:7px 16px;font-weight:800;font-size:12.5px;background:#0d2743;color:#ff8a19;cursor:pointer;white-space:nowrap">↻ Forny</button>`
     : `<small class="muted" style="white-space:nowrap">Ingen flere å anbefale</small>`;
+  return `<div style="display:flex;gap:8px;align-items:center;flex:none">${back}${forward}</div>`;
+}
+function cardsBoxHtml(heading, description, items, ownMarkText, navHtml){
   return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div>${heading}</div>
-      ${renewBit}
+      ${navHtml}
     </div>
     <p class="muted" style="margin:8px 0 12px">${description}</p>
     <div style="display:grid;gap:10px">${items.map(x => itemHtml(x, ownMarkText)).join('')}</div>
   </div>`;
+}
+// Renders whatever page of a search state is currently selected (state.pageIndex) - used for the
+// very first render AND every "Forny"/"Tilbake" click, so a page always looks and behaves exactly
+// the same (same layout, same "Historisk nivå" line, same live ranking-position lookup) regardless
+// of how the user navigated to it.
+function renderStatePage(state){
+  const heading = `<span class="eyebrow">ANBEFALTE STEVNER</span><h4 style="margin:6px 0 0;font-size:20px;color:#fff">${esc(eventLabel())}</h4>`;
+  const currentLine = Number.isFinite(state.currentRankingScore) ? ` Din nåværende Ranking Score: <strong>${state.currentRankingScore}</strong>.` : '';
+  const ownMarkText = formatOwnMark({ pb: state.pb });
+  const top = state.pages[state.pageIndex] || [];
+  const items = buildDisplayItems(top, state.currentRankingScore);
+  loadRankPositions(items);
+  const canBack = state.pageIndex > 0;
+  // Forward is available either because an already-computed later page exists (from having gone
+  // back earlier), or because the search hasn't exhausted the candidate pool yet.
+  const canForward = state.pageIndex + 1 < state.pages.length || !isExhausted(state);
+  return cardsBoxHtml(heading, descriptionText(ownMarkText, currentLine), items, ownMarkText, navBarHtml(canBack, canForward));
 }
 
 function renderHtml(result){
@@ -424,20 +449,23 @@ function renderHtml(result){
   if (!result.top || !result.top.length) {
     return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Fant ingen stevner med nok verifisert historisk nivå ennå til å gi konkrete anbefalinger (så langt sjekket ${result.probed} stevner).${currentLine}</p></div>`;
   }
-  const ownMarkText = formatOwnMark(result);
-  const items = buildDisplayItems(result.top, result.currentRankingScore);
-  loadRankPositions(items);
-  const canRenew = !!result.state && !isExhausted(result.state);
-  return cardsBoxHtml(heading, descriptionText(ownMarkText, currentLine), items, ownMarkText, canRenew);
+  return renderStatePage(result.state);
 }
 
 // "Forny" - picks up the same search state computeRecommendations() built (see state.checkedIndex/
-// scoredAll/shownIds), extends it if needed, and swaps in up to 3 more not-yet-shown meets without
-// recomputing the athlete's PB/Result Score or re-fetching meets already checked in an earlier round.
+// scoredAll/shownIds/pages), extends it if needed, and pages forward to up to 3 more not-yet-shown
+// meets without recomputing the athlete's PB/Result Score or re-fetching meets already checked in
+// an earlier round. "Tilbake" only ever replays an already-computed page, so it's instant and can
+// never itself run out - only "Forny" can hit the end of the candidate pool.
 let renewing = false;
-async function renewRecommendations(){
-  const state = lastSearchState;
-  if (!state || renewing) return;
+async function goForward(state){
+  if (renewing) return;
+  if (state.pageIndex + 1 < state.pages.length) {
+    // A later page already exists (the user came back from it earlier) - no need to search again.
+    state.pageIndex++;
+    const b = box(); if (b) b.innerHTML = renderStatePage(state);
+    return;
+  }
   renewing = true;
   const btn = document.getElementById('rrRenewBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Henter …'; }
@@ -446,26 +474,22 @@ async function renewRecommendations(){
       const b2 = document.getElementById('rrRenewBtn');
       if (b2) b2.textContent = `Henter … (${checked}/${total})`;
     });
-    const nextTop = takeNext(state, 3);
-    const b = box();
-    if (!b) return;
-    const heading = `<span class="eyebrow">ANBEFALTE STEVNER</span><h4 style="margin:6px 0 0;font-size:20px;color:#fff">${esc(eventLabel())}</h4>`;
-    const currentLine = Number.isFinite(state.currentRankingScore) ? ` Din nåværende Ranking Score: <strong>${state.currentRankingScore}</strong>.` : '';
-    if (!nextTop.length) {
-      b.innerHTML = `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Ingen flere stevner å anbefale - alle ${state.candidates.length} aktuelle stevner er sjekket.${currentLine}</p></div>`;
-      return;
-    }
-    const ownMarkText = formatOwnMark({ pb: state.pb });
-    const items = buildDisplayItems(nextTop, state.currentRankingScore);
-    loadRankPositions(items);
-    const canRenew = !isExhausted(state);
-    b.innerHTML = cardsBoxHtml(heading, descriptionText(ownMarkText, currentLine), items, ownMarkText, canRenew);
+    const next = takeNext(state, 3);
+    if (next.length) { state.pages.push(next); state.pageIndex++; }
+    const b = box(); if (b) b.innerHTML = renderStatePage(state);
   } finally {
     renewing = false;
   }
 }
+function goBack(state){
+  if (state.pageIndex <= 0) return;
+  state.pageIndex--;
+  const b = box(); if (b) b.innerHTML = renderStatePage(state);
+}
 document.addEventListener('click', e => {
-  if (e.target.closest('#rrRenewBtn')) renewRecommendations();
+  if (!lastSearchState) return;
+  if (e.target.closest('#rrRenewBtn')) goForward(lastSearchState);
+  else if (e.target.closest('#rrBackBtn')) goBack(lastSearchState);
 });
 
 // Uses meet-history.js's own formatting (already loaded, same event code conventions) so a time
