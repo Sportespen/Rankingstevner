@@ -37,12 +37,23 @@ function fetchHistory(name, date){
   const sex = athleteSex();
   const key = `${name}|${date||''}|${event}|${sex}`;
   if (cache.has(key)) return cache.get(key);
-  const p = (async () => {
+  async function attemptOnce(){
     try {
       const res = await fetch(`/api/meet-history?name=${encodeURIComponent(name)}&event=${encodeURIComponent(event)}&date=${encodeURIComponent(date||'')}&sex=${encodeURIComponent(sex)}&v=2`, { cache: 'no-store' });
       const data = await res.json();
-      return data?.ok ? data : { found: false, diagnostics: [{ source: 'fetch', status: res.status, body: data }] };
-    } catch (e) { return { found: false, diagnostics: [{ source: 'fetch', error: String(e?.message || e) }] }; }
+      return data?.ok ? data : null;
+    } catch (e) { return null; }
+  }
+  const p = (async () => {
+    // A single external-scrape fetch can fail transiently - confirmed live as the cause of
+    // "Anbefalte stevner" showing a different NUMBER of cards (1, 2, or 3) between runs for the
+    // same event, even though the same meets should qualify every time: a meet that would
+    // otherwise have counted got silently excluded because its one-shot history lookup happened
+    // to fail that particular run. One retry recovers most of those without permanently writing
+    // off a meet over a transient blip.
+    let data = await attemptOnce();
+    if (!data) data = await attemptOnce();
+    return data || { found: false, diagnostics: [{ source: 'fetch', retried: true }] };
   })();
   cache.set(key, p);
   return p;
