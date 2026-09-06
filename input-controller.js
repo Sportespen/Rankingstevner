@@ -4,12 +4,28 @@
 function init(){
 const originalWind=document.getElementById('wind'),calculate=document.getElementById('calculate'),resultScore=document.getElementById('resultScore'),windAdjustment=document.getElementById('windAdjustment'),event=document.getElementById('event'),category=document.getElementById('category'),placing=document.getElementById('placing'),mark=document.getElementById('mark');
 if(!originalWind||!calculate||!resultScore||!windAdjustment||!event||!category||!placing||!mark){setTimeout(init,100);return}if(document.getElementById('windControl'))return;originalWind.style.display='none';
-const wrap=document.createElement('div');wrap.id='windControl';wrap.style.cssText='display:grid;grid-template-columns:auto minmax(120px,1fr);gap:8px;margin-top:7px;align-items:stretch';const signWrap=document.createElement('div');signWrap.style.cssText='display:flex;gap:6px';let selectedSign='';const buttons={};
+const wrap=document.createElement('div');wrap.id='windControl';wrap.style.cssText='margin-top:7px';
+// Standardvalget skal være "ingen vindpåvirkning" - de aller fleste resultater trenger ingen
+// vindjustering, og å tvinge et valg for hvert resultat var akkurat det brukeren ba om å fjerne.
+// En enkel, tydelig av/på-bryter (samme visuelle språk som mangekamp sin vindstatus-nedtrekksmeny,
+// bare enda mer synlig) erstatter den tidligere alltid-synlige +/-/NWI-raden, som så ut som noe du
+// MÅTTE fylle ut selv om appen aldri faktisk krevde det.
+const toggleWrap=document.createElement('div');toggleWrap.style.cssText='display:flex;gap:8px;flex-wrap:wrap';
+const toggleBtns={};
+[['off','Ingen vindpåvirkning'],['on','Vind påvirket resultatet']].forEach(([v,l])=>{const b=document.createElement('button');b.type='button';b.textContent=l;b.style.cssText='flex:1;min-width:150px;border:1px solid #3f6b92;border-radius:11px;background:#0d2743;color:#f4f7fb;font-weight:800;font-size:13.5px;padding:10px 12px;cursor:pointer';toggleBtns[v]=b;toggleWrap.appendChild(b)});
+const detailsWrap=document.createElement('div');detailsWrap.style.cssText='display:none;grid-template-columns:auto minmax(120px,1fr);gap:8px;margin-top:8px;align-items:stretch';
+const signWrap=document.createElement('div');signWrap.style.cssText='display:flex;gap:6px';let selectedSign='';const buttons={};
 [['+','+'],['-','−'],['NWI','NWI']].forEach(([v,l])=>{const b=document.createElement('button');b.type='button';b.textContent=l;b.style.cssText='min-width:54px;border:1px solid #3f6b92;border-radius:11px;background:#0d2743;color:#f4f7fb;font-weight:800;font-size:16px;padding:0 12px;cursor:pointer';b.onclick=()=>{selectedSign=v;Object.entries(buttons).forEach(([k,x])=>{const a=k===v;x.style.background=a?'#ff8a19':'#0d2743';x.style.color=a?'#061426':'#f4f7fb';x.style.borderColor=a?'#ff8a19':'#3f6b92'});if(v==='NWI'){amount.value='';amount.dataset.digits=''}amount.disabled=v==='NWI';sync()};buttons[v]=b;signWrap.appendChild(b)});
-const amount=document.createElement('input');amount.id='windAmount';amount.type='text';amount.inputMode='numeric';amount.autocomplete='off';amount.placeholder='f.eks. 2,4';amount.style.marginTop='0';amount.dataset.digits='';originalWind.parentNode.insertBefore(wrap,originalWind);wrap.append(signWrap,amount);
+const amount=document.createElement('input');amount.id='windAmount';amount.type='text';amount.inputMode='numeric';amount.autocomplete='off';amount.placeholder='f.eks. 2,4';amount.style.marginTop='0';amount.dataset.digits='';
+originalWind.parentNode.insertBefore(wrap,originalWind);wrap.append(toggleWrap,detailsWrap);detailsWrap.append(signWrap,amount);
+let windMatters=false;
+function paintToggle(){Object.entries(toggleBtns).forEach(([k,b])=>{const a=(k==='on')===windMatters;b.style.background=a?'#ff8a19':'#0d2743';b.style.color=a?'#061426':'#f4f7fb';b.style.borderColor=a?'#ff8a19':'#3f6b92'});detailsWrap.style.display=windMatters?'grid':'none'}
+toggleBtns.off.onclick=()=>{windMatters=false;selectedSign='';Object.values(buttons).forEach(b=>{b.style.background='#0d2743';b.style.color='#f4f7fb';b.style.borderColor='#3f6b92'});amount.dataset.digits='';amount.value='';amount.disabled=false;paintToggle();sync()};
+toggleBtns.on.onclick=()=>{windMatters=true;paintToggle();sync()};
+paintToggle();
 function format(d){if(!d)return'';if(d.length===1)return d;if(d.length===2)return d[0]+','+d[1];return d.slice(0,-1)+','+d.slice(-1)}
 function value(){const d=amount.dataset.digits||'';if(!d)return null;return Number(d)/10}
-function raw(){if(selectedSign==='NWI')return'NWI';const n=value();if(!selectedSign||n===null)return'';return selectedSign+n.toFixed(1).replace('.',',')}
+function raw(){if(!windMatters)return'';if(selectedSign==='NWI')return'NWI';const n=value();if(!selectedSign||n===null)return'';return selectedSign+n.toFixed(1).replace('.',',')}
 function windMod(r){const s=String(r).replace(',','.');if(!s)return null;if(s==='NWI')return-30;const w=Number(s);if(!Number.isFinite(w))return null;if(w<0)return Math.abs(w)*6;if(w>2)return-w*6;return 0}
 function fmt(v){return Number.isInteger(v)?String(v):v.toFixed(1).replace('.',',')}
 function sync(){amount.value=format(amount.dataset.digits||'');originalWind.value=raw();const m=windMod(originalWind.value);windAdjustment.value=m===null?'0':`${m>0?'+':''}${fmt(m)}`}
@@ -17,13 +33,15 @@ window.__rankingstevnerSyncWind=sync;
 amount.addEventListener('beforeinput',e=>{if(e.inputType==='insertText'&&e.data&&/\D/.test(e.data))e.preventDefault()});
 amount.addEventListener('input',()=>{const incoming=amount.value.replace(/\D/g,'');amount.dataset.digits=incoming.slice(0,2);sync()});
 amount.addEventListener('keydown',e=>{if(e.key==='Backspace'||e.key==='Delete'){e.preventDefault();amount.dataset.digits=(amount.dataset.digits||'').slice(0,-1);sync()}});
-event.addEventListener('change',()=>{selectedSign='';Object.values(buttons).forEach(b=>{b.style.background='#0d2743';b.style.color='#f4f7fb';b.style.borderColor='#3f6b92'});amount.dataset.digits='';amount.value='';amount.disabled=false;originalWind.value='';windAdjustment.value='–'});
+// Bare et faktisk øvelsesbytte skal nullstille vindvalget til standard "Ingen vindpåvirkning" -
+// "Nullstill"-knappen (trinn3.js) dispatcher også en 'change' på #event selv når øvelsen er
+// UENDRET, bare for å trigge andre lyttere. Å nullstille vindbryteren på den synteiske hendelsen
+// også ville gjeninnført akkurat det brukeren ba om å fjerne - måtte velge vind på nytt for hvert
+// nye resultat. Sammenligner mot forrige faktiske verdi for å skille de to tilfellene.
+let lastEventValue=event.value;
+event.addEventListener('change',()=>{if(event.value===lastEventValue)return;lastEventValue=event.value;windMatters=false;selectedSign='';Object.values(buttons).forEach(b=>{b.style.background='#0d2743';b.style.color='#f4f7fb';b.style.borderColor='#3f6b92'});amount.dataset.digits='';amount.value='';amount.disabled=false;paintToggle();originalWind.value='';windAdjustment.value='0'});
 function recalcBase(){const saved=originalWind.value;originalWind.value='';try{if(typeof refreshResultScore==='function')refreshResultScore()}finally{originalWind.value=saved;sync()}}
 mark.addEventListener('input',recalcBase);mark.addEventListener('change',recalcBase);category.addEventListener('change',recalcBase);placing.addEventListener('change',recalcBase);
-// Vind er valgfritt - som "Innenfor grensene" er standardvalget for mangekamp sin vindstatus, skal
-// fravær av vind her tilsvare lovlig vind uten justering, ikke noe man må velge bort for hvert
-// resultat. sync() (kalt fra "Beregn"-klikket i app.js) setter allerede originalWind.value='' når
-// ingen tegn/siffer er valgt, og windModFor('') gir riktig "ingen justering" - ingenting å blokkere.
 calculate.addEventListener('click',()=>setTimeout(()=>{try{if(typeof adjustedResultDetails!=='function')return;const d=adjustedResultDetails();if(!d)return;const a=d.adjusted;resultScore.value=Number.isInteger(a)?String(a):String(a).replace('.',',');resultScore.dispatchEvent(new Event('input',{bubbles:true}));resultScore.dispatchEvent(new Event('change',{bubbles:true}))}catch(err){console.error(err)}},0));sync();}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();
