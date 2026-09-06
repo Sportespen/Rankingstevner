@@ -20,21 +20,26 @@ const amount=document.createElement('input');amount.id='windAmount';amount.type=
 originalWind.parentNode.insertBefore(wrap,originalWind);wrap.append(toggleWrap,detailsWrap);detailsWrap.append(signWrap,amount);
 let windMatters=false;
 const windAdjustmentHint=document.getElementById('windAdjustmentHint');
-const HINT_OFF='Gjelder når vinden er mellom 0 og +2,0 m/s medvind, eller er ukjent - ingen justering da.';
+const HINT_OFF='Gjelder når vinden er mellom 0 og +2,0 m/s medvind - ingen justering da. Er vinden reelt sett ukjent, velg «Vind påvirket resultatet» og NWI (gir -30 poeng).';
 const HINT_ON='Motvind gir tillegg, sterk medvind gir trekk.';
 function paintToggle(){Object.entries(toggleBtns).forEach(([k,b])=>{const a=(k==='on')===windMatters;b.style.background=a?'#ff8a19':'#0d2743';b.style.color=a?'#061426':'#f4f7fb';b.style.borderColor=a?'#ff8a19':'#3f6b92'});detailsWrap.style.display=windMatters?'grid':'none';if(windAdjustmentHint)windAdjustmentHint.textContent=windMatters?HINT_ON:HINT_OFF}
 toggleBtns.off.onclick=()=>{windMatters=false;selectedSign='';Object.values(buttons).forEach(b=>{b.style.background='#0d2743';b.style.color='#f4f7fb';b.style.borderColor='#3f6b92'});amount.dataset.digits='';amount.value='';amount.disabled=false;paintToggle();sync()};
 toggleBtns.on.onclick=()=>{windMatters=true;paintToggle();sync()};
 paintToggle();
-function format(d){if(!d)return'';if(d.length===1)return d;if(d.length===2)return d[0]+','+d[1];return d.slice(0,-1)+','+d.slice(-1)}
-function value(){const d=amount.dataset.digits||'';if(!d)return null;return Number(d)/10}
+// Ett siffer er alltid det hele tallet (",0" underforstått), andre siffer blir tidelsdelen - "1"
+// skal altså bli 1,0 m/s med en gang, ikke 0,1 m/s uten komma vist (som så ut som et helt annet
+// tall enn det faktisk betydde).
+function format(d){if(!d)return'';if(d.length===1)return d[0]+',0';return d[0]+','+d[1]}
+function value(){const d=amount.dataset.digits||'';if(!d)return null;return d.length===1?Number(d[0]):Number(d[0])+Number(d[1])/10}
 function raw(){if(!windMatters)return'';if(selectedSign==='NWI')return'NWI';const n=value();if(!selectedSign||n===null)return'';return selectedSign+n.toFixed(1).replace('.',',')}
 function windMod(r){const s=String(r).replace(',','.');if(!s)return null;if(s==='NWI')return-30;const w=Number(s);if(!Number.isFinite(w))return null;if(w<0)return Math.abs(w)*6;if(w>2)return-w*6;return 0}
 function fmt(v){return Number.isInteger(v)?String(v):v.toFixed(1).replace('.',',')}
 function sync(){amount.value=format(amount.dataset.digits||'');originalWind.value=raw();const m=windMod(originalWind.value);windAdjustment.value=m===null?'0':`${m>0?'+':''}${fmt(m)}`}
 window.__rankingstevnerSyncWind=sync;
-amount.addEventListener('beforeinput',e=>{if(e.inputType==='insertText'&&e.data&&/\D/.test(e.data))e.preventDefault()});
-amount.addEventListener('input',()=>{const incoming=amount.value.replace(/\D/g,'');amount.dataset.digits=incoming.slice(0,2);sync()});
+// Sifrene spores direkte her, ikke ved å tolke dem tilbake fra den kommaformaterte visningen
+// (f.eks. "1,0") - den visningen inneholder et syntetisk "0" som ikke er et reelt tastet siffer,
+// og å lese sifre ut av den igjen ville mistet det andre reelle sifferet brukeren taster inn.
+amount.addEventListener('beforeinput',e=>{e.preventDefault();if(e.inputType==='insertText'&&e.data&&/^\d$/.test(e.data)){amount.dataset.digits=((amount.dataset.digits||'')+e.data).slice(0,2);sync()}});
 amount.addEventListener('keydown',e=>{if(e.key==='Backspace'||e.key==='Delete'){e.preventDefault();amount.dataset.digits=(amount.dataset.digits||'').slice(0,-1);sync()}});
 // Bare et faktisk øvelsesbytte skal nullstille vindvalget til standard "Ingen vindpåvirkning" -
 // "Nullstill"-knappen (trinn3.js) dispatcher også en 'change' på #event selv når øvelsen er
