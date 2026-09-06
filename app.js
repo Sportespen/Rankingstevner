@@ -52,7 +52,7 @@ function populateEvents(){
 function updateEventUI(){
   const code=eventSelect.value,evt=scoringData?.[sex.value]?.[code];activeGroup=groupForEvent(code);eventGroupLabel.value=requirements[activeGroup].label;requiredText.textContent=requirements[activeGroup].text;mainRequirement.textContent=`Minst ${requirements[activeGroup].minMain} Main Event-resultat${requirements[activeGroup].minMain>1?"er":""}.`;
   if(evt?.unit==="seconds")markHint.textContent="Tid: f.eks. 10,32 eller 1:45,20.";else if(evt?.unit==="meters")markHint.textContent="Lengde/høyde i meter: f.eks. 7,85.";else if(evt?.unit==="points")markHint.textContent="Poengsum: f.eks. 8200.";else markHint.textContent="Skriv inn resultatet.";
-  markInput.value="";resultScoreInput.value="";windInput.value="";bljMark.value="";bljWind.value="";windAdjustment.value="0";combinedWindStatus.value="normal";
+  markInput.value="";resultScoreInput.value="";bljMark.value="";bljWind.value="";windAdjustment.value="0";combinedWindStatus.value="normal";
   const hasWind=windEvents.has(code),isJump=jumpEvents.has(code),isCombined=activeGroup==="combined";
   windSection.style.display=hasWind?"grid":"none";combinedWindSection.style.display=isCombined?"grid":"none";bljMarkLabel.style.display=isJump?"block":"none";bljWindLabel.style.display=isJump?"block":"none";
   rebuildPlacing();rebuildScores();refreshResultScore();
