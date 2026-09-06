@@ -117,6 +117,72 @@ function ordinal(n){ return `${n}.`; }
 const BATCH_SIZE = 10;
 const POOL_CEILING = 80; // generous but bounded - protects against a pathologically long search
 
+// Scores one batch of candidate meets against the athlete's own best mark - pulled out of
+// computeRecommendations() so the exact same per-meet logic can extend an existing search (see
+// ensureUnshown() below) when "Forny" asks for more, not just build the very first batch.
+async function scoreBatch(state, batch){
+  const history = window.RankingstevnerMeetHistory;
+  const scoring = window.RankingstevnerScoring;
+  return Promise.all(batch.map(async m => {
+    const category = String(m.rankingCategory || '').trim();
+    const data = await history.dataAsync(m.name, m.start);
+    if (!data?.found || data.comparable === false || !Array.isArray(data.allMarks) || !data.allMarks.length) return null;
+    let place = placementFor(data.allMarks, state.pb, state.ascending);
+    let lastPlaceEstimate = false;
+    // placementFor() returns null when the athlete's mark is worse than every recorded mark -
+    // deliberately, since a WA results page might only publish the top finishers, not the whole
+    // field, and claiming a specific place beyond what's listed could overclaim. But a SMALL
+    // recorded field (fewer than 8) is very likely the complete field - small domestic/club meets
+    // normally report everyone who competed, not a curated top list - so a "would have finished
+    // last" estimate is trustworthy there, and worth showing if it would still score points for
+    // this category (several categories' Placing Score tables pay down past 8th place).
+    if (place == null && data.allMarks.length < 8) {
+      const estimatedPlace = data.allMarks.length + 1;
+      const estimatedScore = scoring.placingScore(state.event, category, estimatedPlace);
+      if (estimatedScore != null && estimatedScore > 0) {
+        place = estimatedPlace;
+        lastPlaceEstimate = true;
+      }
+    }
+    if (place == null) return null;
+    const placingScore = scoring.placingScore(state.event, category, place);
+    if (placingScore == null) return null;
+    return {
+      meet: m, place, category, lastPlaceEstimate,
+      resultScore: state.resultScore, placingScore,
+      performanceScore: state.resultScore + placingScore,
+      year: data.year || null,
+      source: data.source || null,
+      winnerMark: data.winnerMark ?? null,
+      top3: Array.isArray(data.top3) ? data.top3 : null,
+      top8: Array.isArray(data.top8) ? data.top8 : null,
+    };
+  }));
+}
+// The candidates found so far, sorted best-first, that haven't already been shown to the user in
+// an earlier round (initial 3, or an earlier "Forny" click).
+function unshown(state){ return state.scoredAll.filter(x => !state.shownIds.has(x.meet.id)); }
+// Extends a search until there are at least `needed` not-yet-shown scored candidates, or the
+// whole candidate pool has been checked. A single batch (BATCH_SIZE=10) often turns up more than
+// 3 valid candidates at once - those extras stay cached in state.scoredAll rather than being
+// thrown away, so a later "Forny" click is frequently instant, reusing meets already checked
+// during an earlier round instead of hitting the network again for something the app already knows.
+async function ensureUnshown(state, needed, onProgress){
+  while (unshown(state).length < needed && state.checkedIndex < state.candidates.length) {
+    const batch = state.candidates.slice(state.checkedIndex, state.checkedIndex + BATCH_SIZE);
+    const results = await scoreBatch(state, batch);
+    state.checkedIndex += batch.length;
+    state.scoredAll = state.scoredAll.concat(results.filter(Boolean)).sort((a, b) => b.performanceScore - a.performanceScore);
+    onProgress?.(state.checkedIndex, state.candidates.length);
+  }
+}
+function takeNext(state, count){
+  const items = unshown(state).slice(0, count);
+  items.forEach(x => state.shownIds.add(x.meet.id));
+  return items;
+}
+function isExhausted(state){ return state.checkedIndex >= state.candidates.length && unshown(state).length === 0; }
+
 async function computeRecommendations(onProgress){
   const finder = window.RankingstevnerMeetFinder;
   const history = window.RankingstevnerMeetHistory;
@@ -155,58 +221,13 @@ async function computeRecommendations(onProgress){
     .slice(0, POOL_CEILING);
 
   const currentRankingScore = scoring.currentRankingScore();
-  let scored = [];
-  let checked = 0;
+  // Kept around (not just the resulting top 3) so a "Forny" click can pick up exactly where this
+  // search left off instead of starting a whole new one from scratch.
+  const state = { candidates, pb, resultScore, currentRankingScore, event, ascending, checkedIndex: 0, scoredAll: [], shownIds: new Set() };
+  await ensureUnshown(state, 3, onProgress);
+  const top = takeNext(state, 3);
 
-  for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
-    const batch = candidates.slice(i, i + BATCH_SIZE);
-    const results = await Promise.all(batch.map(async m => {
-      const category = String(m.rankingCategory || '').trim();
-      const data = await history.dataAsync(m.name, m.start);
-      // Reported per meet, right as each one's (potentially slow, uncached) fetch resolves - not
-      // just once per whole batch of 10. A batch-level report left the box showing nothing but the
-      // static "Beregner anbefalinger …" for as long as the SLOWEST fetch in the first batch took,
-      // which for a busy event (e.g. 100 m) with a cold cache could be the entire wait with zero
-      // feedback and no data for the time estimate to work from.
-      checked += 1;
-      onProgress?.(checked, candidates.length);
-      if (!data?.found || data.comparable === false || !Array.isArray(data.allMarks) || !data.allMarks.length) return null;
-      let place = placementFor(data.allMarks, pb, ascending);
-      let lastPlaceEstimate = false;
-      // placementFor() returns null when the athlete's mark is worse than every recorded mark -
-      // deliberately, since a WA results page might only publish the top finishers, not the whole
-      // field, and claiming a specific place beyond what's listed could overclaim. But a SMALL
-      // recorded field (fewer than 8) is very likely the complete field - small domestic/club meets
-      // normally report everyone who competed, not a curated top list - so a "would have finished
-      // last" estimate is trustworthy there, and worth showing if it would still score points for
-      // this category (several categories' Placing Score tables pay down past 8th place).
-      if (place == null && data.allMarks.length < 8) {
-        const estimatedPlace = data.allMarks.length + 1;
-        const estimatedScore = scoring.placingScore(event, category, estimatedPlace);
-        if (estimatedScore != null && estimatedScore > 0) {
-          place = estimatedPlace;
-          lastPlaceEstimate = true;
-        }
-      }
-      if (place == null) return null;
-      const placingScore = scoring.placingScore(event, category, place);
-      if (placingScore == null) return null;
-      return {
-        meet: m, place, category, lastPlaceEstimate,
-        resultScore, placingScore,
-        performanceScore: resultScore + placingScore,
-        year: data.year || null,
-        source: data.source || null,
-        winnerMark: data.winnerMark ?? null,
-        top3: Array.isArray(data.top3) ? data.top3 : null,
-        top8: Array.isArray(data.top8) ? data.top8 : null,
-      };
-    }));
-    scored = scored.concat(results.filter(Boolean)).sort((a, b) => b.performanceScore - a.performanceScore);
-    if (scored.length >= 3) break;
-  }
-
-  return { pb, resultScore, currentRankingScore, probed: checked, top: scored.slice(0, 3) };
+  return { pb, resultScore, currentRankingScore, probed: state.checkedIndex, top, state };
 }
 
 // Exact copy of meet-finder-v1.js's own locationText() - the API sometimes returns location as a
@@ -339,6 +360,56 @@ function itemHtml(x, ownMarkText){
   </div>`;
 }
 
+// A Ranking Score is the AVERAGE of the athlete's best counted Performance Scores, not any single
+// meet's Performance Score on its own - diffing performanceScore straight against
+// currentRankingScore overstates the improvement whenever a strong result already counts toward
+// that average. projectedRankingScore() returns BOTH current and projected from the exact same
+// selection (mirroring the "Ny prestasjon" calculator's own Main-Event-aware search), so the two
+// numbers can only agree with each other, never independently disagree.
+//
+// Deliberately no numeric fallback when it returns null (e.g. the local reconstruction hasn't
+// finished loading all counted results yet, or genuinely can't satisfy the Main Event requirement
+// from what's loaded so far) - confirmed live that showing performanceScore minus
+// currentRankingScore "just to show something" produced a WRONG number that didn't match the
+// calculator (+24 shown here vs its +10 for the identical hypothetical result). An honest "not
+// shown yet" is strictly better than a plausible-looking wrong one - and since this box already
+// re-runs on rankingbasisupdated (fired whenever the local basis genuinely changes), a transient
+// "still loading" case corrects itself on its own the moment real data lands, without ever having
+// shown a fabricated number in the meantime.
+function buildDisplayItem(x, currentRankingScore){
+  const scoring = window.RankingstevnerScoring;
+  const delta = scoring?.projectedRankingScore?.(eventCode(), x.performanceScore);
+  const improvement = Number.isFinite(delta?.current) && Number.isFinite(delta?.projected)
+    ? delta.projected - delta.current
+    : null;
+  return { ...x, improvement, hasCurrentScore: Number.isFinite(currentRankingScore), rankProjected: Number.isFinite(delta?.projected) ? delta.projected : null };
+}
+// The 3 candidates shown are CHOSEN by highest Performance Score - only the DISPLAY order differs:
+// nearest meet first, so the list reads like a practical shortlist of what's coming up rather than
+// a ranked-by-score table.
+function buildDisplayItems(top, currentRankingScore){
+  return top.slice().sort((a, b) => new Date(a.meet.start) - new Date(b.meet.start)).map(x => buildDisplayItem(x, currentRankingScore));
+}
+function descriptionText(ownMarkText, currentLine){
+  return `Stevner der høy stevnekategori og et historisk sett svakt felt gir best mulighet til å forbedre rankingen din, basert på din beste tellende prestasjon (${ownMarkText}).${currentLine}`;
+}
+// "Forny" reuses this exact markup for both the very first render and every later renewal, so a
+// renewed card looks and behaves identically to the original three - same layout, same "Historisk
+// nivå" line, same live ranking-position lookup.
+function cardsBoxHtml(heading, description, items, ownMarkText, canRenew){
+  const renewBit = canRenew
+    ? `<button type="button" id="rrRenewBtn" style="flex:none;border:1px solid #ff8a19;border-radius:999px;padding:7px 16px;font-weight:800;font-size:12.5px;background:#0d2743;color:#ff8a19;cursor:pointer;white-space:nowrap">↻ Forny</button>`
+    : `<small class="muted" style="white-space:nowrap">Ingen flere å anbefale</small>`;
+  return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+      <div>${heading}</div>
+      ${renewBit}
+    </div>
+    <p class="muted" style="margin:8px 0 12px">${description}</p>
+    <div style="display:grid;gap:10px">${items.map(x => itemHtml(x, ownMarkText)).join('')}</div>
+  </div>`;
+}
+
 function renderHtml(result){
   const heading = `<span class="eyebrow">ANBEFALTE STEVNER</span><h4 style="margin:6px 0 0;font-size:20px;color:#fff">${esc(eventLabel())}</h4>`;
   if (!result || result.reason === 'not-ready' || result.reason === 'no-event') return '';
@@ -354,43 +425,48 @@ function renderHtml(result){
     return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Fant ingen stevner med nok verifisert historisk nivå ennå til å gi konkrete anbefalinger (så langt sjekket ${result.probed} stevner).${currentLine}</p></div>`;
   }
   const ownMarkText = formatOwnMark(result);
-  // The 3 candidates are CHOSEN by highest Performance Score (computeRecommendations' own sort) -
-  // that selection logic is unchanged. Only the DISPLAY order is different: nearest meet first, so
-  // the list reads like a practical shortlist of what's coming up rather than a ranked-by-score table.
-  const scoring = window.RankingstevnerScoring;
-  const items = result.top
-    .slice()
-    .sort((a, b) => new Date(a.meet.start) - new Date(b.meet.start))
-    .map(x => {
-      // A Ranking Score is the AVERAGE of the athlete's best counted Performance Scores, not any
-      // single meet's Performance Score on its own - diffing performanceScore straight against
-      // currentRankingScore overstates the improvement whenever a strong result already counts
-      // toward that average. projectedRankingScore() returns BOTH current and projected from the
-      // exact same selection (mirroring the "Ny prestasjon" calculator's own Main-Event-aware
-      // search), so the two numbers can only agree with each other, never independently disagree.
-      //
-      // Deliberately no numeric fallback when it returns null (e.g. the local reconstruction
-      // hasn't finished loading all counted results yet, or genuinely can't satisfy the Main Event
-      // requirement from what's loaded so far) - confirmed live that showing performanceScore minus
-      // currentRankingScore "just to show something" produced a WRONG number that didn't match the
-      // calculator (+24 shown here vs its +10 for the identical hypothetical result). An honest
-      // "not shown yet" is strictly better than a plausible-looking wrong one - and since this box
-      // already re-runs on rankingbasisupdated (fired whenever the local basis genuinely changes),
-      // a transient "still loading" case corrects itself on its own the moment real data lands,
-      // without ever having shown a fabricated number in the meantime.
-      const delta = scoring?.projectedRankingScore?.(eventCode(), x.performanceScore);
-      const improvement = Number.isFinite(delta?.current) && Number.isFinite(delta?.projected)
-        ? delta.projected - delta.current
-        : null;
-      return { ...x, improvement, hasCurrentScore: Number.isFinite(result.currentRankingScore), rankProjected: Number.isFinite(delta?.projected) ? delta.projected : null };
-    });
+  const items = buildDisplayItems(result.top, result.currentRankingScore);
   loadRankPositions(items);
-  return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">
-    ${heading}
-    <p class="muted" style="margin:8px 0 12px">Stevner der høy stevnekategori og et historisk sett svakt felt gir best mulighet til å forbedre rankingen din, basert på din beste tellende prestasjon (${ownMarkText}).${currentLine}</p>
-    <div style="display:grid;gap:10px">${items.map(x => itemHtml(x, ownMarkText)).join('')}</div>
-  </div>`;
+  const canRenew = !!result.state && !isExhausted(result.state);
+  return cardsBoxHtml(heading, descriptionText(ownMarkText, currentLine), items, ownMarkText, canRenew);
 }
+
+// "Forny" - picks up the same search state computeRecommendations() built (see state.checkedIndex/
+// scoredAll/shownIds), extends it if needed, and swaps in up to 3 more not-yet-shown meets without
+// recomputing the athlete's PB/Result Score or re-fetching meets already checked in an earlier round.
+let renewing = false;
+async function renewRecommendations(){
+  const state = lastSearchState;
+  if (!state || renewing) return;
+  renewing = true;
+  const btn = document.getElementById('rrRenewBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Henter …'; }
+  try {
+    await ensureUnshown(state, 3, (checked, total) => {
+      const b2 = document.getElementById('rrRenewBtn');
+      if (b2) b2.textContent = `Henter … (${checked}/${total})`;
+    });
+    const nextTop = takeNext(state, 3);
+    const b = box();
+    if (!b) return;
+    const heading = `<span class="eyebrow">ANBEFALTE STEVNER</span><h4 style="margin:6px 0 0;font-size:20px;color:#fff">${esc(eventLabel())}</h4>`;
+    const currentLine = Number.isFinite(state.currentRankingScore) ? ` Din nåværende Ranking Score: <strong>${state.currentRankingScore}</strong>.` : '';
+    if (!nextTop.length) {
+      b.innerHTML = `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Ingen flere stevner å anbefale - alle ${state.candidates.length} aktuelle stevner er sjekket.${currentLine}</p></div>`;
+      return;
+    }
+    const ownMarkText = formatOwnMark({ pb: state.pb });
+    const items = buildDisplayItems(nextTop, state.currentRankingScore);
+    loadRankPositions(items);
+    const canRenew = !isExhausted(state);
+    b.innerHTML = cardsBoxHtml(heading, descriptionText(ownMarkText, currentLine), items, ownMarkText, canRenew);
+  } finally {
+    renewing = false;
+  }
+}
+document.addEventListener('click', e => {
+  if (e.target.closest('#rrRenewBtn')) renewRecommendations();
+});
 
 // Uses meet-history.js's own formatting (already loaded, same event code conventions) so a time
 // looks like "10.72"/"1:45.20" rather than a raw seconds float.
@@ -452,6 +528,11 @@ const now = () => typeof performance !== 'undefined' ? performance.now() : Date.
 let searchKey = null;
 let searchStartedAt = null;
 let lastBoxUpdateAt = null;
+// The search state (candidates/checkedIndex/scoredAll/shownIds) behind whatever is currently on
+// screen, so "Forny" can extend it - cleared out whenever a fresh, non-superseded recompute() runs
+// (including one for the same event/sex, e.g. after "Beregn rankingeffekt"), so a stale click from
+// a previous search never mixes results from two different underlying PBs/scoring states.
+let lastSearchState = null;
 function box(){ return document.getElementById('rankingRecommendations'); }
 function noteBoxUpdate(){ lastBoxUpdateAt = now(); }
 // meet-finder-v1.js's render() doesn't just clear the box's content, it replaces the whole element
@@ -529,6 +610,7 @@ async function recompute(){
       scheduleRecompute(1000);
       return; // leave the loading state (or whatever was already showing) rather than blanking it - the module-level heartbeat above covers a long wait here too
     }
+    lastSearchState = result?.state || null;
     const b = box(); if (b) b.innerHTML = renderHtml(result);
   } finally {
     computing = false;
