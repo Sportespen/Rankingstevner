@@ -260,24 +260,32 @@ function loadRankPositions(items){
   // likely than any one lookup failing on its own. Running them one at a time (awaiting each
   // before starting the next) costs a bit more total wall-clock time but lets each lookup run
   // without competing with the others for the same external resource.
+  // A single attempt is genuinely flaky (confirmed live: even run one at a time, individual
+  // lookups still fail on their own - this is a best-effort scrape of an external site with no
+  // official API, not a guaranteed lookup). One retry after a failed/timed-out attempt recovers
+  // most transient network blips without needing to know their exact cause.
+  async function attemptRankFetch(x) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    try {
+      const res = await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(waId)}&event=${encodeURIComponent(event)}&sex=${encodeURIComponent(sex)}&newScore=${encodeURIComponent(x.rankProjected)}&v=1`, { cache: 'no-store', signal: controller.signal });
+      const data = await res.json();
+      return Number.isFinite(data?.estimatedNewRank) && data.estimatedNewRank > 0 ? data.estimatedNewRank : null;
+    } catch (_) {
+      return null;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
   (async () => {
     for (const x of items) {
       if (!Number.isFinite(x.rankProjected) || !x.meet?.id) continue;
       const meetId = x.meet.id;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
-      try {
-        const res = await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(waId)}&event=${encodeURIComponent(event)}&sex=${encodeURIComponent(sex)}&newScore=${encodeURIComponent(x.rankProjected)}&v=1`, { cache: 'no-store', signal: controller.signal });
-        const data = await res.json();
-        const ok = Number.isFinite(data?.estimatedNewRank) && data.estimatedNewRank > 0;
-        if (ok) {
-          const el = document.getElementById(`rrRank-${meetId}`);
-          if (el) el.textContent = `Ny ranking: #${data.estimatedNewRank}`;
-        }
-      } catch (_) {
-        // timeout/network failure - leave the placeholder empty rather than guess
-      } finally {
-        clearTimeout(timeoutId);
+      let rank = await attemptRankFetch(x);
+      if (rank == null) rank = await attemptRankFetch(x);
+      if (rank != null) {
+        const el = document.getElementById(`rrRank-${meetId}`);
+        if (el) el.textContent = `Ny ranking: #${rank}`;
       }
     }
   })();
