@@ -650,25 +650,46 @@ function scheduleRecompute(delay){
   debounceTimer = setTimeout(recompute, delay);
 }
 
-// Scrolls to and briefly highlights the same meet's own full card further down the page (contact
-// info, program, "Historisk nivå" details) instead of duplicating all of that inside this box.
+// Scrolls to and highlights the same meet's own full card further down the page (contact info,
+// program, "Historisk nivå" details) instead of duplicating all of that inside this box.
 // Delegated on document (not the box itself) so it survives the box's innerHTML being replaced on
 // every recompute - meet-finder-v1.js now stamps data-meet-id on each card for this to match on.
+// The highlight used to fade out on its own after 1.8s - per explicit request it now stays until
+// the user either jumps to a different recommended meet or clicks the highlighted card itself to
+// go back, so "which card did I just come from" stays visible for as long as it's relevant.
+let highlightedMeetId = null;
+function clearMeetHighlight(){
+  if (!highlightedMeetId) return;
+  const prev = document.querySelector(`.meet-card-v1[data-meet-id="${CSS.escape(String(highlightedMeetId))}"]`);
+  if (prev) { prev.style.outline = ''; prev.style.outlineOffset = ''; }
+  highlightedMeetId = null;
+}
 function jumpToMeet(id){
   if (!id) return;
   const card = document.querySelector(`.meet-card-v1[data-meet-id="${CSS.escape(String(id))}"]`);
   if (!card) return; // e.g. filtered out by the date/country/venue filters above - nothing to jump to
+  clearMeetHighlight();
   card.scrollIntoView({ behavior: 'smooth', block: 'center' });
   card.style.transition = 'outline-color .3s ease';
   card.style.outline = '3px solid #ff8a19';
   card.style.outlineOffset = '2px';
-  setTimeout(() => { card.style.outline = ''; card.style.outlineOffset = ''; }, 1800);
+  highlightedMeetId = id;
   showBackButton();
+}
+// Scrolls back up to the recommendations box and drops the highlight - shared by the floating
+// "back" button and by clicking the highlighted card itself a second time.
+function returnToRecommendations(){
+  clearMeetHighlight();
+  const target = document.getElementById('kvalifiseringPanel') || box();
+  target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const btn = document.getElementById('rrBackToRecommendations');
+  if (btn) btn.style.display = 'none';
 }
 document.addEventListener('click', e => {
   const item = e.target.closest('[data-jump-to-meet]');
-  if (!item || e.target.closest('a')) return; // let the "Historisk nivå" link open normally
-  jumpToMeet(item.dataset.jumpToMeet);
+  if (item && !e.target.closest('a')) { jumpToMeet(item.dataset.jumpToMeet); return; } // let the "Historisk nivå" link open normally
+  const card = e.target.closest('.meet-card-v1');
+  if (card && !e.target.closest('a') && card.dataset.meetId && card.dataset.meetId === highlightedMeetId) returnToRecommendations();
 });
 
 // Floating "back to recommendations" button - jumping to a meet card can land far down the page
@@ -685,11 +706,7 @@ function ensureBackButton(){
   btn.type = 'button';
   btn.textContent = '↑ Tilbake til Anbefalte stevner';
   btn.style.cssText = 'display:none;position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:50;border:1px solid #ff8a19;border-radius:999px;padding:11px 18px;font-weight:800;font-size:13px;background:#102a47;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.45);cursor:pointer';
-  btn.addEventListener('click', () => {
-    const target = document.getElementById('kvalifiseringPanel') || document.getElementById('rankingRecommendations');
-    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    btn.style.display = 'none';
-  });
+  btn.addEventListener('click', returnToRecommendations);
   document.body.appendChild(btn);
   return btn;
 }
