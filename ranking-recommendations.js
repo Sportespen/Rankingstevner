@@ -266,7 +266,12 @@ function loadRankPositions(items){
   // most transient network blips without needing to know their exact cause.
   async function attemptRankFetch(x) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    // A deep event (e.g. 100m, with far more entries in the world rankings than a smaller field
+    // like 110mH) needs more binary-search steps on the backend to locate a hypothetical score -
+    // confirmed live as a likely cause of 100m specifically losing all three cards' positions at
+    // once, not just random network flakiness: a genuinely-still-working search for a big event
+    // can take longer than a small one. A more generous deadline gives it room to actually finish.
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
       const res = await fetch(`/api/wa-official-ranking?id=${encodeURIComponent(waId)}&event=${encodeURIComponent(event)}&sex=${encodeURIComponent(sex)}&newScore=${encodeURIComponent(x.rankProjected)}&v=1`, { cache: 'no-store', signal: controller.signal });
       const data = await res.json();
