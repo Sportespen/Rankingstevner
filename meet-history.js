@@ -52,7 +52,10 @@ function fetchHistory(name, date){
     // to fail that particular run. One retry recovers most of those without permanently writing
     // off a meet over a transient blip.
     let data = await attemptOnce();
-    if (!data) data = await attemptOnce();
+    // Confirmed live: an immediate retry can still land inside the same brief external
+    // outage/rate-limit window that caused the first attempt to fail - a short pause first gives
+    // that window more chance to have passed before trying again.
+    if (!data) { await new Promise(r => setTimeout(r, 500)); data = await attemptOnce(); }
     return data || { found: false, diagnostics: [{ source: 'fetch', retried: true }] };
   })();
   cache.set(key, p);

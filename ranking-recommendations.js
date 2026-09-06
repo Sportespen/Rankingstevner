@@ -282,7 +282,9 @@ function loadRankPositions(items){
       if (!Number.isFinite(x.rankProjected) || !x.meet?.id) continue;
       const meetId = x.meet.id;
       let rank = await attemptRankFetch(x);
-      if (rank == null) rank = await attemptRankFetch(x);
+      // Same reasoning as meet-history.js's retry: an immediate second attempt can still land
+      // inside the same brief external outage/rate-limit window as the first.
+      if (rank == null) { await new Promise(r => setTimeout(r, 500)); rank = await attemptRankFetch(x); }
       if (rank != null) {
         const el = document.getElementById(`rrRank-${meetId}`);
         if (el) el.textContent = `Ny ranking: #${rank}`;
