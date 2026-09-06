@@ -49,13 +49,6 @@ const CATEGORY_RANK = { GL: 0, A: 1, B: 2, C: 3, D: 4, E: 5, F: 6 };
 function eventCode(){ return document.getElementById('event')?.value || ''; }
 function eventLabel(){ return document.getElementById('event')?.selectedOptions?.[0]?.textContent || 'valgt øvelse'; }
 function athleteSex(){ return document.getElementById('sex')?.value === 'W' ? 'W' : 'M'; }
-function isCombinedCode(event){ return event === 'Decathlon' || event === 'Heptathlon'; }
-// Matches ranking-basis.js's own validDate() cutoff exactly (18 months for combined events/10000m,
-// 12 months for everything else) - shown to the user so "no own mark" reads as a real, understood
-// fact about the ranking period rather than a vague "fill in your WA-ID" prompt that's actively
-// wrong when a WA-ID IS already filled in and simply has no result for this specific event.
-function rankingPeriodMonths(event){ return (isCombinedCode(event) || event === '10000m') ? 18 : 12; }
-
 // Same "which direction is better" list meet-history.js already uses for the green comparison
 // line - lower time wins for track events, higher mark wins for jumps/throws/combined events.
 const TRACK_EVENTS = new Set(['100m', '200m', '400m', '800m', '1500m', '5000m', '10000m', '100mH', '110mH', '400mH', '3000mSC']);
@@ -94,12 +87,26 @@ function parseOwnMark(raw){
   }
   return Number(s);
 }
+function bestMainMark(rows, event){
+  const marks = (Array.isArray(rows) ? rows : []).filter(r => r.type === 'main').map(r => parseOwnMark(r.mark)).filter(Number.isFinite);
+  if (!marks.length) return null;
+  return isAscending(event) ? Math.min(...marks) : Math.max(...marks);
+}
+// Prefers a mark from a counting result within the ranking period (own.rows, ranking-basis.js's
+// validDate()-filtered list) - that's the normal, unambiguous case. When there is none at all
+// (e.g. the athlete hasn't competed in this event in the last 12/18 months), falls back to the
+// athlete's all-time pers instead of giving up on recommendations entirely: a stevne recommendation
+// is really "if you hit around this mark here, here's what it'd likely earn you", which is just as
+// meaningful for a pers as for an in-period mark - it just needs to be labelled honestly as a pers,
+// not as something that already counts, since isCareerBest tells every caller which case this is.
 function ownBestMark(event){
   const own = window.__rankingstevnerOwnResults;
   if (!own || own.event !== event) return null;
-  const marks = (Array.isArray(own.rows) ? own.rows : []).filter(r => r.type === 'main').map(r => parseOwnMark(r.mark)).filter(Number.isFinite);
-  if (!marks.length) return null;
-  return isAscending(event) ? Math.min(...marks) : Math.max(...marks);
+  const inPeriod = bestMainMark(own.rows, event);
+  if (inPeriod != null) return { mark: inPeriod, isCareerBest: false };
+  const career = bestMainMark(own.allTimeRows, event);
+  if (career != null) return { mark: career, isCareerBest: true };
+  return null;
 }
 
 function ordinal(n){ return `${n}.`; }
@@ -193,8 +200,9 @@ async function computeRecommendations(onProgress){
   if (!event) return { reason: 'no-event' };
 
   await history.waitForOwnResults();
-  const pb = ownBestMark(event);
-  if (pb == null) return { reason: 'no-own-mark' };
+  const own = ownBestMark(event);
+  if (own == null) return { reason: 'no-own-mark' };
+  const { mark: pb, isCareerBest } = own;
 
   await scoring.ready();
   const ascending = isAscending(event);
@@ -226,7 +234,7 @@ async function computeRecommendations(onProgress){
   // every batch of 3 ever shown (not just the newest), so "Tilbake" can step to an earlier page
   // instantly - it's already fully computed - instead of the box only ever being able to move
   // forward until it runs out of stevner.
-  const state = { candidates, pb, resultScore, currentRankingScore, event, ascending, checkedIndex: 0, scoredAll: [], shownIds: new Set(), pages: [], pageIndex: -1 };
+  const state = { candidates, pb, isCareerBest, resultScore, currentRankingScore, event, ascending, checkedIndex: 0, scoredAll: [], shownIds: new Set(), pages: [], pageIndex: -1 };
   await ensureUnshown(state, 3, onProgress);
   const top = takeNext(state, 3);
   if (top.length) { state.pages.push(top); state.pageIndex = 0; }
@@ -330,7 +338,7 @@ function loadRankPositions(items){
     }
   })();
 }
-function itemHtml(x, ownMarkText){
+function itemHtml(x, ownMarkText, isCareerBest){
   const improvement = Number.isFinite(x.improvement) ? x.improvement : null;
   const newScoreBit = Number.isFinite(x.rankProjected) ? ` (ny Ranking Score: ${x.rankProjected})` : '';
   const improvementLine = improvement != null
@@ -354,7 +362,7 @@ function itemHtml(x, ownMarkText){
       <div><strong>${esc(x.meet.name || 'Stevne')}</strong><div class="muted" style="font-size:12px;margin-top:2px">${esc(locationText(x.meet) || 'Sted ikke publisert')} · ${fmtDate(x.meet.start)}</div>${historicalLevelLine(x)}</div>
       <span class="cat" title="${esc(CATEGORY_DESCRIPTIONS[x.category]||'')}">${esc(x.category)}</span>
     </div>
-    <small style="display:block;margin-top:8px">Forventet ${ordinal(x.place)} plass med din beste tellende prestasjon (<strong>${esc(ownMarkText)}</strong>) → <strong>Performance Score ${x.performanceScore}</strong> (Result Score ${x.resultScore} + Placing Score ${x.placingScore})${sourceLink}</small>
+    <small style="display:block;margin-top:8px">Forventet ${ordinal(x.place)} plass med ${isCareerBest ? 'din pers' : 'din beste tellende prestasjon'} (<strong>${esc(ownMarkText)}</strong>) → <strong>Performance Score ${x.performanceScore}</strong> (Result Score ${x.resultScore} + Placing Score ${x.placingScore})${sourceLink}</small>
     ${x.lastPlaceEstimate ? `<small class="muted" style="display:block;margin-top:2px">Anslag: din prestasjon var svakere enn alle ${x.place - 1} kjente resultatene, men feltet var lite nok til at sisteplass trolig fortsatt gir rankingpoeng.</small>` : ''}
     ${improvementLine}
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-top:8px">
@@ -394,8 +402,15 @@ function buildDisplayItem(x, currentRankingScore){
 function buildDisplayItems(top, currentRankingScore){
   return top.slice().sort((a, b) => new Date(a.meet.start) - new Date(b.meet.start)).map(x => buildDisplayItem(x, currentRankingScore));
 }
-function descriptionText(ownMarkText, currentLine){
-  return `Stevner der høy stevnekategori og et historisk sett svakt felt gir best mulighet til å forbedre rankingen din, basert på din beste tellende prestasjon (${ownMarkText}).${currentLine}`;
+// When there's no counting result in the ranking period, the recommendations fall back to the
+// athlete's all-time pers (see ownBestMark() above) - the sentence says so explicitly rather than
+// quietly calling it "din beste tellende prestasjon" like a real in-period counting mark, since a
+// pers this old wouldn't itself count even if it happened at one of these stevner.
+function descriptionText(ownMarkText, currentLine, isCareerBest){
+  const basis = isCareerBest
+    ? `din pers i øvelsen (${ownMarkText}) - du har ingen tellende resultater i perioden akkurat nå, så dette viser hva en ny prestasjon på persnivå ville gitt`
+    : `din beste tellende prestasjon (${ownMarkText})`;
+  return `Stevner der høy stevnekategori og et historisk sett svakt felt gir best mulighet til å forbedre rankingen din, basert på ${basis}.${currentLine}`;
 }
 // Forward/back nav bar for the top-right corner. Going back always just replays an earlier page
 // that's already fully computed (state.pages), so it's instant and never re-fetches anything -
@@ -407,14 +422,14 @@ function navBarHtml(canBack, canForward){
     : `<small class="muted" style="white-space:nowrap">Ingen flere å anbefale</small>`;
   return `<div style="display:flex;gap:8px;align-items:center;flex:none">${back}${forward}</div>`;
 }
-function cardsBoxHtml(heading, description, items, ownMarkText, navHtml){
+function cardsBoxHtml(heading, description, items, ownMarkText, navHtml, isCareerBest){
   return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div>${heading}</div>
       ${navHtml}
     </div>
     <p class="muted" style="margin:8px 0 12px">${description}</p>
-    <div style="display:grid;gap:10px">${items.map(x => itemHtml(x, ownMarkText)).join('')}</div>
+    <div style="display:grid;gap:10px">${items.map(x => itemHtml(x, ownMarkText, isCareerBest)).join('')}</div>
   </div>`;
 }
 // Renders whatever page of a search state is currently selected (state.pageIndex) - used for the
@@ -432,15 +447,17 @@ function renderStatePage(state){
   // Forward is available either because an already-computed later page exists (from having gone
   // back earlier), or because the search hasn't exhausted the candidate pool yet.
   const canForward = state.pageIndex + 1 < state.pages.length || !isExhausted(state);
-  return cardsBoxHtml(heading, descriptionText(ownMarkText, currentLine), items, ownMarkText, navBarHtml(canBack, canForward));
+  return cardsBoxHtml(heading, descriptionText(ownMarkText, currentLine, state.isCareerBest), items, ownMarkText, navBarHtml(canBack, canForward), state.isCareerBest);
 }
 
 function renderHtml(result){
   const heading = `<span class="eyebrow">ANBEFALTE STEVNER</span><h4 style="margin:6px 0 0;font-size:20px;color:#fff">${esc(eventLabel())}</h4>`;
   if (!result || result.reason === 'not-ready' || result.reason === 'no-event') return '';
   if (result.reason === 'no-own-mark') {
-    const months = rankingPeriodMonths(eventCode());
-    return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Utøver mangler resultater for øvelsen i perioden (siste ${months} måneder) - ingen stevneanbefalinger å vise.</p></div>`;
+    // ownBestMark() already falls back to the athlete's all-time pers when there's no counting
+    // result in the ranking period - reaching this branch means there's no registered main-type
+    // result for the event at all, ever, not just none recently.
+    return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Fant ingen registrerte resultater for øvelsen (verken tellende i perioden eller en tidligere pers) - ingen stevneanbefalinger å vise.</p></div>`;
   }
   if (result.reason === 'no-result-score') {
     return `<div class="finder-championship" style="margin:0 0 18px;padding:16px 20px;border:1px solid #21405f;border-radius:14px;background:#102a47;box-sizing:border-box">${heading}<p class="muted" style="margin:8px 0 0">Fant ikke Result Score for din beste prestasjon i valgt øvelse ennå.</p></div>`;

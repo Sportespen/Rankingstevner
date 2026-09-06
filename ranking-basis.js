@@ -319,7 +319,16 @@
         .filter(r=>r.legal!==false&&validDate(r,code))
         .map(r=>({date:r.date||null,competition:r.competition||null,discipline:r.discipline||null,mark:r.mark??null,type:individualType(r.discipline,code)}))
         .filter(r=>r.type);
-      window.__rankingstevnerOwnResults={event:code,rows};
+      // Same rows, minus the validDate() gate - ranking-recommendations.js's "Anbefalte stevner"
+      // box uses this as a fallback (the athlete's career pers) when there's no counting result in
+      // the ranking period at all, so it can still suggest stevner instead of just giving up -
+      // clearly labelled there as a pers, not a tellende prestasjon, since a mark this old wouldn't
+      // itself count even if it were somehow re-dated.
+      const allTimeRows=allResults
+        .filter(r=>r.legal!==false)
+        .map(r=>({date:r.date||null,competition:r.competition||null,discipline:r.discipline||null,mark:r.mark??null,type:individualType(r.discipline,code)}))
+        .filter(r=>r.type);
+      window.__rankingstevnerOwnResults={event:code,rows,allTimeRows};
       return;
     }
     // Every result whose discipline text even mentions decathlon/heptathlon/pentathlon,
@@ -332,7 +341,12 @@
     const rows=allResults
       .filter(r=>r.legal!==false&&validDate(r,code)&&combinedType(r.discipline,code))
       .map(r=>({date:r.date||null,competition:r.competition||null,discipline:r.discipline||null,mark:r.mark??null,type:combinedType(r.discipline,code)}));
-    window.__rankingstevnerOwnResults={event:code,rows};
+    // See the individual-event branch above for why this exists (allTimeRows = same rows without
+    // the validDate() gate, used as a career-pers fallback by ranking-recommendations.js).
+    const allTimeRows=allResults
+      .filter(r=>r.legal!==false&&combinedType(r.discipline,code))
+      .map(r=>({date:r.date||null,competition:r.competition||null,discipline:r.discipline||null,mark:r.mark??null,type:combinedType(r.discipline,code)}));
+    window.__rankingstevnerOwnResults={event:code,rows,allTimeRows};
   }
   // Was a visible "Rådata: alle registrerte resultater (N)" debug link on the page - useful while
   // tracking down why a specific result was excluded from the ranking basis, but not something
