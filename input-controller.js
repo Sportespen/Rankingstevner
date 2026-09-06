@@ -20,9 +20,11 @@ const amount=document.createElement('input');amount.id='windAmount';amount.type=
 originalWind.parentNode.insertBefore(wrap,originalWind);wrap.append(toggleWrap,detailsWrap);detailsWrap.append(signWrap,amount);
 let windMatters=false;
 const windAdjustmentHint=document.getElementById('windAdjustmentHint');
-const HINT_OFF='Gjelder når vinden er mellom 0 og +2,0 m/s medvind - ingen justering da. Er vinden reelt sett ukjent, velg «Vind påvirket resultatet» og NWI (gir -30 poeng).';
+const HINT_OFF='Gjelder når vinden er mellom 0 og +2,0 m/s medvind - ingen justering da.';
 const HINT_ON='Motvind gir tillegg, sterk medvind gir trekk.';
-function paintToggle(){Object.entries(toggleBtns).forEach(([k,b])=>{const a=(k==='on')===windMatters;b.style.background=a?'#ff8a19':'#0d2743';b.style.color=a?'#061426':'#f4f7fb';b.style.borderColor=a?'#ff8a19':'#3f6b92'});detailsWrap.style.display=windMatters?'grid':'none';if(windAdjustmentHint)windAdjustmentHint.textContent=windMatters?HINT_ON:HINT_OFF}
+const HINT_NWI='Ukjent vind (NWI) gir -30 poeng i trekk.';
+function updateHint(){if(!windAdjustmentHint)return;windAdjustmentHint.textContent=!windMatters?HINT_OFF:(selectedSign==='NWI'?HINT_NWI:HINT_ON)}
+function paintToggle(){Object.entries(toggleBtns).forEach(([k,b])=>{const a=(k==='on')===windMatters;b.style.background=a?'#ff8a19':'#0d2743';b.style.color=a?'#061426':'#f4f7fb';b.style.borderColor=a?'#ff8a19':'#3f6b92'});detailsWrap.style.display=windMatters?'grid':'none';updateHint()}
 toggleBtns.off.onclick=()=>{windMatters=false;selectedSign='';Object.values(buttons).forEach(b=>{b.style.background='#0d2743';b.style.color='#f4f7fb';b.style.borderColor='#3f6b92'});amount.dataset.digits='';amount.value='';amount.disabled=false;paintToggle();sync()};
 toggleBtns.on.onclick=()=>{windMatters=true;paintToggle();sync()};
 paintToggle();
@@ -34,7 +36,7 @@ function value(){const d=amount.dataset.digits||'';if(!d)return null;return d.le
 function raw(){if(!windMatters)return'';if(selectedSign==='NWI')return'NWI';const n=value();if(!selectedSign||n===null)return'';return selectedSign+n.toFixed(1).replace('.',',')}
 function windMod(r){const s=String(r).replace(',','.');if(!s)return null;if(s==='NWI')return-30;const w=Number(s);if(!Number.isFinite(w))return null;if(w<0)return Math.abs(w)*6;if(w>2)return-w*6;return 0}
 function fmt(v){return Number.isInteger(v)?String(v):v.toFixed(1).replace('.',',')}
-function sync(){amount.value=format(amount.dataset.digits||'');originalWind.value=raw();const m=windMod(originalWind.value);windAdjustment.value=m===null?'0':`${m>0?'+':''}${fmt(m)}`}
+function sync(){amount.value=format(amount.dataset.digits||'');originalWind.value=raw();const m=windMod(originalWind.value);windAdjustment.value=m===null?'0':`${m>0?'+':''}${fmt(m)}`;updateHint()}
 window.__rankingstevnerSyncWind=sync;
 // Sifrene spores direkte her, ikke ved å tolke dem tilbake fra den kommaformaterte visningen
 // (f.eks. "1,0") - den visningen inneholder et syntetisk "0" som ikke er et reelt tastet siffer,
