@@ -4,9 +4,12 @@ name: Refresh World Athletics GraphQL credentials
 # same "watch a real browser's own network traffic" capture worldathletics.nimarion.de's own
 # maintainer runs for himself - see scripts/wa-key-refresh.mjs for why this exists at all (that
 # third-party service going down for 24+ hours with no ETA is what prompted building this).
-# Playwright and its Chromium build are installed fresh on the runner each time, in a throwaway
-# directory - nothing here is committed back to the repo, so it can never affect the site's own
-# Cloudflare Pages build/deploy.
+# Playwright and its Chromium build are installed fresh on the runner each time. This workflow
+# never runs `git add`/`commit`/`push`, so nothing it installs or writes ever reaches the actual
+# git history - it can't affect the site's own, separately-triggered Cloudflare Pages build/deploy
+# even though the install happens at the checkout root (needed so plain ESM `import 'playwright'`
+# in the script below can find it via Node's normal upward node_modules resolution - NODE_PATH,
+# tried first, is a CommonJS-only mechanism that ESM's resolver ignores entirely).
 on:
   schedule:
     - cron: "0 3 * * *"
@@ -22,16 +25,14 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install Playwright (throwaway, not committed)
+      - name: Install Playwright (never committed - checkout is discarded after this job)
         run: |
-          mkdir -p wa-key-refresh-deps
-          cd wa-key-refresh-deps
           npm init -y >/dev/null
           npm install playwright@1.48.0
           npx playwright install --with-deps chromium
 
       - name: Capture fresh credentials and store in Cloudflare KV
-        run: NODE_PATH="$PWD/wa-key-refresh-deps/node_modules" node scripts/wa-key-refresh.mjs
+        run: node scripts/wa-key-refresh.mjs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
