@@ -684,7 +684,11 @@ let highlightedMeetId = null;
 function clearMeetHighlight(){
   if (!highlightedMeetId) return;
   const prev = document.querySelector(`.meet-card-v1[data-meet-id="${CSS.escape(String(highlightedMeetId))}"]`);
-  if (prev) { prev.style.outline = ''; prev.style.outlineOffset = ''; }
+  if (prev) {
+    prev.style.outline = '';
+    prev.style.outlineOffset = '';
+    prev.querySelector('[data-back-to-recommendations-hint]')?.remove();
+  }
   highlightedMeetId = null;
 }
 function jumpToMeet(id){
@@ -696,6 +700,15 @@ function jumpToMeet(id){
   card.style.transition = 'outline-color .3s ease';
   card.style.outline = '3px solid #ff8a19';
   card.style.outlineOffset = '2px';
+  // Same "click to go back" behaviour already exists (see the document click listener below) -
+  // this just makes it discoverable, mirroring the summary card's own "Trykk for å se hele
+  // stevnekortet ↓" hint.
+  const hint = document.createElement('small');
+  hint.dataset.backToRecommendationsHint = '1';
+  hint.className = 'muted';
+  hint.style.cssText = 'display:block;margin-top:8px';
+  hint.textContent = '↑ Trykk for å komme tilbake til anbefalte stevner';
+  card.appendChild(hint);
   highlightedMeetId = id;
   showBackButton();
 }
