@@ -41,6 +41,28 @@ async function main() {
     });
     await page.waitForTimeout(WAIT_AFTER_LOAD_MS);
     console.log(`Done - captured ${seen.size} distinct GraphQL operation(s) from ${ATHLETE_URL}`);
+
+    // None of the client-side GraphQL calls above carry world-ranking data - it may be baked
+    // straight into the server-rendered HTML instead (a Next.js __NEXT_DATA__/self.__next_f
+    // payload), which would need no API key or authorization at all to read. Check for that.
+    const html = await page.content();
+    console.log('\n=== Scanning rendered HTML for ranking data ===');
+    console.log('Page length:', html.length);
+    const idx = html.toLowerCase().indexOf('worldranking');
+    if (idx === -1) {
+      console.log('No occurrence of "worldRanking" found in the rendered HTML.');
+    } else {
+      let count = 0;
+      let searchFrom = 0;
+      while (count < 5) {
+        const at = html.toLowerCase().indexOf('worldranking', searchFrom);
+        if (at === -1) break;
+        console.log(`--- match ${count + 1} at offset ${at} ---`);
+        console.log(html.slice(Math.max(0, at - 200), at + 400));
+        searchFrom = at + 12;
+        count++;
+      }
+    }
   } finally {
     await browser.close();
   }
