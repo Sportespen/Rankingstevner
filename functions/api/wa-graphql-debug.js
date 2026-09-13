@@ -6,11 +6,17 @@ import { waGraphQL } from '../_shared/wa-graphql.js';
 const QUERY = `query IntrospectType($name: String!) {
   __type(name: $name) {
     name
+    kind
     fields {
       name
       args { name type { name kind ofType { name kind } } }
       type { name kind ofType { name kind ofType { name kind } } }
     }
+    inputFields {
+      name
+      type { name kind ofType { name kind ofType { name kind } } }
+    }
+    enumValues { name }
   }
 }`;
 
@@ -21,8 +27,9 @@ export async function onRequestGet(context) {
   try {
     const data = await waGraphQL(context.env, QUERY, { name });
     let t = data?.__type;
-    if (t && filter && Array.isArray(t.fields)) {
-      t = { ...t, fields: t.fields.filter(f => f.name.toLowerCase().includes(filter)) };
+    if (t && filter) {
+      if (Array.isArray(t.fields)) t = { ...t, fields: t.fields.filter(f => f.name.toLowerCase().includes(filter)) };
+      if (Array.isArray(t.inputFields)) t = { ...t, inputFields: t.inputFields.filter(f => f.name.toLowerCase().includes(filter)) };
     }
     return json({ ok: true, type: t });
   } catch (e) {
