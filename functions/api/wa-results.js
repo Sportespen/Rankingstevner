@@ -204,6 +204,103 @@ export async function onRequestGet(context) {
     return status==='new'?10:5;
   }
 
+  // Some competitions split a discipline into multiple heats/races with no separate final - the
+  // per-athlete results feed above then reports a heat-relative "place" (e.g. won your heat, but
+  // 7th overall), not the true placing across the whole field. Recompute it from the full
+  // competition's results (all athletes, every race for that discipline) for individual
+  // (non-combined) results within the ranking period. World Athletics direct first, nimarion.de
+  // as backup, matching the priority everywhere else in this file.
+  function isTechnicalDiscipline(discipline){
+    return /(jump|vault|throw|shot put)/i.test(String(discipline||''));
+  }
+  function parseMarkValue(mark,technical){
+    const s=String(mark||'').trim();
+    if(!s) return null;
+    const clean=s.replace(',','.').replace(/[=*+]/g,'');
+    if(!/^[\d:.]+$/.test(clean)) return null;
+    if(technical){ const v=parseFloat(clean); return Number.isFinite(v)?v:null; }
+    const parts=clean.split(':').map(Number);
+    if(parts.some(p=>!Number.isFinite(p))) return null;
+    return parts.reduce((acc,p)=>acc*60+p,0);
+  }
+  function rowMatchesAthlete(row,athleteId){
+    if(String(row.athleteId)===String(athleteId)) return true;
+    if(String(row.athleteIaafId)===String(athleteId)) return true;
+    return Array.isArray(row.athletes) && row.athletes.some(a=>String(a?.id)===String(athleteId));
+  }
+  async function fetchCompetitionFieldByDiscipline(competitionId){
+    try{
+      const data=await waGraphQL(context.env, COMPETITION_RESULTS_QUERY, { competitionId: Number(competitionId) });
+      const eventTitles=data?.getCalendarCompetitionResults?.eventTitles;
+      if(!Array.isArray(eventTitles)) throw new Error('Ingen konkurranseresultater i svaret');
+      const byDiscipline=new Map();
+      for(const title of eventTitles){
+        for(const ev of (title?.events||[])){
+          const discipline=String(ev?.event||'').replace(/^(Women's |Men's |Mixed )/,'').trim();
+          if(!discipline) continue;
+          const rows=byDiscipline.get(discipline)||[];
+          for(const race of (ev?.races||[])){
+            for(const r of (race?.results||[])) rows.push({mark:r.mark, athleteId:r?.competitor?.id, athleteIaafId:r?.competitor?.iaafId});
+          }
+          byDiscipline.set(discipline,rows);
+        }
+      }
+      return byDiscipline;
+    }catch(e){
+      const res=await fetchWithTimeout(`https://worldathletics.nimarion.de/competitions/${competitionId}/results`,{
+        headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.2','Accept':'application/json'}
+      });
+      const text=await res.text();
+      let data=null;
+      try{ data=JSON.parse(text); }catch(_){}
+      if(!res.ok || !Array.isArray(data?.events)) throw new Error(`Kunne ikke hente konkurranseresultater (${res.status})`);
+      const byDiscipline=new Map();
+      for(const event of data.events){
+        const discipline=String(event?.discipline||event?.name||'').trim();
+        if(!discipline) continue;
+        const rows=byDiscipline.get(discipline)||[];
+        for(const race of (event?.races||[])){
+          for(const r of (race?.results||[])) rows.push({mark:r.mark, athletes:r?.athletes});
+        }
+        byDiscipline.set(discipline,rows);
+      }
+      return byDiscipline;
+    }
+  }
+
+  const CORRECTION_FETCH_CAP=20;
+  const correctionCompetitionIds=[...new Set(
+    results
+      .filter(r=>r.source==='athlete-results' && !/decathlon|heptathlon|pentathlon/i.test(r.discipline))
+      .filter(r=>{ const d=parseDate(r.date); return d && d>=cutoff18; })
+      .map(r=>Number(r.competitionId))
+      .filter(cid=>Number.isFinite(cid) && cid>0)
+  )].slice(0,CORRECTION_FETCH_CAP);
+
+  const fieldByCompetition=new Map();
+  await Promise.all(correctionCompetitionIds.map(async cid=>{
+    try{ fieldByCompetition.set(cid, await fetchCompetitionFieldByDiscipline(cid)); }
+    catch(e){ fieldByCompetition.set(cid,null); }
+  }));
+
+  for(const item of results){
+    if(item.source!=='athlete-results') continue;
+    if(/decathlon|heptathlon|pentathlon/i.test(item.discipline)) continue;
+    const byDiscipline=fieldByCompetition.get(Number(item.competitionId));
+    if(!byDiscipline) continue;
+    const rows=byDiscipline.get(item.discipline);
+    if(!Array.isArray(rows) || rows.length<2) continue;
+    const technical=isTechnicalDiscipline(item.discipline);
+    const valid=rows.map(r=>({...r,value:parseMarkValue(r.mark,technical)})).filter(r=>r.value!=null);
+    if(valid.length<2) continue;
+    valid.sort((a,b)=>technical?b.value-a.value:a.value-b.value);
+    const idx=valid.findIndex(r=>rowMatchesAthlete(r,id));
+    if(idx!==-1 && idx+1!==item.place){
+      item.place=idx+1;
+      item.placeCorrected=true;
+    }
+  }
+
   const combinedWithDates = combined.map((r,i)=>({...r,_i:i,_date:parseDate(r.date)}));
   const newestOw = combinedWithDates
     .filter(r=>r._date && r._date>=threeYearStart && isOwChampionship(r.competition))
