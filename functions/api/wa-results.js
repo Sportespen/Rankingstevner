@@ -56,14 +56,17 @@ async function fetchDirectCompetitionResults(env, competitionId, athleteId) {
   const flat = [];
   for (const title of eventTitles) {
     for (const ev of (title?.events || [])) {
-      const discipline = String(ev?.event || '').trim();
+      // Unlike the athlete-results and per-year GraphQL endpoints, this one's discipline names
+      // carry a "Men's "/"Women's " prefix (e.g. "Men's 100 Metres") - strip it so these rows
+      // match the naming convention every other result in this file already uses.
+      const discipline = String(ev?.event || '').replace(/^(Women's |Men's |Mixed )/, '').trim();
       if (!discipline || /decathlon|heptathlon|pentathlon/i.test(discipline)) continue;
       for (const race of (ev?.races || [])) {
         for (const r of (race?.results || [])) {
           const c = r?.competitor;
           const matches = c && (String(c.id) === String(athleteId) || String(c.iaafId) === String(athleteId));
           if (!matches || r.mark == null) continue;
-          flat.push({ discipline, mark: r.mark, place: r.place, wind: r.wind, records: r.records, date: race?.date ?? null });
+          flat.push({ discipline, mark: r.mark, place: r.place, wind: r.wind, records: r.records || null, date: race?.date ?? null });
         }
       }
     }
