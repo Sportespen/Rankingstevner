@@ -24,10 +24,21 @@ async function captureCredentials() {
     // The GraphQL call fires client-side, asynchronously, after the page's own initial HTML has
     // already loaded - listening on every outgoing request (rather than trying to read the final
     // page content) is the only way to see the header at all.
+    //
+    // Confirmed live: an athlete page fires x-api-key-bearing requests to at least two entirely
+    // different backends - a one-off anonymous health-check ping to an unrelated AWS AppSync
+    // endpoint (*.appsync-api.*.amazonaws.com), and the real per-athlete GraphQL calls (results,
+    // rankings, season bests, ...) to World Athletics' own graphql-prod-NNNN.edge.aws.worldathletics.org
+    // backend - and that NNNN pool number can change between captures. Grabbing "whichever comes
+    // first" silently captured the wrong (AppSync) one, which happens to expose a different,
+    // older-looking schema that's missing fields the real backend has (like
+    // getSingleCompetitorResultsDiscipline) - so filter specifically for the real host.
     page.on('request', (req) => {
       if (found) return;
       const apiKey = req.headers()['x-api-key'];
-      if (apiKey) found = { apiKey, endpoint: req.url() };
+      if (!apiKey) return;
+      if (!/\.edge\.aws\.worldathletics\.org$/.test(new URL(req.url()).hostname)) return;
+      found = { apiKey, endpoint: req.url() };
     });
     await page.goto(ATHLETE_URL, { waitUntil: 'load', timeout: CAPTURE_TIMEOUT_MS }).catch(() => {});
     const deadline = Date.now() + CAPTURE_TIMEOUT_MS;
