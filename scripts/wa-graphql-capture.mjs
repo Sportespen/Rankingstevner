@@ -52,16 +52,17 @@ async function main() {
     if (idx === -1) {
       console.log('No occurrence of "worldRanking" found in the rendered HTML.');
     } else {
-      let count = 0;
-      let searchFrom = 0;
-      while (count < 5) {
-        const at = html.toLowerCase().indexOf('worldranking', searchFrom);
-        if (at === -1) break;
-        console.log(`--- match ${count + 1} at offset ${at} ---`);
-        console.log(html.slice(Math.max(0, at - 200), at + 400));
-        searchFrom = at + 12;
-        count++;
-      }
+      // Find which <script> tag this JSON blob lives inside, so we know exactly how to extract
+      // and parse it server-side later (id, type, whether it needs JS-string unescaping like a
+      // Next.js App Router self.__next_f.push(...) chunk, or is raw JSON like a
+      // <script id="__NEXT_DATA__" type="application/json"> Pages Router blob).
+      const scriptStart = html.lastIndexOf('<script', idx);
+      const tagEnd = html.indexOf('>', scriptStart);
+      const scriptOpenTag = html.slice(scriptStart, tagEnd + 1);
+      const scriptClose = html.indexOf('</script>', idx);
+      console.log('Enclosing <script> open tag:', scriptOpenTag);
+      console.log('Enclosing script length:', scriptClose - tagEnd - 1);
+      console.log('First 300 chars of that script:', html.slice(tagEnd + 1, tagEnd + 301));
     }
   } finally {
     await browser.close();
