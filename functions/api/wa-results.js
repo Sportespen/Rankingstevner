@@ -31,6 +31,46 @@ const RESULTS_QUERY = `query GetSingleCompetitorResultsDiscipline($id: Int, $res
     }
   }
 }`;
+// Same pattern for the one piece that was still nimarion-only: breaking a combined event down
+// into its individual legs needs the FULL competition's results (all events, all athletes), not
+// just this athlete's own per-year list. getCalendarCompetitionResults is the real backend's
+// equivalent (found via the same introspection technique as the queries above) - competitor.id
+// is a String, so athlete IDs are compared as strings on both sides.
+const COMPETITION_RESULTS_QUERY = `query GetCalendarCompetitionResults($competitionId: Int) {
+  getCalendarCompetitionResults(competitionId: $competitionId) {
+    eventTitles {
+      events {
+        event
+        races {
+          date
+          results { place mark wind records competitor { id iaafId } }
+        }
+      }
+    }
+  }
+}`;
+async function fetchDirectCompetitionResults(env, competitionId, athleteId) {
+  const data = await waGraphQL(env, COMPETITION_RESULTS_QUERY, { competitionId: Number(competitionId) });
+  const eventTitles = data?.getCalendarCompetitionResults?.eventTitles;
+  if (!Array.isArray(eventTitles)) throw new Error('Ingen konkurranseresultater i svaret');
+  const flat = [];
+  for (const title of eventTitles) {
+    for (const ev of (title?.events || [])) {
+      const discipline = String(ev?.event || '').trim();
+      if (!discipline || /decathlon|heptathlon|pentathlon/i.test(discipline)) continue;
+      for (const race of (ev?.races || [])) {
+        for (const r of (race?.results || [])) {
+          const c = r?.competitor;
+          const matches = c && (String(c.id) === String(athleteId) || String(c.iaafId) === String(athleteId));
+          if (!matches || r.mark == null) continue;
+          flat.push({ discipline, mark: r.mark, place: r.place, wind: r.wind, records: r.records, date: race?.date ?? null });
+        }
+      }
+    }
+  }
+  return flat;
+}
+
 async function fetchDirectYearResults(env, id, year) {
   const data = await waGraphQL(env, RESULTS_QUERY, { id: Number(id), resultsByYear: year, resultsByYearOrderBy: 'discipline' });
   const events = data?.getSingleCompetitorResultsDiscipline?.resultsByEvent;
@@ -187,6 +227,8 @@ export async function onRequestGet(context) {
 
   const enrichedAttempts = [];
   await Promise.all([...competitionMap.entries()].slice(0,12).map(async ([competitionId, parent]) => {
+    let events = null;
+    const attemptInfo = { competitionId };
     try {
       const res = await fetchWithTimeout(`https://worldathletics.nimarion.de/competitions/${competitionId}/results`, {
         headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.2','Accept':'application/json'}
@@ -194,38 +236,60 @@ export async function onRequestGet(context) {
       const text = await res.text();
       let data = null;
       try { data = JSON.parse(text); } catch (_) {}
-      enrichedAttempts.push({competitionId,status:res.status,events:Array.isArray(data?.events)?data.events.length:null});
-      if (!res.ok || !Array.isArray(data?.events)) return;
-
-      for (const event of data.events) {
-        const discipline = String(event?.discipline || event?.name || '').trim();
-        if (!discipline || /decathlon|heptathlon|pentathlon/i.test(discipline)) continue;
-        const category = String(event?.category || parent.category || '').toUpperCase();
-        for (const race of (event?.races || [])) {
-          for (const r of (race?.results || [])) {
-            const athletes = Array.isArray(r?.athletes) ? r.athletes : [];
-            if (!athletes.some(a => String(a?.id) === String(id))) continue;
-            const item = {
-              year: parent.year,
-              discipline,
-              mark:r.mark ?? null,
-              resultScore:0,
-              place:Number(r.place) || null,
-              category,
-              competition:parent.competition ?? null,
-              competitionId,
-              date:r.date ?? race?.date ?? parent.date ?? null,
-              legal:true,
-              wind:r.wind ?? null,
-              records:normalizeRecords(r.records ?? r.record),
-              source:'combined-event-subevent'
-            };
-            if (item.mark != null) results.push(item);
-          }
-        }
+      attemptInfo.status = res.status;
+      attemptInfo.events = Array.isArray(data?.events) ? data.events.length : null;
+      if (res.ok && Array.isArray(data?.events)) {
+        events = data.events.map(event => ({
+          discipline: String(event?.discipline || event?.name || '').trim(),
+          category: String(event?.category || parent.category || '').toUpperCase(),
+          rows: (event?.races || []).flatMap(race => (race?.results || [])
+            .filter(r => (Array.isArray(r?.athletes) ? r.athletes : []).some(a => String(a?.id) === String(id)))
+            .map(r => ({ mark:r.mark ?? null, place:Number(r.place) || null, wind:r.wind ?? null, records:normalizeRecords(r.records ?? r.record), date:r.date ?? race?.date ?? parent.date ?? null }))
+          )
+        }));
       }
     } catch (e) {
-      enrichedAttempts.push({competitionId,error:String(e?.message || e)});
+      attemptInfo.error = String(e?.message || e);
+    }
+
+    if (!events) {
+      try {
+        const flat = await fetchDirectCompetitionResults(context.env, competitionId, id);
+        events = Object.values(flat.reduce((byDiscipline, r) => {
+          (byDiscipline[r.discipline] ||= { discipline:r.discipline, category:parent.category||'', rows:[] })
+            .rows.push({ mark:r.mark, place:Number(r.place) || null, wind:r.wind, records:normalizeRecords(r.records), date:r.date ?? parent.date ?? null });
+          return byDiscipline;
+        }, {}));
+        attemptInfo.fallback = 'worldathletics.org (direkte)';
+        attemptInfo.fallbackCount = flat.length;
+      } catch (e) {
+        attemptInfo.fallbackError = String(e?.message || e);
+      }
+    }
+
+    enrichedAttempts.push(attemptInfo);
+    if (!Array.isArray(events)) return;
+
+    for (const event of events) {
+      if (!event.discipline || /decathlon|heptathlon|pentathlon/i.test(event.discipline)) continue;
+      for (const row of event.rows) {
+        if (row.mark == null) continue;
+        results.push({
+          year: parent.year,
+          discipline: event.discipline,
+          mark: row.mark,
+          resultScore: 0,
+          place: row.place,
+          category: event.category,
+          competition: parent.competition ?? null,
+          competitionId,
+          date: row.date,
+          legal: true,
+          wind: row.wind,
+          records: row.records,
+          source: 'combined-event-subevent'
+        });
+      }
     }
   }));
 
