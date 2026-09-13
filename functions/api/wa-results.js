@@ -6,6 +6,15 @@
 // fire concurrently via Promise.all, and every fetch has a hard deadline so one slow call can't
 // stall the whole response.
 import { waGraphQL } from '../_shared/wa-graphql.js';
+import { fetchCompetitorFromHtml } from '../_shared/wa-html.js';
+
+// Same diacritics/punctuation-insensitive comparison wa-official-ranking.js already uses to match
+// an athlete by name against a results row.
+function normalizeName(s){return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/Ø/g,'O').replace(/ø/g,'o').replace(/Æ/g,'AE').replace(/æ/g,'ae').replace(/Å/g,'A').replace(/å/g,'a').replace(/[‐‑‒–—-]/g,' ').replace(/[^a-zA-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim().toLowerCase();}
+function namesMatch(a,b){
+  const na=normalizeName(a),nb=normalizeName(b);
+  return !!na && !!nb && (na===nb || na.includes(nb) || nb.includes(na));
+}
 
 const FETCH_TIMEOUT_MS = 6000;
 async function fetchWithTimeout(url, options) {
@@ -34,8 +43,13 @@ const RESULTS_QUERY = `query GetSingleCompetitorResultsDiscipline($id: Int, $res
 // Same pattern for the one piece that was still nimarion-only: breaking a combined event down
 // into its individual legs needs the FULL competition's results (all events, all athletes), not
 // just this athlete's own per-year list. getCalendarCompetitionResults is the real backend's
-// equivalent (found via the same introspection technique as the queries above) - competitor.id
-// is a String, so athlete IDs are compared as strings on both sides.
+// equivalent (found via the same introspection technique as the queries above).
+//
+// Confirmed live: competitor.id here is NOT reliably the athlete's WA/IAAF numeric ID - for some
+// competitions (depends on how the meet's results were submitted, apparently) it's an opaque
+// internal key instead, with iaafId also null. ID matching alone silently finds nothing for those
+// meets, so every match here also falls back to comparing competitor.name against the athlete's
+// own name.
 const COMPETITION_RESULTS_QUERY = `query GetCalendarCompetitionResults($competitionId: Int) {
   getCalendarCompetitionResults(competitionId: $competitionId) {
     eventTitles {
@@ -43,13 +57,13 @@ const COMPETITION_RESULTS_QUERY = `query GetCalendarCompetitionResults($competit
         event
         races {
           date
-          results { place mark wind records competitor { id iaafId } }
+          results { place mark wind records competitor { id iaafId name } }
         }
       }
     }
   }
 }`;
-async function fetchDirectCompetitionResults(env, competitionId, athleteId) {
+async function fetchDirectCompetitionResults(env, competitionId, athleteId, athleteName) {
   const data = await waGraphQL(env, COMPETITION_RESULTS_QUERY, { competitionId: Number(competitionId) });
   const eventTitles = data?.getCalendarCompetitionResults?.eventTitles;
   if (!Array.isArray(eventTitles)) throw new Error('Ingen konkurranseresultater i svaret');
@@ -64,7 +78,7 @@ async function fetchDirectCompetitionResults(env, competitionId, athleteId) {
       for (const race of (ev?.races || [])) {
         for (const r of (race?.results || [])) {
           const c = r?.competitor;
-          const matches = c && (String(c.id) === String(athleteId) || String(c.iaafId) === String(athleteId));
+          const matches = c && (String(c.id) === String(athleteId) || String(c.iaafId) === String(athleteId) || (athleteName && namesMatch(c.name, athleteName)));
           if (!matches || r.mark == null) continue;
           flat.push({ discipline, mark: r.mark, place: r.place, wind: r.wind, records: r.records || null, date: race?.date ?? null });
         }
@@ -223,10 +237,11 @@ export async function onRequestGet(context) {
     if(parts.some(p=>!Number.isFinite(p))) return null;
     return parts.reduce((acc,p)=>acc*60+p,0);
   }
-  function rowMatchesAthlete(row,athleteId){
+  function rowMatchesAthlete(row,athleteId,athleteName){
     if(String(row.athleteId)===String(athleteId)) return true;
-    if(String(row.athleteIaafId)===String(athleteId)) return true;
-    return Array.isArray(row.athletes) && row.athletes.some(a=>String(a?.id)===String(athleteId));
+    if(row.athleteIaafId && String(row.athleteIaafId)===String(athleteId)) return true;
+    if(Array.isArray(row.athletes) && row.athletes.some(a=>String(a?.id)===String(athleteId))) return true;
+    return !!athleteName && namesMatch(row.name,athleteName);
   }
   async function fetchCompetitionFieldByDiscipline(competitionId){
     try{
@@ -240,7 +255,7 @@ export async function onRequestGet(context) {
           if(!discipline) continue;
           const rows=byDiscipline.get(discipline)||[];
           for(const race of (ev?.races||[])){
-            for(const r of (race?.results||[])) rows.push({mark:r.mark, athleteId:r?.competitor?.id, athleteIaafId:r?.competitor?.iaafId});
+            for(const r of (race?.results||[])) rows.push({mark:r.mark, athleteId:r?.competitor?.id, athleteIaafId:r?.competitor?.iaafId, name:r?.competitor?.name});
           }
           byDiscipline.set(discipline,rows);
         }
@@ -268,6 +283,20 @@ export async function onRequestGet(context) {
     }
   }
 
+  // The athlete's own name is only needed as a fallback for the ID-matching gap above, and only
+  // when there's actually a correction to attempt - fetched lazily so requests with nothing to
+  // correct never pay for it.
+  let athleteName = null;
+  async function ensureAthleteName(){
+    if(athleteName !== null) return athleteName;
+    try{
+      const c = await fetchCompetitorFromHtml(id);
+      const basic = c.basicData || {};
+      athleteName = `${basic.givenName||''} ${basic.familyName||''}`.trim() || '';
+    }catch(e){ athleteName = ''; }
+    return athleteName;
+  }
+
   const CORRECTION_FETCH_CAP=20;
   const correctionCompetitionIds=[...new Set(
     results
@@ -276,6 +305,8 @@ export async function onRequestGet(context) {
       .map(r=>Number(r.competitionId))
       .filter(cid=>Number.isFinite(cid) && cid>0)
   )].slice(0,CORRECTION_FETCH_CAP);
+
+  if(correctionCompetitionIds.length) await ensureAthleteName();
 
   const fieldByCompetition=new Map();
   await Promise.all(correctionCompetitionIds.map(async cid=>{
@@ -294,7 +325,7 @@ export async function onRequestGet(context) {
     const valid=rows.map(r=>({...r,value:parseMarkValue(r.mark,technical)})).filter(r=>r.value!=null);
     if(valid.length<2) continue;
     valid.sort((a,b)=>technical?b.value-a.value:a.value-b.value);
-    const idx=valid.findIndex(r=>rowMatchesAthlete(r,id));
+    const idx=valid.findIndex(r=>rowMatchesAthlete(r,id,athleteName));
     if(idx!==-1 && idx+1!==item.place){
       item.place=idx+1;
       item.placeCorrected=true;
@@ -331,7 +362,7 @@ export async function onRequestGet(context) {
     let events = null;
     const attemptInfo = { competitionId };
     try {
-      const flat = await fetchDirectCompetitionResults(context.env, competitionId, id);
+      const flat = await fetchDirectCompetitionResults(context.env, competitionId, id, await ensureAthleteName());
       events = Object.values(flat.reduce((byDiscipline, r) => {
         (byDiscipline[r.discipline] ||= { discipline:r.discipline, category:parent.category||'', rows:[] })
           .rows.push({ mark:r.mark, place:Number(r.place) || null, wind:r.wind, records:normalizeRecords(r.records), date:r.date ?? parent.date ?? null });
