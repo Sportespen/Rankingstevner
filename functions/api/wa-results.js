@@ -5,6 +5,8 @@
 // and event (far more than the ranking-score lookup in wa-official-ranking.js). Both loops now
 // fire concurrently via Promise.all, and every fetch has a hard deadline so one slow call can't
 // stall the whole response.
+import { waGraphQL } from '../_shared/wa-graphql.js';
+
 const FETCH_TIMEOUT_MS = 6000;
 async function fetchWithTimeout(url, options) {
   const controller = new AbortController();
@@ -14,6 +16,43 @@ async function fetchWithTimeout(url, options) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Confirmed live against the captured key/endpoint in Cloudflare KV - this is the exact operation
+// the real, public worldathletics.org athlete page calls for its own per-year results tab (unlike
+// getCISSingleCompetitor, which the same key gets rejected for). Only tried once the proxy has
+// already failed for that year, so it can't regress the common case. Returns a flat array shaped
+// like nimarion's own per-year result items, so it plugs into the same processing loop below.
+const RESULTS_QUERY = `query GetSingleCompetitorResultsDiscipline($id: Int, $resultsByYearOrderBy: String, $resultsByYear: Int) {
+  getSingleCompetitorResultsDiscipline(id: $id, resultsByYear: $resultsByYear, resultsByYearOrderBy: $resultsByYearOrderBy) {
+    resultsByEvent {
+      discipline
+      results { date competition place mark wind notLegal resultScore category competitionId eventId }
+    }
+  }
+}`;
+async function fetchDirectYearResults(env, id, year) {
+  const data = await waGraphQL(env, RESULTS_QUERY, { id: Number(id), resultsByYear: year, resultsByYearOrderBy: 'discipline' });
+  const events = data?.getSingleCompetitorResultsDiscipline?.resultsByEvent;
+  if (!Array.isArray(events)) throw new Error('Ingen resultater i svaret');
+  const flat = [];
+  for (const ev of events) {
+    for (const r of (ev?.results || [])) {
+      flat.push({
+        discipline: ev?.discipline,
+        mark: r.mark,
+        resultScore: r.resultScore,
+        place: r.place,
+        category: r.category,
+        competition: r.competition,
+        competitionId: r.competitionId,
+        date: r.date,
+        legal: r.notLegal !== true,
+        wind: r.wind,
+      });
+    }
+  }
+  return flat;
 }
 
 export async function onRequestGet(context) {
@@ -32,39 +71,54 @@ export async function onRequestGet(context) {
 
   await Promise.all(years.map(async year => {
     const endpoint = `https://worldathletics.nimarion.de/athletes/${id}/results?year=${year}`;
+    let data = null;
+    const attemptInfo = { year };
     try {
       const res = await fetchWithTimeout(endpoint, {
         headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.2','Accept':'application/json'}
       });
       const text = await res.text();
-      let data = null;
       try { data = JSON.parse(text); } catch (_) {}
-      attempts.push({year,status:res.status,count:Array.isArray(data)?data.length:null});
-      if (!res.ok || !Array.isArray(data)) return;
-
-      for (const r of data) {
-        const discipline = String(r.discipline || r.event || '').trim();
-        if (!discipline) continue;
-        const item = {
-          year,
-          discipline,
-          mark:r.mark ?? r.result ?? null,
-          resultScore:Number(r.resultScore) || 0,
-          place:Number(r.place) || null,
-          category:String(r.category || '').toUpperCase(),
-          competition:r.competition ?? null,
-          competitionId:r.competitionId ?? null,
-          date:r.date ?? null,
-          legal:r.legal !== false,
-          wind:r.wind ?? null,
-          records:normalizeRecords(r.records ?? r.record),
-          source:'athlete-results'
-        };
-        results.push(item);
-        if (/decathlon|heptathlon|pentathlon/i.test(discipline)) combined.push(item);
-      }
+      attemptInfo.status = res.status;
+      attemptInfo.count = Array.isArray(data) ? data.length : null;
+      if (!res.ok || !Array.isArray(data)) data = null;
     } catch (e) {
-      attempts.push({year,error:String(e?.message || e)});
+      attemptInfo.error = String(e?.message || e);
+    }
+
+    if (!data) {
+      try {
+        data = await fetchDirectYearResults(context.env, id, year);
+        attemptInfo.fallback = 'worldathletics.org (direkte)';
+        attemptInfo.fallbackCount = data.length;
+      } catch (e) {
+        attemptInfo.fallbackError = String(e?.message || e);
+      }
+    }
+
+    attempts.push(attemptInfo);
+    if (!Array.isArray(data)) return;
+
+    for (const r of data) {
+      const discipline = String(r.discipline || r.event || '').trim();
+      if (!discipline) continue;
+      const item = {
+        year,
+        discipline,
+        mark:r.mark ?? r.result ?? null,
+        resultScore:Number(r.resultScore) || 0,
+        place:Number(r.place) || null,
+        category:String(r.category || '').toUpperCase(),
+        competition:r.competition ?? null,
+        competitionId:r.competitionId ?? null,
+        date:r.date ?? null,
+        legal:r.legal !== false,
+        wind:r.wind ?? null,
+        records:normalizeRecords(r.records ?? r.record),
+        source:'athlete-results'
+      };
+      results.push(item);
+      if (/decathlon|heptathlon|pentathlon/i.test(discipline)) combined.push(item);
     }
   }));
 
