@@ -1,11 +1,16 @@
 // Confirmed live: when worldathletics.nimarion.de is unreachable, it doesn't always fail fast
 // with an error status - sometimes the connection just hangs with no response at all. Without a
 // deadline, that left the plain `fetch()` below waiting until Cloudflare's own platform-level
-// execution limit killed the whole Worker, which surfaces to the visitor as Cloudflare's own
-// "Bad gateway / Host Error" page instead of this file ever getting the chance to return its own,
-// honest {ok:false} response - and no amount of changing the code AROUND that fetch call (its own
-// try/catch already handles a fast failure correctly) can fix a request that never resolves in the
-// first place. wa-results.js already had this exact protection; this file never did.
+// execution limit killed the whole Worker. wa-results.js already had this protection; this file
+// didn't, so it's added here too.
+//
+// Separately - and this was the actual cause of the "Bad gateway / Host Error" page visitors saw -
+// Cloudflare's edge intercepts specific status codes (502 among them) coming back from a Pages
+// Function and silently replaces the body with its own generic error page, instead of passing our
+// own {ok:false} JSON through to the browser. wa-results.js never hit this because it always
+// answers with plain 200 and lets the JSON body's `ok` field carry the failure - the frontend
+// already reads that field, not the HTTP status (see athlete-profile.js). So every response below
+// now uses 200, even the failure cases.
 const FETCH_TIMEOUT_MS = 6000;
 async function fetchWithTimeout(url, options) {
   const controller = new AbortController();
@@ -42,7 +47,7 @@ export async function onRequestGet(context) {
         status:res.status,
         error:'Proxy-oppslag feilet',
         bodyPreview:text.slice(0,300)
-      },502);
+      });
     }
 
     return json({
@@ -62,7 +67,7 @@ export async function onRequestGet(context) {
       source:'worldathletics.nimarion.de',
       error:'Kunne ikke kontakte proxyen',
       detail:String(e?.message || e)
-    },502);
+    });
   }
 }
 
