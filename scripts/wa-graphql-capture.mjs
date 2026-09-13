@@ -30,11 +30,7 @@ async function main() {
       const dedupeKey = operationName || body.slice(0, 80);
       if (seen.has(dedupeKey)) return;
       seen.add(dedupeKey);
-      console.log('=== GraphQL request ===');
-      console.log('operationName:', operationName || '(none)');
-      console.log('variables:', JSON.stringify(variables));
-      console.log('query:', body.slice(0, 4000));
-      console.log('');
+      console.log('GraphQL op:', operationName || '(none)', 'vars:', JSON.stringify(variables));
     });
     await page.goto(ATHLETE_URL, { waitUntil: 'load', timeout: 30000 }).catch((e) => {
       console.error('goto failed (continuing to wait for late requests anyway):', e.message);
@@ -82,6 +78,14 @@ async function main() {
         const value = p.split('.').slice(1).reduce((o, k) => o?.[k], pageProps);
         console.log(`Value at ${p}:`, JSON.stringify(value));
       }
+
+      // wa-results.js still depends entirely on nimarion.de for per-year results - check whether
+      // this same public page also carries enough of that data (resultsByYear/seasonsBests) to
+      // make it independent too, and whether a URL query param selects a different year.
+      console.log('\n=== resultsByYear / seasonsBests on the default page ===');
+      console.log('competitor.resultsByYear:', JSON.stringify(competitor.resultsByYear));
+      console.log('competitor.seasonsBests:', JSON.stringify(competitor.seasonsBests));
+      console.log('competitor.personalBests:', JSON.stringify(competitor.personalBests));
     }
   } finally {
     await browser.close();
