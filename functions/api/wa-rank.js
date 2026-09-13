@@ -11,6 +11,8 @@
 // answers with plain 200 and lets the JSON body's `ok` field carry the failure - the frontend
 // already reads that field, not the HTTP status (see athlete-profile.js). So every response below
 // now uses 200, even the failure cases.
+import { waGraphQL, formatSex } from '../_shared/wa-graphql.js';
+
 const FETCH_TIMEOUT_MS = 6000;
 async function fetchWithTimeout(url, options) {
   const controller = new AbortController();
@@ -22,6 +24,32 @@ async function fetchWithTimeout(url, options) {
   }
 }
 
+const DIRECT_QUERY = `query getSingleCompetitor($id: Int) {
+  getSingleCompetitor(id: $id) {
+    basicData { givenName familyName countryCode sexNameUrlSlug }
+    worldRankings { current { eventGroup place } }
+  }
+}`;
+
+// Only tried once the proxy has already failed - if nimarion.de is up and healthy this never
+// runs, so it can't regress the common case even if the direct query shape turns out to be wrong.
+async function fetchDirectRank(env, id) {
+  const data = await waGraphQL(env, DIRECT_QUERY, { id: Number(id) }, { 'x-athlete-id': String(id) });
+  const c = data?.getSingleCompetitor;
+  if (!c) throw new Error('WA GraphQL fant ingen utøver med denne IDen');
+  const basic = c.basicData || {};
+  return {
+    ok: true,
+    source: 'worldathletics.org (direkte)',
+    id: Number(id),
+    name: `${basic.givenName || ''} ${basic.familyName || ''}`.trim() || null,
+    sex: formatSex(basic.sexNameUrlSlug),
+    country: basic.countryCode ?? null,
+    currentWorldRankings: Array.isArray(c.worldRankings?.current) ? c.worldRankings.current : [],
+    activeSeasons: []
+  };
+}
+
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const raw = (url.searchParams.get('id') || '').trim();
@@ -29,6 +57,7 @@ export async function onRequestGet(context) {
   if (!id) return json({ok:false,error:'Ugyldig World Athletics-ID'},400);
 
   const proxyUrl = `https://worldathletics.nimarion.de/athletes/${id}`;
+  let proxyFailure = null;
   try {
     const res = await fetchWithTimeout(proxyUrl, {
       headers: {
@@ -41,32 +70,32 @@ export async function onRequestGet(context) {
     try { data = JSON.parse(text); } catch (_) {}
 
     if (!res.ok) {
+      proxyFailure = { status:res.status, error:'Proxy-oppslag feilet', bodyPreview:text.slice(0,300) };
+    } else {
       return json({
-        ok:false,
+        ok:true,
         source:'worldathletics.nimarion.de',
         status:res.status,
-        error:'Proxy-oppslag feilet',
-        bodyPreview:text.slice(0,300)
+        id:Number(id),
+        name:data ? `${data.firstname || ''} ${data.lastname || ''}`.trim() : null,
+        sex:data?.sex ?? null,
+        country:data?.country ?? null,
+        currentWorldRankings:Array.isArray(data?.currentWorldRankings) ? data.currentWorldRankings : [],
+        activeSeasons:Array.isArray(data?.activeSeasons) ? data.activeSeasons : []
       });
     }
+  } catch (e) {
+    proxyFailure = { error:'Kunne ikke kontakte proxyen', detail:String(e?.message || e) };
+  }
 
-    return json({
-      ok:true,
-      source:'worldathletics.nimarion.de',
-      status:res.status,
-      id:Number(id),
-      name:data ? `${data.firstname || ''} ${data.lastname || ''}`.trim() : null,
-      sex:data?.sex ?? null,
-      country:data?.country ?? null,
-      currentWorldRankings:Array.isArray(data?.currentWorldRankings) ? data.currentWorldRankings : [],
-      activeSeasons:Array.isArray(data?.activeSeasons) ? data.activeSeasons : []
-    });
+  try {
+    return json(await fetchDirectRank(context.env, id));
   } catch (e) {
     return json({
       ok:false,
       source:'worldathletics.nimarion.de',
-      error:'Kunne ikke kontakte proxyen',
-      detail:String(e?.message || e)
+      ...proxyFailure,
+      directFallbackError:String(e?.message || e)
     });
   }
 }
