@@ -113,27 +113,28 @@ export async function onRequestGet(context) {
   const normalizeRecords = value => Array.isArray(value) ? value.map(String) : (value == null ? [] : [String(value)]);
 
   await Promise.all(years.map(async year => {
-    const endpoint = `https://worldathletics.nimarion.de/athletes/${id}/results?year=${year}`;
     let data = null;
     const attemptInfo = { year };
     try {
-      const res = await fetchWithTimeout(endpoint, {
-        headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.2','Accept':'application/json'}
-      });
-      const text = await res.text();
-      try { data = JSON.parse(text); } catch (_) {}
-      attemptInfo.status = res.status;
-      attemptInfo.count = Array.isArray(data) ? data.length : null;
-      if (!res.ok || !Array.isArray(data)) data = null;
+      data = await fetchDirectYearResults(context.env, id, year);
+      attemptInfo.source = 'worldathletics.org (direkte)';
+      attemptInfo.count = data.length;
     } catch (e) {
       attemptInfo.error = String(e?.message || e);
     }
 
     if (!data) {
+      const endpoint = `https://worldathletics.nimarion.de/athletes/${id}/results?year=${year}`;
       try {
-        data = await fetchDirectYearResults(context.env, id, year);
-        attemptInfo.fallback = 'worldathletics.org (direkte)';
-        attemptInfo.fallbackCount = data.length;
+        const res = await fetchWithTimeout(endpoint, {
+          headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.2','Accept':'application/json'}
+        });
+        const text = await res.text();
+        try { data = JSON.parse(text); } catch (_) {}
+        attemptInfo.fallbackStatus = res.status;
+        attemptInfo.fallbackCount = Array.isArray(data) ? data.length : null;
+        if (!res.ok || !Array.isArray(data)) data = null;
+        else attemptInfo.fallback = 'worldathletics.nimarion.de';
       } catch (e) {
         attemptInfo.fallbackError = String(e?.message || e);
       }
@@ -233,38 +234,39 @@ export async function onRequestGet(context) {
     let events = null;
     const attemptInfo = { competitionId };
     try {
-      const res = await fetchWithTimeout(`https://worldathletics.nimarion.de/competitions/${competitionId}/results`, {
-        headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.2','Accept':'application/json'}
-      });
-      const text = await res.text();
-      let data = null;
-      try { data = JSON.parse(text); } catch (_) {}
-      attemptInfo.status = res.status;
-      attemptInfo.events = Array.isArray(data?.events) ? data.events.length : null;
-      if (res.ok && Array.isArray(data?.events)) {
-        events = data.events.map(event => ({
-          discipline: String(event?.discipline || event?.name || '').trim(),
-          category: String(event?.category || parent.category || '').toUpperCase(),
-          rows: (event?.races || []).flatMap(race => (race?.results || [])
-            .filter(r => (Array.isArray(r?.athletes) ? r.athletes : []).some(a => String(a?.id) === String(id)))
-            .map(r => ({ mark:r.mark ?? null, place:Number(r.place) || null, wind:r.wind ?? null, records:normalizeRecords(r.records ?? r.record), date:r.date ?? race?.date ?? parent.date ?? null }))
-          )
-        }));
-      }
+      const flat = await fetchDirectCompetitionResults(context.env, competitionId, id);
+      events = Object.values(flat.reduce((byDiscipline, r) => {
+        (byDiscipline[r.discipline] ||= { discipline:r.discipline, category:parent.category||'', rows:[] })
+          .rows.push({ mark:r.mark, place:Number(r.place) || null, wind:r.wind, records:normalizeRecords(r.records), date:r.date ?? parent.date ?? null });
+        return byDiscipline;
+      }, {}));
+      attemptInfo.source = 'worldathletics.org (direkte)';
+      attemptInfo.count = flat.length;
     } catch (e) {
       attemptInfo.error = String(e?.message || e);
     }
 
     if (!events) {
       try {
-        const flat = await fetchDirectCompetitionResults(context.env, competitionId, id);
-        events = Object.values(flat.reduce((byDiscipline, r) => {
-          (byDiscipline[r.discipline] ||= { discipline:r.discipline, category:parent.category||'', rows:[] })
-            .rows.push({ mark:r.mark, place:Number(r.place) || null, wind:r.wind, records:normalizeRecords(r.records), date:r.date ?? parent.date ?? null });
-          return byDiscipline;
-        }, {}));
-        attemptInfo.fallback = 'worldathletics.org (direkte)';
-        attemptInfo.fallbackCount = flat.length;
+        const res = await fetchWithTimeout(`https://worldathletics.nimarion.de/competitions/${competitionId}/results`, {
+          headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.2','Accept':'application/json'}
+        });
+        const text = await res.text();
+        let data = null;
+        try { data = JSON.parse(text); } catch (_) {}
+        attemptInfo.fallbackStatus = res.status;
+        attemptInfo.fallbackEvents = Array.isArray(data?.events) ? data.events.length : null;
+        if (res.ok && Array.isArray(data?.events)) {
+          attemptInfo.fallback = 'worldathletics.nimarion.de';
+          events = data.events.map(event => ({
+            discipline: String(event?.discipline || event?.name || '').trim(),
+            category: String(event?.category || parent.category || '').toUpperCase(),
+            rows: (event?.races || []).flatMap(race => (race?.results || [])
+              .filter(r => (Array.isArray(r?.athletes) ? r.athletes : []).some(a => String(a?.id) === String(id)))
+              .map(r => ({ mark:r.mark ?? null, place:Number(r.place) || null, wind:r.wind ?? null, records:normalizeRecords(r.records ?? r.record), date:r.date ?? race?.date ?? parent.date ?? null }))
+            )
+          }));
+        }
       } catch (e) {
         attemptInfo.fallbackError = String(e?.message || e);
       }

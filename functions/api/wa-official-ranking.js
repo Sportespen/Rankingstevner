@@ -29,34 +29,37 @@ export async function onRequestGet(context){
   if(!id)return json({ok:false,error:'Ugyldig World Athletics-ID'},400);
   if(!event)return json({ok:false,error:'Mangler øvelse'},400);
 
+  // World Athletics' own public profile page (read directly, no key needed - see wa-html.js) is
+  // the primary source, not a fallback: worldathletics.nimarion.de is a single-maintainer,
+  // unofficial wrapper with no SLA that has already gone down for 24+ hours with no ETA once. It's
+  // kept only as a backup for whatever the direct read doesn't cover.
   const diagnostics=[];
   let profile=null,name='',knownRank=null,athleteSlug='';
   try{
-    const r=await fetchWithTimeout(`https://worldathletics.nimarion.de/athletes/${id}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.23.0','Accept':'application/json'}});
-    if(r.ok){
-      profile=await r.json();
-      name=`${profile?.firstname||profile?.firstName||''} ${profile?.lastname||profile?.lastName||''}`.trim();
-      athleteSlug=String(profile?.urlSlug||profile?.slug||'').trim();
-      const current=Array.isArray(profile?.currentWorldRankings)?profile.currentWorldRankings:[];
-      const hit=current.find(x=>rankingEventMatches(x?.eventGroup,event));
-      const p=Number(hit?.place); if(validRank(p))knownRank=p;
-      diagnostics.push({source:'wa-profile',status:r.status,name,athleteSlug,knownRank,eventGroup:hit?.eventGroup||null});
-    }else diagnostics.push({source:'wa-profile',status:r.status});
-  }catch(e){diagnostics.push({source:'wa-profile',error:String(e?.message||e)});}
+    const c=await fetchCompetitorFromHtml(id);
+    const basic=c.basicData||{};
+    profile=c;
+    name=`${basic.givenName||''} ${basic.familyName||''}`.trim();
+    const current=Array.isArray(c.worldRankings?.current)?c.worldRankings.current:[];
+    const hit=current.find(x=>rankingEventMatches(x?.eventGroup,event));
+    const p=Number(hit?.place); if(validRank(p))knownRank=p;
+    diagnostics.push({source:'wa-profile-html',name,knownRank,eventGroup:hit?.eventGroup||null});
+  }catch(e){diagnostics.push({source:'wa-profile-html',error:String(e?.message||e)});}
 
-  // nimarion.de went down for 24+ hours once in production - if it failed above, fall back to
-  // reading the same data straight out of the athlete's own public World Athletics profile page
-  // (see wa-html.js). Only runs when the proxy already failed, so it can't regress anything.
   if(!profile){
     try{
-      const c=await fetchCompetitorFromHtml(id);
-      const basic=c.basicData||{};
-      name=`${basic.givenName||''} ${basic.familyName||''}`.trim();
-      const current=Array.isArray(c.worldRankings?.current)?c.worldRankings.current:[];
-      const hit=current.find(x=>rankingEventMatches(x?.eventGroup,event));
-      const p=Number(hit?.place); if(validRank(p))knownRank=p;
-      diagnostics.push({source:'wa-profile-html',name,knownRank,eventGroup:hit?.eventGroup||null});
-    }catch(e){diagnostics.push({source:'wa-profile-html',error:String(e?.message||e)});}
+      const r=await fetchWithTimeout(`https://worldathletics.nimarion.de/athletes/${id}`,{headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.23.0','Accept':'application/json'}});
+      if(r.ok){
+        const p2=await r.json();
+        profile=p2;
+        name=`${p2?.firstname||p2?.firstName||''} ${p2?.lastname||p2?.lastName||''}`.trim();
+        athleteSlug=String(p2?.urlSlug||p2?.slug||'').trim();
+        const current=Array.isArray(p2?.currentWorldRankings)?p2.currentWorldRankings:[];
+        const hit=current.find(x=>rankingEventMatches(x?.eventGroup,event));
+        const p=Number(hit?.place); if(validRank(p))knownRank=p;
+        diagnostics.push({source:'wa-profile',status:r.status,name,athleteSlug,knownRank,eventGroup:hit?.eventGroup||null});
+      }else diagnostics.push({source:'wa-profile',status:r.status});
+    }catch(e){diagnostics.push({source:'wa-profile',error:String(e?.message||e)});}
   }
 
   const slug=rankingSlug(event);

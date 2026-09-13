@@ -1,16 +1,7 @@
-// Confirmed live: when worldathletics.nimarion.de is unreachable, it doesn't always fail fast
-// with an error status - sometimes the connection just hangs with no response at all. Without a
-// deadline, that left the plain `fetch()` below waiting until Cloudflare's own platform-level
-// execution limit killed the whole Worker. wa-results.js already had this protection; this file
-// didn't, so it's added here too.
-//
-// Separately - and this was the actual cause of the "Bad gateway / Host Error" page visitors saw -
-// Cloudflare's edge intercepts specific status codes (502 among them) coming back from a Pages
-// Function and silently replaces the body with its own generic error page, instead of passing our
-// own {ok:false} JSON through to the browser. wa-results.js never hit this because it always
-// answers with plain 200 and lets the JSON body's `ok` field carry the failure - the frontend
-// already reads that field, not the HTTP status (see athlete-profile.js). So every response below
-// now uses 200, even the failure cases.
+// World Athletics' own public profile page (read directly, no key needed - see wa-html.js) is now
+// the primary source, not a fallback: worldathletics.nimarion.de is a single-maintainer, unofficial
+// wrapper around WA's undocumented API with no SLA, and it went down for 24+ hours with no ETA
+// once already. It's kept only as a backup for whatever this direct read doesn't cover.
 import { fetchCompetitorFromHtml } from '../_shared/wa-html.js';
 
 const FETCH_TIMEOUT_MS = 6000;
@@ -24,10 +15,6 @@ async function fetchWithTimeout(url, options) {
   }
 }
 
-// Only tried once the proxy has already failed - if nimarion.de is up and healthy this never
-// runs, so it can't regress the common case. Confirmed live via a one-off Playwright capture
-// (scripts/wa-graphql-capture.mjs) - see wa-html.js for why this reads the plain, public profile
-// HTML instead of calling WA's GraphQL backend directly (no key, no authorization needed at all).
 async function fetchDirectRank(id) {
   const c = await fetchCompetitorFromHtml(id);
   const basic = c.basicData || {};
@@ -43,52 +30,58 @@ async function fetchDirectRank(id) {
   };
 }
 
+// Only tried once the direct read above has already failed.
+async function fetchViaProxy(id) {
+  const proxyUrl = `https://worldathletics.nimarion.de/athletes/${id}`;
+  const res = await fetchWithTimeout(proxyUrl, {
+    headers: {
+      'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.9',
+      'Accept':'application/json'
+    }
+  });
+  const text = await res.text();
+  let data = null;
+  try { data = JSON.parse(text); } catch (_) {}
+  if (!res.ok) {
+    const err = new Error('Proxy-oppslag feilet');
+    err.details = { status:res.status, bodyPreview:text.slice(0,300) };
+    throw err;
+  }
+  return {
+    ok:true,
+    source:'worldathletics.nimarion.de',
+    status:res.status,
+    id:Number(id),
+    name:data ? `${data.firstname || ''} ${data.lastname || ''}`.trim() : null,
+    sex:data?.sex ?? null,
+    country:data?.country ?? null,
+    currentWorldRankings:Array.isArray(data?.currentWorldRankings) ? data.currentWorldRankings : [],
+    activeSeasons:Array.isArray(data?.activeSeasons) ? data.activeSeasons : []
+  };
+}
+
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const raw = (url.searchParams.get('id') || '').trim();
   const id = raw.match(/(\d{7,9})/)?.[1];
   if (!id) return json({ok:false,error:'Ugyldig World Athletics-ID'},400);
 
-  const proxyUrl = `https://worldathletics.nimarion.de/athletes/${id}`;
-  let proxyFailure = null;
-  try {
-    const res = await fetchWithTimeout(proxyUrl, {
-      headers: {
-        'User-Agent':'Mozilla/5.0 Rankingstevner/0.7.9',
-        'Accept':'application/json'
-      }
-    });
-    const text = await res.text();
-    let data = null;
-    try { data = JSON.parse(text); } catch (_) {}
-
-    if (!res.ok) {
-      proxyFailure = { status:res.status, error:'Proxy-oppslag feilet', bodyPreview:text.slice(0,300) };
-    } else {
-      return json({
-        ok:true,
-        source:'worldathletics.nimarion.de',
-        status:res.status,
-        id:Number(id),
-        name:data ? `${data.firstname || ''} ${data.lastname || ''}`.trim() : null,
-        sex:data?.sex ?? null,
-        country:data?.country ?? null,
-        currentWorldRankings:Array.isArray(data?.currentWorldRankings) ? data.currentWorldRankings : [],
-        activeSeasons:Array.isArray(data?.activeSeasons) ? data.activeSeasons : []
-      });
-    }
-  } catch (e) {
-    proxyFailure = { error:'Kunne ikke kontakte proxyen', detail:String(e?.message || e) };
-  }
-
+  let directFailure = null;
   try {
     return json(await fetchDirectRank(id));
   } catch (e) {
+    directFailure = { error:'Direkte oppslag mot worldathletics.org feilet', detail:String(e?.message || e) };
+  }
+
+  try {
+    return json(await fetchViaProxy(id));
+  } catch (e) {
     return json({
       ok:false,
-      source:'worldathletics.nimarion.de',
-      ...proxyFailure,
-      directFallbackError:String(e?.message || e)
+      source:'worldathletics.org (direkte)',
+      ...directFailure,
+      proxyFallbackError:String(e?.message || e),
+      proxyFallbackDetails:e?.details ?? null
     });
   }
 }
