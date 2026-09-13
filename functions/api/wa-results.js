@@ -57,6 +57,7 @@ const COMPETITION_RESULTS_QUERY = `query GetCalendarCompetitionResults($competit
         event
         races {
           date
+          race
           results { place mark wind records competitor { id iaafId name } }
         }
       }
@@ -243,6 +244,19 @@ export async function onRequestGet(context) {
     if(Array.isArray(row.athletes) && row.athletes.some(a=>String(a?.id)===String(athleteId))) return true;
     return !!athleteName && namesMatch(row.name,athleteName);
   }
+  // A discipline's races are only safe to pool together when NONE of them are a heat/quarter/
+  // semifinal that feeds into a separate final (their "race" label starts with something other
+  // than "F", e.g. "H4", "SF2", "QF1") - pooling those together with the final would rank
+  // eliminated heat-only runners alongside the athletes who actually qualified further, producing
+  // a nonsensically deep "place" (confirmed live: a 100m heat+semifinal pool at a national
+  // championship came out as 41st). Dinamo Zrinjevac's 400m, by contrast, has no separate final at
+  // all - just two parallel heats both literally labelled "Final" - and THAT is exactly the
+  // situation this correction exists for, so only pool when every race for the discipline is
+  // labelled "Final" (case-insensitive, any numbering/lettering). Otherwise leave every round's
+  // own already-accurate place alone.
+  function isFinalRoundLabel(race){
+    return /^final/i.test(String(race||'').trim());
+  }
   async function fetchCompetitionFieldByDiscipline(competitionId){
     try{
       const data=await waGraphQL(context.env, COMPETITION_RESULTS_QUERY, { competitionId: Number(competitionId) });
@@ -253,11 +267,12 @@ export async function onRequestGet(context) {
         for(const ev of (title?.events||[])){
           const discipline=String(ev?.event||'').replace(/^(Women's |Men's |Mixed )/,'').trim();
           if(!discipline) continue;
-          const rows=byDiscipline.get(discipline)||[];
+          const entry=byDiscipline.get(discipline)||{rows:[],allFinal:true};
           for(const race of (ev?.races||[])){
-            for(const r of (race?.results||[])) rows.push({mark:r.mark, athleteId:r?.competitor?.id, athleteIaafId:r?.competitor?.iaafId, name:r?.competitor?.name});
+            if(!isFinalRoundLabel(race?.race)) entry.allFinal=false;
+            for(const r of (race?.results||[])) entry.rows.push({mark:r.mark, athleteId:r?.competitor?.id, athleteIaafId:r?.competitor?.iaafId, name:r?.competitor?.name});
           }
-          byDiscipline.set(discipline,rows);
+          byDiscipline.set(discipline,entry);
         }
       }
       return byDiscipline;
@@ -273,11 +288,12 @@ export async function onRequestGet(context) {
       for(const event of data.events){
         const discipline=String(event?.discipline||event?.name||'').trim();
         if(!discipline) continue;
-        const rows=byDiscipline.get(discipline)||[];
+        const entry=byDiscipline.get(discipline)||{rows:[],allFinal:true};
         for(const race of (event?.races||[])){
-          for(const r of (race?.results||[])) rows.push({mark:r.mark, athletes:r?.athletes});
+          if(race?.race!=null && !isFinalRoundLabel(race.race)) entry.allFinal=false;
+          for(const r of (race?.results||[])) entry.rows.push({mark:r.mark, athletes:r?.athletes});
         }
-        byDiscipline.set(discipline,rows);
+        byDiscipline.set(discipline,entry);
       }
       return byDiscipline;
     }
@@ -298,13 +314,14 @@ export async function onRequestGet(context) {
   }
 
   const CORRECTION_FETCH_CAP=20;
-  const correctionCompetitionIds=[...new Set(
-    results
-      .filter(r=>r.source==='athlete-results' && !/decathlon|heptathlon|pentathlon/i.test(r.discipline))
-      .filter(r=>{ const d=parseDate(r.date); return d && d>=cutoff18; })
-      .map(r=>Number(r.competitionId))
-      .filter(cid=>Number.isFinite(cid) && cid>0)
-  )].slice(0,CORRECTION_FETCH_CAP);
+  const correctionCandidates=results
+    .filter(r=>r.source==='athlete-results' && !/decathlon|heptathlon|pentathlon/i.test(r.discipline))
+    .map(r=>({...r,_date:parseDate(r.date)}))
+    .filter(r=>r._date && r._date>=cutoff18 && Number.isFinite(Number(r.competitionId)) && Number(r.competitionId)>0)
+    .sort((a,b)=>b._date-a._date);
+  // Most-recent-first, so an athlete with more eligible competitions than the fetch cap still gets
+  // their newest (most relevant, and most likely to still matter to them) results corrected first.
+  const correctionCompetitionIds=[...new Set(correctionCandidates.map(r=>Number(r.competitionId)))].slice(0,CORRECTION_FETCH_CAP);
 
   if(correctionCompetitionIds.length) await ensureAthleteName();
 
@@ -319,10 +336,10 @@ export async function onRequestGet(context) {
     if(/decathlon|heptathlon|pentathlon/i.test(item.discipline)) continue;
     const byDiscipline=fieldByCompetition.get(Number(item.competitionId));
     if(!byDiscipline) continue;
-    const rows=byDiscipline.get(item.discipline);
-    if(!Array.isArray(rows) || rows.length<2) continue;
+    const entry=byDiscipline.get(item.discipline);
+    if(!entry || !entry.allFinal || !Array.isArray(entry.rows) || entry.rows.length<2) continue;
     const technical=isTechnicalDiscipline(item.discipline);
-    const valid=rows.map(r=>({...r,value:parseMarkValue(r.mark,technical)})).filter(r=>r.value!=null);
+    const valid=entry.rows.map(r=>({...r,value:parseMarkValue(r.mark,technical)})).filter(r=>r.value!=null);
     if(valid.length<2) continue;
     valid.sort((a,b)=>technical?b.value-a.value:a.value-b.value);
     const idx=valid.findIndex(r=>rowMatchesAthlete(r,id,athleteName));
