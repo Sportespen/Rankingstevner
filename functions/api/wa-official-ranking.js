@@ -1,3 +1,5 @@
+import { fetchCompetitorFromHtml } from '../_shared/wa-html.js';
+
 const WA_RANKING_API='https://api.european-athletics.com/trpc';
 
 // Nothing in this file previously bounded how long a single external call could take - a slow or
@@ -41,6 +43,21 @@ export async function onRequestGet(context){
       diagnostics.push({source:'wa-profile',status:r.status,name,athleteSlug,knownRank,eventGroup:hit?.eventGroup||null});
     }else diagnostics.push({source:'wa-profile',status:r.status});
   }catch(e){diagnostics.push({source:'wa-profile',error:String(e?.message||e)});}
+
+  // nimarion.de went down for 24+ hours once in production - if it failed above, fall back to
+  // reading the same data straight out of the athlete's own public World Athletics profile page
+  // (see wa-html.js). Only runs when the proxy already failed, so it can't regress anything.
+  if(!profile){
+    try{
+      const c=await fetchCompetitorFromHtml(id);
+      const basic=c.basicData||{};
+      name=`${basic.givenName||''} ${basic.familyName||''}`.trim();
+      const current=Array.isArray(c.worldRankings?.current)?c.worldRankings.current:[];
+      const hit=current.find(x=>rankingEventMatches(x?.eventGroup,event));
+      const p=Number(hit?.place); if(validRank(p))knownRank=p;
+      diagnostics.push({source:'wa-profile-html',name,knownRank,eventGroup:hit?.eventGroup||null});
+    }catch(e){diagnostics.push({source:'wa-profile-html',error:String(e?.message||e)});}
+  }
 
   const slug=rankingSlug(event);
   const gender=sex==='W'?'women':'men';
