@@ -1,5 +1,3 @@
-import { waGraphQL, cleanupDiscipline, parsePlace } from '../_shared/wa-graphql.js';
-
 // Nothing here bounded how long a single external call could take, and the year-by-year and
 // competition-by-competition lookups below ran one after another instead of at the same time -
 // with up to 4 sequential athlete/results fetches followed by up to 12 MORE sequential
@@ -18,51 +16,6 @@ async function fetchWithTimeout(url, options) {
   }
 }
 
-// Confirmed live: worldathletics.nimarion.de (the third-party service every per-year fetch below
-// used to depend on exclusively) can go down for well over a day with no ETA and no way to reach
-// its maintainer. Each year's nimarion.de call is tried first, unchanged - only a year whose call
-// actually fails falls back to querying World Athletics' own GraphQL backend directly for that
-// same year (see ../_shared/wa-graphql.js for why that needs a separately-refreshed credential
-// rather than being the default path). A healthy nimarion.de day is completely unaffected.
-const DIRECT_RESULTS_QUERY = `
-  query getSingleCompetitorResultsDiscipline($id: Int, $year: Int) {
-    getSingleCompetitorResultsDiscipline(id: $id, resultsByYearOrderBy: "discipline", resultsByYear: $year) {
-      resultsByEvent {
-        discipline
-        results { mark competition date notLegal wind resultScore place category eventId competitionId }
-      }
-    }
-  }
-`;
-async function fetchDirectResultsForYear(env, id, year) {
-  const data = await waGraphQL(env, DIRECT_RESULTS_QUERY, {id:Number(id),year}, {'x-athlete-id':String(id)});
-  const events = data?.getSingleCompetitorResultsDiscipline?.resultsByEvent;
-  if (!Array.isArray(events)) return [];
-  const out = [];
-  for (const ev of events) {
-    const discipline = cleanupDiscipline(ev.discipline);
-    for (const r of (ev.results || [])) {
-      out.push({
-        discipline,
-        mark:r.mark ?? null,
-        resultScore:r.resultScore,
-        place:parsePlace(r.place),
-        category:r.category,
-        competition:r.competition,
-        competitionId:r.competitionId,
-        date:r.date,
-        legal:!r.notLegal,
-        wind:r.wind,
-        // WA's own schema for this particular query doesn't expose record status here, same as
-        // nimarion's own wrapper (confirmed live: every real result we've seen from it has
-        // records:[] regardless of discipline) - not a gap introduced by querying directly.
-        records:[]
-      });
-    }
-  }
-  return out.filter(r => Number.isFinite(r.place) && r.place > 0);
-}
-
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const raw = (url.searchParams.get('id') || '').trim();
@@ -77,33 +30,8 @@ export async function onRequestGet(context) {
 
   const normalizeRecords = value => Array.isArray(value) ? value.map(String) : (value == null ? [] : [String(value)]);
 
-  function ingest(year, data, sourceLabel) {
-    for (const r of data) {
-      const discipline = String(r.discipline || r.event || '').trim();
-      if (!discipline) continue;
-      const item = {
-        year,
-        discipline,
-        mark:r.mark ?? r.result ?? null,
-        resultScore:Number(r.resultScore) || 0,
-        place:Number(r.place) || null,
-        category:String(r.category || '').toUpperCase(),
-        competition:r.competition ?? null,
-        competitionId:r.competitionId ?? null,
-        date:r.date ?? null,
-        legal:r.legal !== false,
-        wind:r.wind ?? null,
-        records:normalizeRecords(r.records ?? r.record),
-        source:sourceLabel
-      };
-      results.push(item);
-      if (/decathlon|heptathlon|pentathlon/i.test(discipline)) combined.push(item);
-    }
-  }
-
   await Promise.all(years.map(async year => {
     const endpoint = `https://worldathletics.nimarion.de/athletes/${id}/results?year=${year}`;
-    let proxyOk = false;
     try {
       const res = await fetchWithTimeout(endpoint, {
         headers:{'User-Agent':'Mozilla/5.0 Rankingstevner/0.20.2','Accept':'application/json'}
@@ -112,25 +40,31 @@ export async function onRequestGet(context) {
       let data = null;
       try { data = JSON.parse(text); } catch (_) {}
       attempts.push({year,status:res.status,count:Array.isArray(data)?data.length:null});
-      if (res.ok && Array.isArray(data)) {
-        proxyOk = true;
-        ingest(year, data, 'athlete-results');
+      if (!res.ok || !Array.isArray(data)) return;
+
+      for (const r of data) {
+        const discipline = String(r.discipline || r.event || '').trim();
+        if (!discipline) continue;
+        const item = {
+          year,
+          discipline,
+          mark:r.mark ?? r.result ?? null,
+          resultScore:Number(r.resultScore) || 0,
+          place:Number(r.place) || null,
+          category:String(r.category || '').toUpperCase(),
+          competition:r.competition ?? null,
+          competitionId:r.competitionId ?? null,
+          date:r.date ?? null,
+          legal:r.legal !== false,
+          wind:r.wind ?? null,
+          records:normalizeRecords(r.records ?? r.record),
+          source:'athlete-results'
+        };
+        results.push(item);
+        if (/decathlon|heptathlon|pentathlon/i.test(discipline)) combined.push(item);
       }
     } catch (e) {
       attempts.push({year,error:String(e?.message || e)});
-    }
-
-    // Same reasoning as wa-rank.js: worldathletics.nimarion.de going down for well over a day
-    // with no ETA is what prompted this - only reached when this specific year's own nimarion.de
-    // call actually failed, so a normal healthy day is completely unaffected.
-    if (!proxyOk) {
-      try {
-        const direct = await fetchDirectResultsForYear(context.env, id, year);
-        attempts.push({year,source:'worldathletics-direct',count:direct.length});
-        ingest(year, direct, 'athlete-results');
-      } catch (e) {
-        attempts.push({year,source:'worldathletics-direct',error:String(e?.message || e)});
-      }
     }
   }));
 
