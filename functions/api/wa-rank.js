@@ -11,7 +11,7 @@
 // answers with plain 200 and lets the JSON body's `ok` field carry the failure - the frontend
 // already reads that field, not the HTTP status (see athlete-profile.js). So every response below
 // now uses 200, even the failure cases.
-import { waGraphQL, formatSex } from '../_shared/wa-graphql.js';
+import { fetchCompetitorFromHtml } from '../_shared/wa-html.js';
 
 const FETCH_TIMEOUT_MS = 6000;
 async function fetchWithTimeout(url, options) {
@@ -24,31 +24,19 @@ async function fetchWithTimeout(url, options) {
   }
 }
 
-// Confirmed live via a chain of one-off introspection queries (see wa-graphql-debug.js) - the
-// simpler getSingleCompetitor query nimarion's own client used doesn't expose rankings at all in
-// this schema (its `singleCompetitor` return type only has _id/basicData/primaryMedia*).
-// getCISSingleCompetitor is the query that actually carries worldRankings, though its urlSlug
-// argument is (oddly) required even when looking up by id - an empty string satisfies it.
-const DIRECT_QUERY = `query getCISSingleCompetitor($id: Int, $urlSlug: String!) {
-  getCISSingleCompetitor(id: $id, urlSlug: $urlSlug) {
-    basicData { firstName lastName countryCode sexName }
-    worldRankings { current { eventGroup place } }
-  }
-}`;
-
 // Only tried once the proxy has already failed - if nimarion.de is up and healthy this never
-// runs, so it can't regress the common case even if the direct query shape turns out to be wrong.
-async function fetchDirectRank(env, id) {
-  const data = await waGraphQL(env, DIRECT_QUERY, { id: Number(id), urlSlug: '' }, { 'x-athlete-id': String(id) });
-  const c = data?.getCISSingleCompetitor;
-  if (!c) throw new Error('WA GraphQL fant ingen utøver med denne IDen');
+// runs, so it can't regress the common case. Confirmed live via a one-off Playwright capture
+// (scripts/wa-graphql-capture.mjs) - see wa-html.js for why this reads the plain, public profile
+// HTML instead of calling WA's GraphQL backend directly (no key, no authorization needed at all).
+async function fetchDirectRank(id) {
+  const c = await fetchCompetitorFromHtml(id);
   const basic = c.basicData || {};
   return {
     ok: true,
     source: 'worldathletics.org (direkte)',
     id: Number(id),
-    name: `${basic.firstName || ''} ${basic.lastName || ''}`.trim() || null,
-    sex: formatSex(basic.sexName),
+    name: `${basic.givenName || ''} ${basic.familyName || ''}`.trim() || null,
+    sex: basic.male === true ? 'M' : (basic.male === false ? 'W' : null),
     country: basic.countryCode ?? null,
     currentWorldRankings: Array.isArray(c.worldRankings?.current) ? c.worldRankings.current : [],
     activeSeasons: []
@@ -94,7 +82,7 @@ export async function onRequestGet(context) {
   }
 
   try {
-    return json(await fetchDirectRank(context.env, id));
+    return json(await fetchDirectRank(id));
   } catch (e) {
     return json({
       ok:false,
