@@ -30,7 +30,11 @@ async function main() {
       const dedupeKey = operationName || body.slice(0, 80);
       if (seen.has(dedupeKey)) return;
       seen.add(dedupeKey);
-      console.log('GraphQL op:', operationName || '(none)', 'vars:', JSON.stringify(variables));
+      // The endpoint our daily key-refresh job captures might not be the only GraphQL gateway
+      // this page talks to - getSingleCompetitorResultsDiscipline was rejected as FieldUndefined
+      // on that endpoint's schema even though the real browser calls it with no error, so log the
+      // URL for every operation to check whether they actually all go to the same place.
+      console.log('GraphQL op:', operationName || '(none)', 'url:', req.url(), 'vars:', JSON.stringify(variables));
     });
     await page.goto(ATHLETE_URL, { waitUntil: 'load', timeout: 30000 }).catch((e) => {
       console.error('goto failed (continuing to wait for late requests anyway):', e.message);
