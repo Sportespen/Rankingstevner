@@ -24,9 +24,12 @@ async function fetchWithTimeout(url, options) {
   }
 }
 
+// Field names on basicData (type CISbasicDataType) confirmed live via a one-off introspection
+// query - nimarion's own client code documented different names (givenName/familyName/
+// sexNameUrlSlug), which turned out not to exist on this schema at all.
 const DIRECT_QUERY = `query getSingleCompetitor($id: Int) {
   getSingleCompetitor(id: $id) {
-    basicData { givenName familyName countryCode sexNameUrlSlug }
+    basicData { firstName lastName countryCode sexName }
     worldRankings { current { eventGroup place } }
   }
 }`;
@@ -42,8 +45,8 @@ async function fetchDirectRank(env, id) {
     ok: true,
     source: 'worldathletics.org (direkte)',
     id: Number(id),
-    name: `${basic.givenName || ''} ${basic.familyName || ''}`.trim() || null,
-    sex: formatSex(basic.sexNameUrlSlug),
+    name: `${basic.firstName || ''} ${basic.lastName || ''}`.trim() || null,
+    sex: formatSex(basic.sexName),
     country: basic.countryCode ?? null,
     currentWorldRankings: Array.isArray(c.worldRankings?.current) ? c.worldRankings.current : [],
     activeSeasons: []
