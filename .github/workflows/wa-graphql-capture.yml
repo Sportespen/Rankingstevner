@@ -1,0 +1,35 @@
+name: Capture World Athletics GraphQL traffic (diagnostic, one-off)
+
+# Not part of the daily credential refresh (refresh-wa-graphql-key.yml) - this is a manual,
+# throwaway tool for finding the real query worldathletics.org's own athlete page uses for data
+# our captured public x-api-key isn't authorized for on the queries we've guessed so far
+# (see scripts/wa-graphql-capture.mjs for why). Run it, then read the operation name/variables/
+# query straight out of this run's log. Delete this workflow once no longer needed.
+on:
+  workflow_dispatch:
+    inputs:
+      athleteUrl:
+        description: "Athlete profile URL to load"
+        required: false
+        default: "https://worldathletics.org/athletes/-/14989292"
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Playwright
+        run: |
+          npm init -y >/dev/null
+          npm install playwright@1.48.0
+          npx playwright install --with-deps chromium
+
+      - name: Capture GraphQL traffic
+        run: node scripts/wa-graphql-capture.mjs
+        env:
+          ATHLETE_URL: ${{ github.event.inputs.athleteUrl }}
