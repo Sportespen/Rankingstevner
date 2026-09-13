@@ -52,17 +52,36 @@ async function main() {
     if (idx === -1) {
       console.log('No occurrence of "worldRanking" found in the rendered HTML.');
     } else {
-      // Find which <script> tag this JSON blob lives inside, so we know exactly how to extract
-      // and parse it server-side later (id, type, whether it needs JS-string unescaping like a
-      // Next.js App Router self.__next_f.push(...) chunk, or is raw JSON like a
-      // <script id="__NEXT_DATA__" type="application/json"> Pages Router blob).
-      const scriptStart = html.lastIndexOf('<script', idx);
-      const tagEnd = html.indexOf('>', scriptStart);
-      const scriptOpenTag = html.slice(scriptStart, tagEnd + 1);
-      const scriptClose = html.indexOf('</script>', idx);
-      console.log('Enclosing <script> open tag:', scriptOpenTag);
-      console.log('Enclosing script length:', scriptClose - tagEnd - 1);
-      console.log('First 300 chars of that script:', html.slice(tagEnd + 1, tagEnd + 301));
+      // Confirmed: this lives in <script id="__NEXT_DATA__" type="application/json"> - plain,
+      // unescaped JSON (Next.js Pages Router), fetchable with zero auth since the page is public.
+      const openTagEnd = html.indexOf('>', html.indexOf('id="__NEXT_DATA__"')) + 1;
+      const closeTag = html.indexOf('</script>', openTagEnd);
+      const nextData = JSON.parse(html.slice(openTagEnd, closeTag));
+      const pageProps = nextData?.props?.pageProps || {};
+      console.log('pageProps top-level keys:', Object.keys(pageProps));
+      const competitor = pageProps.competitor;
+      if (competitor) {
+        console.log('competitor top-level keys:', Object.keys(competitor));
+        console.log('competitor.basicData:', JSON.stringify(competitor.basicData));
+      }
+
+      // Find every path to a "worldRankings" key anywhere in pageProps, in case it isn't nested
+      // under `competitor` at all.
+      function findPaths(obj, path, matches) {
+        if (!obj || typeof obj !== 'object') return;
+        for (const [k, v] of Object.entries(obj)) {
+          const p = path ? `${path}.${k}` : k;
+          if (k === 'worldRankings') matches.push(p);
+          findPaths(v, p, matches);
+        }
+      }
+      const matches = [];
+      findPaths(pageProps, 'pageProps', matches);
+      console.log('Paths to "worldRankings":', matches);
+      for (const p of matches) {
+        const value = p.split('.').slice(1).reduce((o, k) => o?.[k], pageProps);
+        console.log(`Value at ${p}:`, JSON.stringify(value));
+      }
     }
   } finally {
     await browser.close();
