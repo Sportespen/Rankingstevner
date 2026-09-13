@@ -24,11 +24,13 @@ async function fetchWithTimeout(url, options) {
   }
 }
 
-// Field names on basicData (type CISbasicDataType) confirmed live via a one-off introspection
-// query - nimarion's own client code documented different names (givenName/familyName/
-// sexNameUrlSlug), which turned out not to exist on this schema at all.
-const DIRECT_QUERY = `query getSingleCompetitor($id: Int) {
-  getSingleCompetitor(id: $id) {
+// Confirmed live via a chain of one-off introspection queries (see wa-graphql-debug.js) - the
+// simpler getSingleCompetitor query nimarion's own client used doesn't expose rankings at all in
+// this schema (its `singleCompetitor` return type only has _id/basicData/primaryMedia*).
+// getCISSingleCompetitor is the query that actually carries worldRankings, though its urlSlug
+// argument is (oddly) required even when looking up by id - an empty string satisfies it.
+const DIRECT_QUERY = `query getCISSingleCompetitor($id: Int, $urlSlug: String!) {
+  getCISSingleCompetitor(id: $id, urlSlug: $urlSlug) {
     basicData { firstName lastName countryCode sexName }
     worldRankings { current { eventGroup place } }
   }
@@ -37,8 +39,8 @@ const DIRECT_QUERY = `query getSingleCompetitor($id: Int) {
 // Only tried once the proxy has already failed - if nimarion.de is up and healthy this never
 // runs, so it can't regress the common case even if the direct query shape turns out to be wrong.
 async function fetchDirectRank(env, id) {
-  const data = await waGraphQL(env, DIRECT_QUERY, { id: Number(id) }, { 'x-athlete-id': String(id) });
-  const c = data?.getSingleCompetitor;
+  const data = await waGraphQL(env, DIRECT_QUERY, { id: Number(id), urlSlug: '' }, { 'x-athlete-id': String(id) });
+  const c = data?.getCISSingleCompetitor;
   if (!c) throw new Error('WA GraphQL fant ingen utøver med denne IDen');
   const basic = c.basicData || {};
   return {
