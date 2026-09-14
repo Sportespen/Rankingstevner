@@ -611,6 +611,20 @@ setInterval(() => {
   b.innerHTML = loadingBoxHtml(`Beregner anbefalinger … (${elapsed} sek, dette tar litt tid) …`, true);
   noteBoxUpdate();
 }, 2000);
+// Mobile browsers aggressively suspend/throttle timers (and can pause outstanding fetches) while a
+// tab is backgrounded - screen locked, user switches app, etc. searchStartedAt/lastBoxUpdateAt above
+// are wall-clock based, so coming back after the phone sat locked for 30+ minutes showed a genuinely
+// confusing "(1842 sek, dette tar litt tid)" even though no actual computation was stuck that whole
+// time - it was just paused. Rebasing the elapsed-time clock to "now" the moment the page becomes
+// visible again keeps the number meaningful (time spent waiting since you actually looked at it),
+// and nudging a recompute covers the case where a scheduled retry (scheduleRecompute's setTimeout)
+// got throttled away entirely while hidden and never fired on its own.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  if (searchStartedAt != null) searchStartedAt = now();
+  noteBoxUpdate();
+  scheduleRecompute(0);
+});
 // Always re-fetches the live element instead of reusing one grabbed at the start of recompute() -
 // meet-finder-v1.js's render() replaces #kvalifiseringBoxes' entire innerHTML (a fresh, empty
 // #rankingRecommendations div included) on every filter/event/sex change AND on unrelated triggers
