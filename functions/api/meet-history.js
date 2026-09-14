@@ -183,9 +183,28 @@ const KNOWN_COMPETITION = [
 // namespace to be provisioned in the Cloudflare dashboard - a plain key/value store doesn't care
 // what its other keys are for, as long as this one's prefix can't collide with anything else's.
 const CACHE_KEY_PREFIX = 'mh:v1:';
-const CACHE_TTL_SECONDS = 60 * 24 * 3600; // 60 days - generous; a past result never actually goes stale
+const CACHE_TTL_FOUND_SECONDS = 60 * 24 * 3600; // 60 days - generous; a past result never actually goes stale
+// A "not found" answer (no previous edition matched, or matched but this event/gender's standings
+// weren't on that page) is JUST as expensive to reach as a found:true one - it still has to walk
+// the whole calendar search first - and live testing confirmed it dominates a real search's total
+// time: only 3 of ~212 real candidates for one event actually succeeded, so leaving the other ~209
+// uncached meant a repeat search dropped from 90s to only ~30s instead of near-instant, since almost
+// every candidate still had to be re-searched from scratch. Caching these too, but for much less
+// long than a real find, keeps that speed-up without permanently burying what could occasionally be
+// a transient fetch blip rather than a genuine "this meet has no such history" - it just gets
+// re-tried (and, if it now succeeds, promoted to the full 60-day TTL) once a day instead of never.
+const CACHE_TTL_NOT_FOUND_SECONDS = 12 * 3600; // 12 hours
 function cacheKeyFor(name, refDateRaw, event, sex) {
   return `${CACHE_KEY_PREFIX}${name}|${refDateRaw}|${event}|${sex}`;
+}
+// Stores a lean copy (diagnostics stripped - useful for debugging THIS request, not worth keeping
+// or shipping back down on every future cache hit) and returns the full body to the current caller.
+async function cacheAndReturn(kv, cacheKey, body, ttlSeconds) {
+  if (kv) {
+    const { diagnostics, ...lean } = body;
+    try { await kv.put(cacheKey, JSON.stringify(lean), { expirationTtl: ttlSeconds }); } catch (_) { /* caching is best-effort */ }
+  }
+  return json(body);
 }
 
 export async function onRequestGet(context) {
@@ -444,7 +463,7 @@ export async function onRequestGet(context) {
   });
 
   const best = scored[0]?.c;
-  if (!best) return json({ ok: true, found: false, reason: 'no-previous-edition-found', diagnostics });
+  if (!best) return cacheAndReturn(kv, cacheKey, { ok: true, found: false, reason: 'no-previous-edition-found', diagnostics }, CACHE_TTL_NOT_FOUND_SECONDS);
 
   // nimarion's /competitions/{id}/results only mirrors WA's per-discipline results (100m,
   // Long Jump, Shot Put, ... each as its own event) - the computed final combined-event
@@ -456,7 +475,7 @@ export async function onRequestGet(context) {
   // tell "we found last year's edition, it just didn't have this event" apart from "we never
   // found a previous edition at all" - those mean very different things to a user deciding
   // whether the app is broken or the meet genuinely lacks that event.
-  if (!fetched.rows.length) return json({ ok: true, found: false, reason: 'no-standings-found', matchedMeetName: best.name, year: parseDate(best.start)?.getUTCFullYear() || null, competitionId: best.id, diagnostics });
+  if (!fetched.rows.length) return cacheAndReturn(kv, cacheKey, { ok: true, found: false, reason: 'no-standings-found', matchedMeetName: best.name, year: parseDate(best.start)?.getUTCFullYear() || null, competitionId: best.id, diagnostics }, CACHE_TTL_NOT_FOUND_SECONDS);
 
   // fetchStandingsForCompetition already returns rows sorted best-first (it knows internally
   // whether this event's "better" is a higher or lower mark), so rows[0] is always the winner
@@ -483,14 +502,7 @@ export async function onRequestGet(context) {
     matchedEventName: fetched.matchedEventName || null,
     matchedEventCode: fetched.matchedEventCode || null,
   };
-  // Only ever caches a genuine found:true - a "not found"/"no standings" answer could just as
-  // easily be a transient blip in one of the ~20 fetches this search chains through, and caching
-  // THAT for 60 days would silently turn a fixable one-off failure into a permanent dead end for
-  // every later user asking about the same meet. Diagnostics (raw sample names, HTML snippets) are
-  // deliberately left out of the cached copy - useful for debugging THIS request, not worth storing
-  // or shipping back down on every future cache hit for the same meet.
-  if (kv) { try { await kv.put(cacheKey, JSON.stringify(resultBody), { expirationTtl: CACHE_TTL_SECONDS }); } catch (_) {} }
-  return json({ ...resultBody, diagnostics });
+  return cacheAndReturn(kv, cacheKey, { ...resultBody, diagnostics }, CACHE_TTL_FOUND_SECONDS);
 }
 
 // Tries each candidate eventId in turn against a competition's WA results page, returning the
