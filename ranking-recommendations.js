@@ -410,7 +410,21 @@ function buildDisplayItem(x, currentRankingScore){
   const improvement = Number.isFinite(delta?.current) && Number.isFinite(delta?.projected)
     ? delta.projected - delta.current
     : null;
-  return { ...x, improvement, hasCurrentScore: Number.isFinite(currentRankingScore), rankProjected: Number.isFinite(delta?.projected) ? delta.projected : null };
+  // rankProjected used to be delta.projected straight from projectedRankingScore() - which computes
+  // both its current AND projected purely from the LOCAL basis reconstruction (see that function's
+  // own comment on this exact risk). currentRankingScore above already prefers WA's OFFICIAL score
+  // when one is cached, so the two could silently disagree: live evidence showed this box's "Din
+  // nåværende Ranking Score: 962" (official) right next to "+13 poeng ... (ny Ranking Score: 998)"
+  // - 962+13 is 975, not 998, because 998 was actually computed relative to a different, ~985
+  // local "current" that was never shown anywhere. Anchoring the shown projected score to the same
+  // currentRankingScore already displayed keeps the two numbers on this card mutually consistent
+  // (and in agreement with the "Ny prestasjon" calculator's own math for the same input), while
+  // `improvement` itself is still the local delta - the only thing this box actually knows about
+  // "what would this result replace".
+  const rankProjected = Number.isFinite(improvement) && Number.isFinite(currentRankingScore)
+    ? currentRankingScore + improvement
+    : null;
+  return { ...x, improvement, hasCurrentScore: Number.isFinite(currentRankingScore), rankProjected };
 }
 // The 3 candidates shown are CHOSEN by highest Performance Score - only the DISPLAY order differs:
 // nearest meet first, so the list reads like a practical shortlist of what's coming up rather than
