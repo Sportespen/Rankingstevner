@@ -197,6 +197,12 @@ const CACHE_TTL_NOT_FOUND_SECONDS = 12 * 3600; // 12 hours
 function cacheKeyFor(name, refDateRaw, event, sex) {
   return `${CACHE_KEY_PREFIX}${name}|${refDateRaw}|${event}|${sex}`;
 }
+// Separate, event/sex-independent key for just "which competition is this meet's previous
+// edition" - see findPreviousEdition()'s own comment for why this is cached on its own.
+const MATCH_CACHE_KEY_PREFIX = 'mp:v1:';
+function matchCacheKeyFor(name, refDateRaw) {
+  return `${MATCH_CACHE_KEY_PREFIX}${name}|${refDateRaw}`;
+}
 // Stores a lean copy (diagnostics stripped - useful for debugging THIS request, not worth keeping
 // or shipping back down on every future cache hit) and returns the full body to the current caller.
 async function cacheAndReturn(kv, cacheKey, body, ttlSeconds) {
@@ -207,47 +213,16 @@ async function cacheAndReturn(kv, cacheKey, body, ttlSeconds) {
   return json(body);
 }
 
-export async function onRequestGet(context) {
-  const url = new URL(context.request.url);
-  const name = (url.searchParams.get('name') || '').trim();
-  const event = (url.searchParams.get('event') || '').trim();
-  // Only meaningful for individual events - Decathlon/Heptathlon already encode sex in the code
-  // itself (this app's own convention: men=Decathlon, women=Heptathlon, regardless of season).
-  // An individual event code like "LJ" doesn't, so the frontend sends the athlete's actual sex.
-  const sex = (url.searchParams.get('sex') || 'M').trim().toUpperCase() === 'W' ? 'W' : 'M';
-  const refDateRaw = (url.searchParams.get('date') || '').trim();
-  if (!name) return json({ ok: false, error: 'Mangler stevnenavn' }, 400);
-  if (!isSupportedEvent(event)) return json({ ok: true, found: false, reason: 'unsupported-event' });
-
-  const kv = context.env.WA_GRAPHQL_KV;
-  const cacheKey = cacheKeyFor(name, refDateRaw, event, sex);
-  if (kv) {
-    try {
-      const cached = await kv.get(cacheKey);
-      if (cached) return json({ ...JSON.parse(cached), cached: true, diagnostics: [{ source: 'kv-cache', key: cacheKey }] });
-    } catch (_) { /* a cache read failure should never block a real lookup - fall through */ }
-  }
-
-  // VERIFIED and KNOWN_COMPETITION only ever list Decathlon/Heptathlon entries (all hand-
-  // researched or ID-confirmed so far), so individual events always fall through to the live
-  // calendar-search path below - correct for now, revisit once an individual-event meet is
-  // worth hand-verifying the same way.
-  const verified = isCombinedEvent(event) && VERIFIED.find(v => v.event === event && v.match.test(name));
-  if (verified) {
-    return json({
-      ok: true, found: true, year: verified.year, winner: verified.winner, winnerMark: verified.winnerMark,
-      top3: verified.top.slice(0, 3), top8: verified.top, allMarks: verified.top,
-      ascending: false, source: verified.source, matchedMeetName: name,
-      diagnostics: [{ source: 'verified-table' }]
-    });
-  }
-
-  const known = KNOWN_COMPETITION.find(k => k.event === event && k.match.test(name));
-  if (known) return await resolveKnownCompetition(known, event, name);
-
+// Finds which competition (if any) is the previous edition of the given upcoming meet, purely by
+// name/date - entirely event/sex-independent, and by far the most expensive part of a lookup (up
+// to ~15-20 outbound fetches). Pulled out so the caller can cache and reuse just this outcome
+// across DIFFERENT events at the same meet (see the match-cache in onRequestGet below) instead of
+// only ever caching the full per-event answer, which live testing showed still cost the full ~30s
+// every time a user checked a second event for a meet whose match had already been found for a
+// first one.
+async function findPreviousEdition(name, refDateRaw, wantedNorm) {
   const refDate = parseDate(refDateRaw) || new Date();
   const diagnostics = [];
-  const wantedNorm = normalizeMeetName(name);
 
   // A 450-day blanket lookback turned out to return thousands of unrelated meets (youth
   // championships, marathons) with no sign of a real recurring GL meet anywhere in the first
@@ -462,7 +437,84 @@ export async function onRequestGet(context) {
     sampleCandidateNames: candidates.slice(0, 8).map(c => c.name)
   });
 
-  const best = scored[0]?.c;
+  const best = scored[0]?.c || null;
+  return { best, diagnostics };
+}
+
+export async function onRequestGet(context) {
+  const url = new URL(context.request.url);
+  const name = (url.searchParams.get('name') || '').trim();
+  const event = (url.searchParams.get('event') || '').trim();
+  // Only meaningful for individual events - Decathlon/Heptathlon already encode sex in the code
+  // itself (this app's own convention: men=Decathlon, women=Heptathlon, regardless of season).
+  // An individual event code like "LJ" doesn't, so the frontend sends the athlete's actual sex.
+  const sex = (url.searchParams.get('sex') || 'M').trim().toUpperCase() === 'W' ? 'W' : 'M';
+  const refDateRaw = (url.searchParams.get('date') || '').trim();
+  if (!name) return json({ ok: false, error: 'Mangler stevnenavn' }, 400);
+  if (!isSupportedEvent(event)) return json({ ok: true, found: false, reason: 'unsupported-event' });
+
+  const kv = context.env.WA_GRAPHQL_KV;
+  const cacheKey = cacheKeyFor(name, refDateRaw, event, sex);
+  if (kv) {
+    try {
+      const cached = await kv.get(cacheKey);
+      if (cached) return json({ ...JSON.parse(cached), cached: true, diagnostics: [{ source: 'kv-cache', key: cacheKey }] });
+    } catch (_) { /* a cache read failure should never block a real lookup - fall through */ }
+  }
+
+  // VERIFIED and KNOWN_COMPETITION only ever list Decathlon/Heptathlon entries (all hand-
+  // researched or ID-confirmed so far), so individual events always fall through to the live
+  // calendar-search path below - correct for now, revisit once an individual-event meet is
+  // worth hand-verifying the same way.
+  const verified = isCombinedEvent(event) && VERIFIED.find(v => v.event === event && v.match.test(name));
+  if (verified) {
+    return json({
+      ok: true, found: true, year: verified.year, winner: verified.winner, winnerMark: verified.winnerMark,
+      top3: verified.top.slice(0, 3), top8: verified.top, allMarks: verified.top,
+      ascending: false, source: verified.source, matchedMeetName: name,
+      diagnostics: [{ source: 'verified-table' }]
+    });
+  }
+
+  const known = KNOWN_COMPETITION.find(k => k.event === event && k.match.test(name));
+  if (known) return await resolveKnownCompetition(known, event, name);
+
+  // Finding "the previous edition of meet X" is entirely event/sex-independent - the same
+  // expensive calendar search runs identically whether the caller wants 100m or Discus results
+  // from it. Caching that match itself, separately and keyed only by name+date (see
+  // matchCacheKeyFor), lets a second event checked for the same meet skip straight to the much
+  // cheaper per-event standings fetch below instead of repeating the whole search.
+  const wantedNorm = normalizeMeetName(name);
+  const matchCacheKey = matchCacheKeyFor(name, refDateRaw);
+  const diagnostics = [];
+  let best = null;
+  let matchFromCache = false;
+  if (kv) {
+    try {
+      const cachedMatch = await kv.get(matchCacheKey);
+      if (cachedMatch) {
+        matchFromCache = true;
+        const parsedMatch = JSON.parse(cachedMatch);
+        if (parsedMatch.matched) {
+          best = { id: parsedMatch.id, name: parsedMatch.name, start: parsedMatch.start };
+          diagnostics.push({ source: 'kv-match-cache', matched: true, key: matchCacheKey });
+        } else {
+          diagnostics.push({ source: 'kv-match-cache', matched: false, key: matchCacheKey });
+        }
+      }
+    } catch (_) { /* a cache read failure should never block a real lookup - fall through */ }
+  }
+
+  if (!matchFromCache) {
+    const found = await findPreviousEdition(name, refDateRaw, wantedNorm);
+    best = found.best;
+    diagnostics.push(...found.diagnostics);
+    if (kv) {
+      const matchBody = best ? { matched: true, id: best.id, name: best.name, start: best.start } : { matched: false };
+      try { await kv.put(matchCacheKey, JSON.stringify(matchBody), { expirationTtl: best ? CACHE_TTL_FOUND_SECONDS : CACHE_TTL_NOT_FOUND_SECONDS }); } catch (_) { /* caching is best-effort */ }
+    }
+  }
+
   if (!best) return cacheAndReturn(kv, cacheKey, { ok: true, found: false, reason: 'no-previous-edition-found', diagnostics }, CACHE_TTL_NOT_FOUND_SECONDS);
 
   // nimarion's /competitions/{id}/results only mirrors WA's per-discipline results (100m,
