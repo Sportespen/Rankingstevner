@@ -122,7 +122,17 @@ function ordinal(n){ return `${n}.`; }
 // onProgress lets
 // the caller show what's happening while this runs, since it can take a while on a full search.
 const BATCH_SIZE = 10;
-const POOL_CEILING = 80; // generous but bounded - protects against a pathologically long search
+// Was 80 - live evidence (100m, a real athlete/profile) showed the search reaching "Ingen flere å
+// anbefale" (fully exhausted, not just stopped early at 3) after checking only 80 candidates out of
+// a real pool of ~212 accessible-category meets for that event, having found exactly 3 usable
+// matches (all category F) along the way. The other ~130 candidates - among them whatever A/B/C/D
+// meets exist further down the category-then-date sort - were silently never even attempted, since
+// the search had already hit this ceiling. Raising it means the search only ever gives up once it
+// has genuinely tried every real candidate, not an arbitrary fraction of them - the per-lookup
+// network cost is already bounded elsewhere (meet-history.js's own 3-way concurrency cap + result
+// cache), so this only affects how thorough a slow/low-hit-rate search is willing to be, not how
+// many requests fire at once.
+const POOL_CEILING = 250;
 
 // Scores one batch of candidate meets against the athlete's own best mark - pulled out of
 // computeRecommendations() so the exact same per-meet logic can extend an existing search (see
