@@ -139,8 +139,19 @@ document.getElementById("calculate").addEventListener("click",()=>{
   const existing=scoreEls.map((el,i)=>({score:Number(el.value),type:typeEls[i].value,label:`Score ${i+1}`})).filter(x=>Number.isFinite(x.score)&&x.score>0);
   if(existing.length<req.n){alert(`Legg inn ${req.n} nåværende Performance Scores først.`);return;}
   const currentSel=bestValidSelection(existing,req.n,req.minMain);if(!currentSel){alert(`De nåværende resultatene må inneholde minst ${req.minMain} Main Event-resultat${req.minMain>1?"er":""}.`);return;}
-  const ps=(placingTables[activeGroup][category.value]||[])[Number(placing.value)-1]||0;const newPerf=details.adjusted+ps;const currentRank=Math.floor(currentSel.reduce((s,x)=>s+x.score,0)/req.n);
-  const newEntry={score:newPerf,type:"main",label:"Nytt resultat"};const newSel=bestValidSelection([...existing,newEntry],req.n,req.minMain);const newRank=Math.floor(newSel.reduce((s,x)=>s+x.score,0)/req.n);const improvement=newRank-currentRank;const included=newSel.includes(newEntry);const replaced=included?currentSel.filter(x=>!newSel.includes(x)).sort((a,b)=>a.score-b.score)[0]:null;
+  const ps=(placingTables[activeGroup][category.value]||[])[Number(placing.value)-1]||0;const newPerf=details.adjusted+ps;const localCurrent=Math.floor(currentSel.reduce((s,x)=>s+x.score,0)/req.n);
+  const newEntry={score:newPerf,type:"main",label:"Nytt resultat"};const newSel=bestValidSelection([...existing,newEntry],req.n,req.minMain);const localNew=Math.floor(newSel.reduce((s,x)=>s+x.score,0)/req.n);const improvement=localNew-localCurrent;const included=newSel.includes(newEntry);const replaced=included?currentSel.filter(x=>!newSel.includes(x)).sort((a,b)=>a.score-b.score)[0]:null;
+  // Vis den offisielle WA Ranking Score-en (samme tall som "OFFISIELL WA RANKING SCORE"-boksen
+  // over) som utgangspunkt når den finnes for denne øvelsen - det lokalt rekonstruerte grunnlaget
+  // (currentSel over) kan avvike fra WAs egen beregning (andre Result Score/Placing Score-kilder),
+  // noe som konkret ga "Nåværende Ranking Score: 1013" her mens den offisielle boksen viste 929 for
+  // samme utøver/øvelse - og dermed en for høy "Ny Ranking Score" og et urealistisk stort anslått
+  // rangeringshopp. Selve poengendringen (improvement) beregnes fortsatt fra det lokale grunnlaget,
+  // siden det er der vi faktisk vet hvilket resultat som byttes ut.
+  const official=window.__rankingstevnerOfficialRanking;
+  const hasOfficial=official&&official.event===eventSelect.value&&Number.isFinite(official.score);
+  const currentRank=hasOfficial?official.score:localCurrent;
+  const newRank=currentRank+improvement;
   document.getElementById("resultScoreOut").textContent=fmt(details.adjusted);document.getElementById("placingScoreOut").textContent=fmt(ps);document.getElementById("performanceScoreOut").textContent=fmt(newPerf);document.getElementById("newRankingOut").textContent=newRank;
   const imp=document.getElementById("improvement");imp.className="improvement "+(improvement>0?"good":improvement<0?"bad":"");imp.textContent=improvement>0?`+${improvement} rankingpoeng`:improvement===0?"Ingen endring i rankingpoeng":`${improvement} rankingpoeng`;
   document.getElementById("currentRankingLine").textContent=`Nåværende Ranking Score: ${currentRank}`;
