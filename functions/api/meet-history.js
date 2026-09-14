@@ -173,6 +173,21 @@ const KNOWN_COMPETITION = [
   { match: /^european athletics indoor championships$/i, event: 'Heptathlon', competitionId: 7173256, year: 2025, fallback: { winner: 'Saga Vanninen', winnerMark: 4922, top: [4922, 4826, 4781], source: 'https://www.european-athletics.com/home/news/vanninen-leads-hard-fought-pentathlon-after-three-events' } },
 ];
 
+// A meet's "previous edition" result never changes once this lookup has actually found it - the
+// SAME upcoming meet (same name/date/event/sex) is looked up over and over by every different user
+// who happens to browse the same event (this app's whole candidate pool of upcoming meets is shared
+// across all users, not per-athlete), so the expensive part of this file - up to ~15-25 outbound
+// fetches to World Athletics per lookup, the actual reason a first-time "Anbefalte stevner" search
+// can take a while - only ever needs to happen ONCE per meet/event/sex combination, globally, not
+// once per user. Reuses the existing WA_GRAPHQL_KV binding rather than requiring a second KV
+// namespace to be provisioned in the Cloudflare dashboard - a plain key/value store doesn't care
+// what its other keys are for, as long as this one's prefix can't collide with anything else's.
+const CACHE_KEY_PREFIX = 'mh:v1:';
+const CACHE_TTL_SECONDS = 60 * 24 * 3600; // 60 days - generous; a past result never actually goes stale
+function cacheKeyFor(name, refDateRaw, event, sex) {
+  return `${CACHE_KEY_PREFIX}${name}|${refDateRaw}|${event}|${sex}`;
+}
+
 export async function onRequestGet(context) {
   const url = new URL(context.request.url);
   const name = (url.searchParams.get('name') || '').trim();
@@ -184,6 +199,15 @@ export async function onRequestGet(context) {
   const refDateRaw = (url.searchParams.get('date') || '').trim();
   if (!name) return json({ ok: false, error: 'Mangler stevnenavn' }, 400);
   if (!isSupportedEvent(event)) return json({ ok: true, found: false, reason: 'unsupported-event' });
+
+  const kv = context.env.WA_GRAPHQL_KV;
+  const cacheKey = cacheKeyFor(name, refDateRaw, event, sex);
+  if (kv) {
+    try {
+      const cached = await kv.get(cacheKey);
+      if (cached) return json({ ...JSON.parse(cached), cached: true, diagnostics: [{ source: 'kv-cache', key: cacheKey }] });
+    } catch (_) { /* a cache read failure should never block a real lookup - fall through */ }
+  }
 
   // VERIFIED and KNOWN_COMPETITION only ever list Decathlon/Heptathlon entries (all hand-
   // researched or ID-confirmed so far), so individual events always fall through to the live
@@ -441,7 +465,7 @@ export async function onRequestGet(context) {
   const winner = fetched.rows[0];
   const year = parseDate(best.start)?.getUTCFullYear() || null;
 
-  return json({
+  const resultBody = {
     ok: true,
     found: true,
     year,
@@ -458,8 +482,15 @@ export async function onRequestGet(context) {
     comparable: fetched.comparable !== false,
     matchedEventName: fetched.matchedEventName || null,
     matchedEventCode: fetched.matchedEventCode || null,
-    diagnostics
-  });
+  };
+  // Only ever caches a genuine found:true - a "not found"/"no standings" answer could just as
+  // easily be a transient blip in one of the ~20 fetches this search chains through, and caching
+  // THAT for 60 days would silently turn a fixable one-off failure into a permanent dead end for
+  // every later user asking about the same meet. Diagnostics (raw sample names, HTML snippets) are
+  // deliberately left out of the cached copy - useful for debugging THIS request, not worth storing
+  // or shipping back down on every future cache hit for the same meet.
+  if (kv) { try { await kv.put(cacheKey, JSON.stringify(resultBody), { expirationTtl: CACHE_TTL_SECONDS }); } catch (_) {} }
+  return json({ ...resultBody, diagnostics });
 }
 
 // Tries each candidate eventId in turn against a competition's WA results page, returning the
