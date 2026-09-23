@@ -20,6 +20,11 @@ export async function onRequestPost({request,env}){
     const ua=request.headers.get('user-agent')||'';
     if(BOT_RE.test(ua))return new Response(null,noStore);
     const date=todayKey();
+    const event=(new URL(request.url).searchParams.get('e')||'').slice(0,64).replace(/[^a-zA-Z0-9:_-]/g,'');
+    if(event){
+      await bump(kv,`event:${date}:${event}`,YEAR);
+      return new Response(null,noStore);
+    }
     const ip=request.headers.get('cf-connecting-ip')||'';
     await bump(kv,`total:${date}`,YEAR);
     const seenKey=`seen:${date}:${await sha256Hex(ip+'|'+date)}`;

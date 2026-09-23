@@ -22,4 +22,21 @@
   }catch(_err){}
 })();
 </script>
+<script>
+// Feature-usage tracking (aggregate counts only, no per-person data) - see functions/api/track.js's
+// `e` query param. Fires alongside the page-load beacon above, once per interaction.
+(function(){
+  function sendEvent(name){
+    try{
+      var url='/api/track?e='+encodeURIComponent(name);
+      if(navigator.sendBeacon){navigator.sendBeacon(url);}
+      else{fetch(url,{method:'POST',keepalive:true,cache:'no-store'}).catch(function(){});}
+    }catch(_err){}
+  }
+  document.addEventListener('click',function(e){
+    var link=e.target.closest('a.feature-card[href^="#"]');
+    if(link)sendEvent('panel:'+link.getAttribute('href').slice(1));
+  },true);
+})();
+</script>
 </body></html>
