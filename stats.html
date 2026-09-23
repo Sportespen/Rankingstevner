@@ -25,6 +25,7 @@ td.bar-cell{position:relative}
 td.bar-cell span{position:relative;z-index:1}
 .state{color:var(--muted);padding:30px 0;text-align:center}
 .err{color:#ff8d8d}
+h2{font-size:18px;margin:32px 0 10px}
 </style>
 </head>
 <body>
@@ -33,6 +34,8 @@ td.bar-cell span{position:relative;z-index:1}
   <p class="lead">Første-parts telling (egen server, ikke avhengig av tredjeparts analyseverktøy). Siste 30 dager, UTC-datoer.</p>
   <div id="summary" class="summary"></div>
   <div id="tableWrap"><p class="state">Laster…</p></div>
+  <h2>Hvor folk beveger seg</h2>
+  <div id="eventsWrap"><p class="state">Laster…</p></div>
 </main>
 <script>
 (function(){
@@ -58,8 +61,25 @@ td.bar-cell span{position:relative;z-index:1}
     }).join('');
     document.getElementById('tableWrap').innerHTML=
       '<table><thead><tr><th>Dato</th><th>Besøk</th><th>Unike</th></tr></thead><tbody>'+rows+'</tbody></table>';
+    var labels={
+      'panel:calculatorPanel':'Åpnet Beregn Ranking Score','panel:kvalifiseringPanel':'Åpnet Anbefalte stevner','panel:stevnefinnerPanel':'Åpnet Finn stevner'
+    };
+    var events=data.events||[];
+    if(!events.length){
+      document.getElementById('eventsWrap').innerHTML='<p class="state">Ingen data ennå.</p>';
+      return;
+    }
+    var maxCount=Math.max(1,...events.map(function(e){return e.count;}));
+    var eventRows=events.map(function(e){
+      var pct=Math.round(e.count/maxCount*100);
+      var label=labels[e.name]||e.name;
+      return '<tr><td>'+label+'</td><td class="bar-cell"><span class="bar" style="width:'+pct+'%"></span><span>'+fmt(e.count)+'</span></td></tr>';
+    }).join('');
+    document.getElementById('eventsWrap').innerHTML=
+      '<table><thead><tr><th>Handling</th><th>Antall (30 dager)</th></tr></thead><tbody>'+eventRows+'</tbody></table>';
   }).catch(function(){
     document.getElementById('tableWrap').innerHTML='<p class="state err">Klarte ikke å hente statistikk.</p>';
+    document.getElementById('eventsWrap').innerHTML='';
   });
 })();
 </script>
