@@ -1,4 +1,7 @@
-const BOT_RE=/bot|crawl|spider|slurp|facebookexternalhit|whatsapp|telegrambot|pingdom|uptimerobot|headlesschrome|lighthouse|preview/i;
+// Also excludes curl/wget/scripted HTTP clients - not real search-engine bots, but this endpoint
+// gets hit by our own diagnostic scripts (GitHub Actions curl calls) often enough during
+// troubleshooting that it visibly inflates real visitor counts otherwise.
+const BOT_RE=/bot|crawl|spider|slurp|facebookexternalhit|whatsapp|telegrambot|pingdom|uptimerobot|headlesschrome|lighthouse|preview|curl|wget|python-requests|python-urllib|httpie|postmanruntime|insomnia|^$/i;
 const YEAR=60*60*24*400;
 const DAY_PLUS=60*60*26;
 
