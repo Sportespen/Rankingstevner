@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Besøksstatistikk – Rankingstevner</title>
+<style>
+:root{--bg:#07182b;--panel:#0b1d33;--line:#21405f;--accent:#ff8a19;--ink:#f4f7fb;--muted:#aebed0}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(180deg,#07182b 0%,#061426 100%);color:var(--ink);min-height:100vh}
+main{max-width:900px;margin:0 auto;padding:28px 20px 60px}
+h1{font-size:24px;margin:0 0 4px}
+p.lead{color:var(--muted);margin:0 0 24px;font-size:14px}
+.summary{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 20px;min-width:150px}
+.card b{display:block;font-size:28px;color:var(--accent)}
+.card span{color:var(--muted);font-size:13px}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{padding:9px 12px;text-align:right;font-size:13px;border-bottom:1px solid #17314b}
+th:first-child,td:first-child{text-align:left}
+th{background:#143656;color:#fff;font-weight:700}
+td.bar-cell{position:relative}
+.bar{position:absolute;left:0;top:0;bottom:0;background:rgba(255,138,25,.18);z-index:0}
+td.bar-cell span{position:relative;z-index:1}
+.state{color:var(--muted);padding:30px 0;text-align:center}
+.err{color:#ff8d8d}
+</style>
+</head>
+<body>
+<main>
+  <h1>Besøksstatistikk</h1>
+  <p class="lead">Første-parts telling (egen server, ikke avhengig av tredjeparts analyseverktøy). Siste 30 dager, UTC-datoer.</p>
+  <div id="summary" class="summary"></div>
+  <div id="tableWrap"><p class="state">Laster…</p></div>
+</main>
+<script>
+(function(){
+  function fmt(n){return new Intl.NumberFormat('nb-NO').format(n);}
+  fetch('/api/stats',{cache:'no-store'}).then(function(r){return r.json();}).then(function(data){
+    if(data.error){
+      document.getElementById('tableWrap').innerHTML='<p class="state err">'+data.error+'</p>';
+      return;
+    }
+    var days=data.days||[];
+    var totalSum=days.reduce(function(a,d){return a+d.total;},0);
+    var uniqueSum=days.reduce(function(a,d){return a+d.unique;},0);
+    var today=days[0]||{total:0,unique:0};
+    document.getElementById('summary').innerHTML=
+      '<div class="card"><b>'+fmt(today.total)+'</b><span>Besøk i dag</span></div>'+
+      '<div class="card"><b>'+fmt(today.unique)+'</b><span>Unike i dag</span></div>'+
+      '<div class="card"><b>'+fmt(totalSum)+'</b><span>Besøk siste 30 dager</span></div>'+
+      '<div class="card"><b>'+fmt(uniqueSum)+'</b><span>Unike siste 30 dager</span></div>';
+    var maxTotal=Math.max(1,...days.map(function(d){return d.total;}));
+    var rows=days.map(function(d){
+      var pct=Math.round(d.total/maxTotal*100);
+      return '<tr><td>'+d.date+'</td><td class="bar-cell"><span class="bar" style="width:'+pct+'%"></span><span>'+fmt(d.total)+'</span></td><td>'+fmt(d.unique)+'</td></tr>';
+    }).join('');
+    document.getElementById('tableWrap').innerHTML=
+      '<table><thead><tr><th>Dato</th><th>Besøk</th><th>Unike</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  }).catch(function(){
+    document.getElementById('tableWrap').innerHTML='<p class="state err">Klarte ikke å hente statistikk.</p>';
+  });
+})();
+</script>
+</body>
+</html>
