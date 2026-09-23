@@ -48,7 +48,7 @@ h2{font-size:18px;margin:32px 0 10px}
     var days=data.days||[];
     var totalSum=days.reduce(function(a,d){return a+d.total;},0);
     var uniqueSum=days.reduce(function(a,d){return a+d.unique;},0);
-    var today=days[0]||{total:0,unique:0};
+    var today=days[days.length-1]||{total:0,unique:0};
     document.getElementById('summary').innerHTML=
       '<div class="card"><b>'+fmt(today.total)+'</b><span>Besøk i dag</span></div>'+
       '<div class="card"><b>'+fmt(today.unique)+'</b><span>Unike i dag</span></div>'+
